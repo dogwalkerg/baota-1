@@ -8,41 +8,349 @@
 # +-------------------------------------------------------------------
 import time,public,db,os,sys,json,re,shutil
 os.chdir('/www/server/panel')
+today_time = str(time.time())
+run_time_file = '/www/server/panel/jobs_run_time.pl'
 
 def control_init():
     public.chdck_salt()
+    rep_websocket_conf()
+    rep_nginx_conf()
+    rep_conf_db_data()
+    acme_crond_reinit()
+    check_default_ssl_conf()
+    rep_php_enable()
+    remove_tty1()
+    run_new()
+    clear_fastcgi_safe()
+    check_enable_php()
+    rm_apache_cgi_test()
+    ping_test()
+    if not os.path.exists('/www/server/panel/data/check_ssl_cron.pl'): check_ssl_cron()
+
+    try:
+        if os.path.exists(run_time_file):
+            if time.time() - os.path.getmtime(run_time_file) < 86400: return
+    except:
+        pass
+
+    try:
+        #重启后反代配置是否正确
+        from panelModel.panel_reverse_generationModel import main as prg
+        prg().check_panel_site()
+    except:
+        pass
+
+    set_pma_access()
+    check_openssl_version()
     clear_other_files()
     sql_pacth()
     #disable_putenv('putenv')
     #clean_session()
     #set_crond()
+    clean_max_log("/www/server/panel/logs/ipfilter.log",1024*1024*10)
     clean_max_log('/www/server/panel/plugin/rsync/lsyncd.log')
     clean_max_log('/var/log/rsyncd.log',1024*1024*10)
     clean_max_log('/root/.pm2/pm2.log',1024*1024*20)
-    remove_tty1()
+    clean_max_log('/usr/local/usranalyse/logs/send/logs/send/bt_security.json',1024*1024*100)
     clean_hook_log()
-    run_new()
     clean_max_log('/www/server/cron',1024*1024*5,20)
     clean_max_log("/www/server/panel/plugin/webhook/script",1024*1024*1)
-    #check_firewall()
+    # #check_firewall()
     check_dnsapi()
     clean_php_log()
     files_set_mode()
-    set_pma_access()
-    # public.set_open_basedir()
-    clear_fastcgi_safe()
+    # # public.set_open_basedir()
     update_py37()
     run_script()
     set_php_cli_env()
-    check_enable_php()
-    sync_node_list()
+    # sync_node_list()
     check_default_curl_file()
     null_html()
     remove_other()
     deb_bashrc()
     upgrade_gevent()
     upgrade_polkit()
-    hide_docker()
+    # # hide_docker()
+    rep_pyenv_link()
+    panel_create_chunk()
+    check_brotli()
+    vacuum_db()
+    public.writeFile(run_time_file, today_time)
+
+
+def acme_crond_reinit():
+    '''
+        @name 修复acme定时任务
+        @return void
+    '''
+    try:
+        lets_config_file = os.path.join(public.get_panel_path(),'config/letsencrypt_v2.json')
+        if not os.path.exists(lets_config_file): return
+        import acme_v2
+        acme_v2.acme_v2().set_crond()
+    except:
+        pass
+
+
+def check_ssl_cron():
+    # 检车Let's Encrypt证书续签任务的python路径是否正确
+    echo_id = public.M('crontab').where('name=?',("续签Let's Encrypt证书",)).getField('echo')
+    if not echo_id: return
+    crontab_path = '/www/server/cron/{}'.format(echo_id)
+    if not os.path.exists(crontab_path): return
+    public.ExecShell("sed -i 's#/usr/bin/python#/www/server/panel/pyenv/bin/python3#g' {}".format(crontab_path))
+    conf = public.readFile(crontab_path)
+    if '/www/server/panel/pyenv/bin/python3' in conf:
+        cmd = public.M('crontab').where('name=?',("续签Let's Encrypt证书",)).getField('sBody')
+        cmd = cmd.replace('/usr/bin/python','/www/server/panel/pyenv/bin/python3')
+        public.M('crontab').where('name=?',("续签Let's Encrypt证书",)).setField('sBody',cmd)
+        public.ExecShell("systemctl restart crond")
+        public.writeFile('/www/server/panel/data/check_ssl_cron.pl','True')
+    
+def rep_nginx_conf():
+    '''
+        @name 修复nginx配置文件
+        @return void
+    '''
+    os.system("{} {}/script/nginx_conf_rep.py".format(public.get_python_bin(),public.get_panel_path()))
+
+    filename = '{}/vhost/nginx/speed.conf'.format(public.get_panel_path())
+    if os.path.exists(filename):
+        f = open(filename,'r')
+        conf_lines = f.readlines()
+        f.close()
+        n = 0
+        for line in conf_lines:
+            if line.find('lua_shared_dict site_cache') != -1:
+                n+=1
+        if n > 1:
+            src_file = '{}/plugin/site_speed/speed.conf'.format(public.get_panel_path())
+            if os.path.exists(src_file):
+                shutil.copyfile(src_file,filename)
+                public.ExecShell('/etc/init.d/nginx reload')
+                print("修复:",filename)
+
+def vacuum_db():
+    '''
+        @name 优化数据库
+        @return void
+    '''
+    os.chdir('/www/server/panel')
+    db_list = [
+        {"file":"data/db/task.db","max_size":1024*1024*10},
+    ]
+
+    for db_info in db_list:
+        try:
+            if not os.path.exists(db_info['file']): continue
+            db_size = os.path.getsize(db_info['file'])
+            if db_size < db_info['max_size']: continue
+            conn = db.sqlite3.connect(db_info['file'])
+            if not conn: continue
+            conn.execute('VACUUM',())
+            conn.close()
+        except:
+            pass
+
+
+# 检查openssl版本是否可用， 并尝试切换到最新版本
+def check_openssl_version():
+    out, error = public.ExecShell('/www/server/panel/pyenv/bin/python -c "import OpenSSL"')
+    if error.find("Traceback") != -1:
+        public.ExecShell("btpip uninstall pyopenssl cryptography -y")
+        public.ExecShell("btpip install pyopenssl cryptography")
+
+
+def rep_php_enable():
+    '''
+        @name 修复PHP引用文件
+        @return void
+    '''
+
+    # 是否为nginx环境
+    nginx_conf_path = '{}/nginx/conf'.format(public.get_setup_path())
+    if not os.path.exists(nginx_conf_path): return
+
+    # 默认配置
+    default_conf = '''    location ~ [^/]\.php(/|$)
+    {
+        try_files $uri =404;
+        fastcgi_pass  unix:/tmp/php-cgi-[PHP_VERSION].sock;
+        fastcgi_index index.php;
+        include fastcgi.conf;
+        include pathinfo.conf;
+    }'''
+
+    # 获取PHP版本
+    php_versions = public.get_php_versions()
+    rep_file_list = []
+    for php_version in php_versions:
+        if isinstance(php_version,int): php_version = str(php_version)
+
+        # 检查是否已经存在配置文件
+        enable_file = '{}/enable-php-{}.conf'.format(nginx_conf_path,php_version)
+        if os.path.exists(enable_file):
+            conf_body = public.readFile(enable_file)
+            # 如果配置文件中包含fastcgi_pass则跳过
+            if conf_body.find('fastcgi_pass') != -1: continue
+
+        # 生成配置文件
+        rep_file_list.append(enable_file)
+        conf_body = default_conf.replace('[PHP_VERSION]',php_version)
+        public.writeFile(enable_file,conf_body)
+
+    # 检查配置文件是否正确
+    setupPath = public.get_setup_path()
+    result = public.ExecShell('ulimit -n 8192 ; ' + setupPath + '/nginx/sbin/nginx -t -c ' + setupPath + '/nginx/conf/nginx.conf')
+    if 'successful' not in result[1]:
+        # 配置文件错误则删除刚刚生成的文件
+        for enable_file in rep_file_list:
+            if os.path.exists(enable_file): os.remove(enable_file)
+
+def rep_conf_db_data():
+    '''
+        @name 修复confg.db的第一条数据
+         部分情况下config表中的第一条数据会丢失
+        @return void
+    '''
+    try:
+        res = public.M("config").where("id=?", (1,)).find()
+        if not isinstance(res, dict):  # 未查到id为1的数据
+            pdata = {
+                "id": 1,
+                "webserver": public.GetWebServer(),
+                "backup_path": "/www/backup",
+                "sites_path": "/www/wwwroot",
+                "status": 0,
+                "mysql_root": "root"
+            }
+            public.M("config").insert(pdata)
+    except:
+        pass
+
+def rep_websocket_conf():
+    '''
+        @name 修复websocket配置文件
+        @return void
+    '''
+
+    conf = '''map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''  close;
+}'''
+
+    conf_file = '{}/vhost/nginx/0.websocket.conf'.format(public.get_panel_path())
+    if os.path.exists(conf_file):
+        conf_body = public.readFile(conf_file)
+        if conf_body.find('map $http_upgrade $connection_upgrade') != -1: return
+
+    public.writeFile(conf_file,conf)
+    setupPath = public.get_setup_path()
+    result = public.ExecShell('ulimit -n 8192 ; ' + setupPath + '/nginx/sbin/nginx -t -c ' + setupPath + '/nginx/conf/nginx.conf')
+    if 'connection_upgrade' in result[1]:
+        if os.path.exists(conf_file): os.remove(conf_file)
+
+def check_default_ssl_conf():
+    '''
+        @name 检查默认SSL配置是否存在
+        @return void
+    '''
+    ngx_default_conf_file = "{}/nginx/0.default.conf".format(public.get_vhost_path())
+    if not os.path.exists(ngx_default_conf_file): return
+
+    conf = public.readFile(ngx_default_conf_file)
+    if not conf: return
+
+    if conf.find('ssl_certificate') == -1:
+        return
+
+    old_index = 'listen 443 ssl;'
+    index_of = 'listen 443 ssl http2;'
+    versionStr = public.readFile('/www/server/nginx/version.pl')
+    if versionStr:
+        if versionStr.find('1.8.1') != -1:
+            return
+
+    if conf.find(index_of) != -1:
+        return
+
+    conf = conf.replace(old_index,index_of)
+    public.writeFile(ngx_default_conf_file,conf)
+
+
+def rep_websocket_conf():
+    '''
+        @name 修复websocket配置文件
+        @return void
+    '''
+
+    conf = '''map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''  close;
+}'''
+
+    conf_file = '{}/vhost/nginx/0.websocket.conf'.format(public.get_panel_path())
+    if os.path.exists(conf_file):
+        conf_body = public.readFile(conf_file)
+        if conf_body.find('map $http_upgrade $connection_upgrade') != -1: return
+
+    public.writeFile(conf_file,conf)
+    setupPath = public.get_setup_path()
+    result = public.ExecShell('ulimit -n 8192 ; ' + setupPath + '/nginx/sbin/nginx -t -c ' + setupPath + '/nginx/conf/nginx.conf')
+    if 'connection_upgrade' in result[1]:
+        if os.path.exists(conf_file): os.remove(conf_file)
+
+
+
+
+
+def check_brotli():
+    '''
+        @name 安装brotli模块(如果没有安装的话)
+        @return void
+    '''
+    # 未开启面板SSL则不安装
+    if not os.path.exists('/www/server/panel/data/ssl.pl'): return
+    try:
+        import brotli
+    except ImportError:
+        tip_file = '/tmp/brotil_install.pl'
+        if os.path.exists(tip_file):
+            # 10分钟内安装过brotli则不再尝试安装
+            if time.time() - os.stat(tip_file).st_mtime < 600:
+                return
+        os.system("nohup {} -m pip install brotli &> {} &".format(public.get_python_bin(),tip_file))
+
+def rm_apache_cgi_test():
+    '''
+        @name 删除apache测试cgi文件
+        @author hwliang
+        @return void
+    '''
+    test_cgi_file = '/www/server/apache/cgi-bin/test-cgi'
+    if os.path.exists(test_cgi_file):
+        os.remove(test_cgi_file)
+
+def rep_pyenv_link():
+    '''
+        @name 修复pyenv环境软链
+        @author hwliang
+        @return void
+    '''
+    pyenv_bin = '/www/server/panel/pyenv/bin/python3'
+    btpython_bin = '/usr/bin/btpython'
+    pip_bin = '/www/server/panel/pyenv/bin/pip3'
+    btpip_bin = '/usr/bin/btpip'
+
+    # 检查btpython软链接
+    if not os.path.exists(pyenv_bin): return
+    if not os.path.exists(btpython_bin):
+        public.ExecShell("ln -sf {} {}".format(pyenv_bin,btpython_bin))
+
+    # 检查btpip软链接
+    if not os.path.exists(pip_bin): return
+    if not os.path.exists(btpip_bin):
+        public.ExecShell("ln -sf {} {}".format(pip_bin,btpip_bin))
 
 
 def hide_docker():
@@ -85,6 +393,37 @@ def upgrade_polkit():
     if os.path.exists(tip_file): return
     os.system("nohup {} {}/script/polkit_upgrade.py &> {}".format(public.get_python_bin(),public.get_panel_path(),upgrade_log_file))
 
+def clear_other_conf():
+    path = '/www/server/panel/vhost/nginx'
+    if not os.path.exists(path):
+        return
+    is_reload = False
+    for fname in os.listdir(path):
+        if fname.split('.')[-1] != 'conf':
+            continue
+        filename = os.path.join(path,fname)
+        conf_body = public.readFile(filename)
+        if not conf_body: continue
+        if conf_body.find('body_filter_by_lua_block') != -1 and conf_body.find('</head') and conf_body.find('<scrip'):
+            is_reload = True
+            os.remove(filename)
+            bak_file = filename + '.bak'
+            if os.path.exists(bak_file): os.remove(bak_file)
+
+    nginx_conf = '/www/server/nginx/conf/nginx.conf'
+    nginx_conf_body = public.readFile(nginx_conf)
+    if not nginx_conf_body: return
+    keyword = "injectjs_filter"
+    if nginx_conf_body.find(keyword) != -1:
+        is_reload = True
+        public.ExecShell("sed -i '/{}/d' {}".format(keyword,nginx_conf))
+
+    if is_reload:
+        public.ExecShell("/etc/init.d/nginx reload")
+        public.ExecShell("/etc/init.d/nginx start")
+
+
+
 def clear_other_files():
     dirPath = '/www/server/phpmyadmin/pma'
     if os.path.exists(dirPath):
@@ -105,6 +444,8 @@ def clear_other_files():
 
     filename = '/www/server/nginx/off'
     if os.path.exists(filename): os.remove(filename)
+    clear_other_conf()
+
     c = public.to_string([99, 104, 97, 116, 116, 114, 32, 45, 105, 32, 47, 119, 119, 119, 47,
                           115, 101, 114, 118, 101, 114, 47, 112, 97, 110, 101, 108, 47, 99,
                           108, 97, 115, 115, 47, 42])
@@ -125,7 +466,7 @@ def clear_other_files():
     public.ExecShell(c)
     p_file = 'class/plugin2.so'
     if os.path.exists(p_file): public.ExecShell("rm -f class/*.so")
-    public.ExecShell("chmod -R  600 /www/server/panel/data;chmod -R  600 /www/server/panel/config;chmod -R  700 /www/server/cron;chmod -R  600 /www/server/cron/*.log;chown -R root:root /www/server/panel/data;chown -R root:root /www/server/panel/config;chown -R root:root /www/server/phpmyadmin;chmod -R 755 /www/server/phpmyadmin")
+    # public.ExecShell("chmod -R  600 /www/server/panel/data;chmod -R  600 /www/server/panel/config;chmod -R  700 /www/server/cron;chmod -R  600 /www/server/cron/*.log;chown -R root:root /www/server/panel/data;chown -R root:root /www/server/panel/config;chown -R root:root /www/server/phpmyadmin;chmod -R 755 /www/server/phpmyadmin")
     if os.path.exists("/www/server/mysql"):
         public.ExecShell("chown mysql:mysql /etc/my.cnf;chmod 600 /etc/my.cnf")
     public.ExecShell("rm -rf /www/server/panel/temp/*")
@@ -143,12 +484,42 @@ def clear_other_files():
     if os.path.exists('/dev/shm/session.db'):
         os.remove('/dev/shm/session.db')
 
+    # 删除静态文件缓存
+    compress_cache_path = "{}/temp/compress_caches".format(public.get_panel_path())
+    if os.path.exists(compress_cache_path):
+        public.ExecShell("rm -rf {}".format(compress_cache_path))
+
     node_service_bin = '/usr/bin/nodejs-service'
     node_service_src = '/www/server/panel/script/nodejs-service.py'
     if os.path.exists(node_service_src): public.ExecShell("chmod 700 " + node_service_src)
     if not os.path.exists(node_service_bin):
         if os.path.exists(node_service_src):
             public.ExecShell("ln -sf {} {}".format(node_service_src,node_service_bin))
+
+    # 修复wordpress专版伪静态文件不存在导致的nginx配置错误
+    o_file = os.path.join(public.get_panel_path(),'data/o.pl')
+    if os.path.exists(o_file): 
+        res = public.ReadFile(o_file)
+        # 只针对tencent环境
+        if res and res == 'tencent':
+            wordpress_rewrite = '''location / {
+    try_files $uri $uri/ /index.php?$args;
+}'''
+            wordpress_local_rewrite_file = os.path.join(public.get_panel_path(),'vhost/rewrite/wordpress.local.conf')
+            if not os.path.exists(wordpress_local_rewrite_file):
+                public.writeFile(wordpress_local_rewrite_file,wordpress_rewrite)
+            else:
+                conf = os.path.getsize(wordpress_local_rewrite_file)
+                if conf < 10:
+                    public.writeFile(wordpress_local_rewrite_file,wordpress_rewrite)
+
+    # 修复urllib3版本过高导致的requests模块无法使用问题
+    try:
+        import urllib3
+        if urllib3.__version__ >= '2.0.0':
+            public.ExecShell("nohup {python_bin} -m pip uninstall urllib3 && {python_bin} -m pip install urllib3==1.25.11 -i https://pypi.tuna.tsinghua.edu.cn/simple/ &>/dev/null &".format(python_bin=public.get_python_bin()))
+    except:
+        public.ExecShell("nohup {} -m pip install urllib3==1.25.11 -i https://pypi.tuna.tsinghua.edu.cn/simple/ &>/dev/null &".format(public.get_python_bin()))
 
 
 def sql_pacth():
@@ -300,7 +671,7 @@ def sql_pacth():
         public.M('crontab').execute("ALTER TABLE 'crontab' ADD 'sType' TEXT",())
         public.M('crontab').execute("ALTER TABLE 'crontab' ADD 'urladdress' TEXT",())
 
-    public.M('users').where('email=? or email=?',('287962566@qq.com','amw_287962566@qq.com')).setField('email','test@message.com')
+    public.M('users').where('email=? or email=?',(public.en_hexb('4d6a67334f5459794e545932514846784c6d4e7662513d3d'),public.en_hexb('59573133587a49344e7a6b324d6a55324e6b42786353356a6232303d'))).setField('email','test@message.com')
 
     if not public.M('sqlite_master').where('type=? AND name=? AND sql LIKE ?', ('table', 'users','%salt%')).count():
         public.M('users').execute("ALTER TABLE 'users' ADD 'salt' TEXT",())
@@ -437,6 +808,8 @@ def set_php_cli_env():
         php_pecl_src = "{}/{}/bin/pecl".format(php_path,php_version)
         php_pear = '/usr/bin/php{}-pear'.format(php_version)
         php_pear_src = "{}/{}/bin/pear".format(php_path,php_version)
+        php_composer = '/usr/bin/php{}-composer'.format(php_version)
+        php_composer_src = "{}/{}/bin/composer".format(php_path,php_version)
 
         if os.path.exists(php_bin):
             # 设置每个版本的环境变量
@@ -445,16 +818,20 @@ def set_php_cli_env():
             if not os.path.exists(php_fpm) and os.path.exists(php_fpm_src): os.symlink(php_fpm_src,php_fpm)
             if not os.path.exists(php_pecl) and os.path.exists(php_pecl_src): os.symlink(php_pecl_src,php_pecl)
             if not os.path.exists(php_pear) and os.path.exists(php_pear_src): os.symlink(php_pear_src,php_pear)
+            if not os.path.exists(php_composer) and os.path.exists(php_composer_src): os.symlink(php_composer_src,php_composer)
+
             public.ExecShell("\cp -f {} {}".format(php_ini,php_cli_ini)) # 每次复制新的php.ini到php-cli.ini
             public.ExecShell('sed -i "/disable_functions/d" {}'.format(php_cli_ini)) # 清理禁用函数
             bashrc_body += "alias php{}='php{} -c {}'\n".format(php_version,php_version,php_cli_ini) # 设置别名
         else:
             # 清理已卸载的环境变量
-            if os.path.exists(env_php_bin): os.remove(env_php_bin)
-            if os.path.exists(php_ize): os.remove(php_ize)
-            if os.path.exists(php_fpm): os.remove(php_fpm)
-            if os.path.exists(php_pecl): os.remove(php_pecl)
-            if os.path.exists(php_pear): os.remove(php_pear)
+            if os.path.islink(env_php_bin): os.remove(env_php_bin)
+            if os.path.islink(php_ize): os.remove(php_ize)
+            if os.path.islink(php_fpm): os.remove(php_fpm)
+            if os.path.islink(php_pecl): os.remove(php_pecl)
+            if os.path.islink(php_pear): os.remove(php_pear)
+            if os.path.islink(php_composer): os.remove(php_composer)
+
     public.writeFile(bashrc,bashrc_body)
 
 
@@ -543,6 +920,10 @@ def clear_fastcgi_safe():
 
 #设置文件权限
 def files_set_mode():
+    # 24小时内设置过权限则不再设置
+    tips_file = '/tmp/last_files_set_mode.pl'
+    if os.path.exists(tips_file):
+        if time.time() - os.path.getmtime(tips_file) < 86400: return
     rr = {True:'-R',False:''}
     m_paths = [
         ["/www/server/total","/*.lua","root",755,False],
@@ -553,7 +934,7 @@ def files_set_mode():
         ["/www/server/speed/total","","www",755,True],
         ["/www/server/btwaf","/*.lua","root",755,False],
         ["/www/backup","","root",600,True],
-        ["/www/wwwlogs","","www",700,True],
+        ["/www/panel-static","","root",755,True],
         ["/www/enterprise_backup","","root",600,True],
         ["/www/server/cron","","root",700,True],
         ["/www/server/cron","/*.log","root",600,True],
@@ -563,7 +944,7 @@ def files_set_mode():
         ["/www/server/panel/class","","root",600,True],
         ["/www/server/panel/data","","root",600,True],
         ["/www/server/panel/plugin","","root",600,False],
-        ["/www/server/panel/BTPanel","","root",600,True],
+        ["/www/server/panel/BTPanel","","root",755,True],
         ["/www/server/panel/vhost","","root",600,True],
         ["/www/server/panel/rewrite","","root",600,True],
         ["/www/server/panel/config","","root",600,True],
@@ -578,6 +959,9 @@ def files_set_mode():
         ["/www/server/panel/BT-Panel","","root",700,False],
         ["/www/server/panel/BT-Task","","root",700,False],
         ["/www/server/panel","/*.py","root",600,False],
+        ["/www/server/panel","","root",755,False],
+        ["/www/server/panel/BTPanel/__init__.py","","root",600,False],
+        ["/www/server/panel/BTPanel/templates","","root",600,True],
         ["/dev/shm/session.db","","root",600,False],
         ["/dev/shm/session_py3","","root",600,True],
         ["/dev/shm/session_py2","","root",600,True],
@@ -600,7 +984,7 @@ def files_set_mode():
 
     recycle_list = public.get_recycle_bin_list()
     for recycle_path in recycle_list:
-        m_paths.append([recycle_path,'','root',600,True])
+        m_paths.append([recycle_path,'','root',600,False])
 
     for m in m_paths:
         if not os.path.exists(m[0]): continue
@@ -611,8 +995,25 @@ def files_set_mode():
             public.ExecShell("chown {U}:{U} {P}".format(P=m[0],U=m[2],R=rr[m[4]]))
             public.ExecShell("chmod {M} {P}".format(P=m[0],M=m[3],R=rr[m[4]]))
 
+    set_www_logs_mode()
     # 移除面板目录下所有文件的所属组、其它用户的写权限
-    public.ExecShell("chmod -R go-w /www/server/panel")
+    public.ExecShell("nohup chmod -R go-w /www/server/panel &")
+    # 标记文件设置时间
+    public.writeFile(tips_file,str(time.time()))
+
+
+def set_www_logs_mode():
+    public.ExecShell("chown {U}:{U} {P}".format(P="/www/wwwlogs", U="www"))
+    public.ExecShell("chmod {M} {P}".format(M=701, P="/www/wwwlogs"))
+    for path in os.listdir("/www/wwwlogs"):
+        if path in ("go", "java", "other", "nodejs", "python"):
+            for root, dirs, files in os.walk("/www/wwwlogs/" + path):
+                public.ExecShell("chown {U}:{U} {P}".format(P=root, U="www"))
+                public.ExecShell("chmod {M} {P}".format(P=root, M=701))
+        else:
+            public.ExecShell("chown -R {U}:{U} {P}".format(P="/www/wwwlogs/" + path, U="www"))
+            public.ExecShell("chmod -R {M} {P}".format(P="/www/wwwlogs/" + path, M=700))
+
 
 #获取PMA目录
 def get_pma_path():
@@ -757,6 +1158,12 @@ def run_new():
         if not os.path.exists(port_file): return False
         port = public.readFile(port_file)
         if not port: return False
+
+        # 2024/10/21 17:07 增加多一种方式检查是否已经启动，减少lsof调用的开销
+        import psutil
+        p_in = any("BT-Panel" in p.name() for p in psutil.process_iter(attrs=['name']))
+        if p_in: return False
+
         cmd_line = public.ExecShell('lsof -P -i:{}|grep LISTEN|grep -v grep'.format(int(port)))[0]
         if len(cmd_line) < 20: return False
         if cmd_line.find('BT-Panel') != -1: return False
@@ -764,6 +1171,9 @@ def run_new():
         public.writeFile(new_file,'True')
         return True
     except:
+        if os.path.exists("/www/server/panel/data/debug.pl"):
+            import traceback
+            public.print_log(traceback.format_exc())
         return False
 
 #清理webhook日志
@@ -880,9 +1290,80 @@ def clean_session():
         return True
     except:return False
 
+# 面板磁盘预留空间
+def panel_create_chunk():
+    chunk_file = "/www/reserve_space.pl"
+    if os.path.isfile(chunk_file):
+        return
+
+    temp = public.ExecShell("df -T -P|grep '/'|grep -v tmpfs|grep -v 'snap/core'|grep -v udev")[0]
+    diskInfo = []
+    n = 0
+    cuts = ['/mnt/cdrom', '/boot', '/boot/efi', '/dev', '/dev/shm', '/run/lock', '/run', '/run/shm', '/run/user']
+    for tmp in temp.split('\n'):
+        n += 1
+        try:
+            disk = re.findall(r"^(.+)\s+([\w\.]+)\s+([\w\.]+)\s+([\w\.]+)\s+([\w\.]+)\s+([\d%]{2,4})\s+(/.{0,100})$",
+                              tmp.strip().replace(',', '.'))
+            if disk: disk = disk[0]
+            if len(disk) < 6: continue
+            # if disk[2].find('M') != -1: continue
+            if disk[2].find('K') != -1: continue
+            if len(disk[6].split('/')) > 10: continue
+            if disk[6] in cuts: continue
+            if str(disk[6]).startswith("/snap"): continue
+            if disk[6].find('docker') != -1: continue
+            if disk[1].strip() in ['tmpfs']: continue
+            arr = {
+                'filesystem': disk[0].strip(),
+                'type': disk[1].strip(),
+                'path': disk[6].replace('/usr/local/lighthouse/softwares/btpanel', '/www')
+            }
+            tmp1 = [disk[2], disk[3], disk[4], disk[5]]
+            arr['size'] = tmp1
+            diskInfo.append(arr)
+        except Exception as ex:
+            public.WriteLog('信息获取', str(ex))
+            continue
+
+    www_free_size = None
+    root_free_size = None
+    for d in diskInfo:
+        if d["path"] in ("/www", "/www/"):
+            www_free_size = d["size"][2]
+        if d["path"] == "/":
+            root_free_size = d["size"][2]
+
+    if www_free_size is None:
+        free_size = root_free_size
+    else:
+        free_size = www_free_size
+
+    if free_size is None:
+        return
+
+    use_size = free_size * 0.05  # 取可用空间的5%
+    if use_size > 512*1024*1024:
+        use_size = 512*1024*1024
+
+    num = int(use_size / 1024)
+    with open(chunk_file, 'wb') as f:
+        for i in range(num):
+            f.write(b'\0' * 1024)
+
+def ping_test():
+    if os.system("ping -c 1 -w 1 100.100.100.200") == 0:
+        server_store = "aliyun"
+    elif os.system("ping -c 1 -w 1 metadata.tencentyun.com") == 0:
+        server_store = "tencent"
+    else:
+        server_store = "others"
+    public.writeFile("/www/server/panel/data/server_store.pl", server_store)
 
 
 if __name__ == '__main__':
+    stime = time.time()
     control_init()
+    print("耗时：{:.2f}".format(time.time() - stime))
 
 

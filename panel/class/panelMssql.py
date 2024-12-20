@@ -50,12 +50,16 @@ class panelMssql:
         if not self.__DB_CLOUD:
             sa_path = 'data/sa.pl'
             if os.path.exists(sa_path): self.__DB_PASS = public.readFile(sa_path)
-            self.__DB_PORT = self.get_port()
+            self.__DB_PORT = 1433
 
         try:
 
             if self.__DB_CLOUD:
-                self.__DB_CONN = pymssql.connect(server = self.__DB_HOST, port= str(self.__DB_PORT),user=self.__DB_USER,password=self.__DB_PASS,database = None,login_timeout = 30,timeout = 0,autocommit = True)
+                try:
+                    self.__DB_CONN = pymssql.connect(server = self.__DB_HOST, port= str(self.__DB_PORT),user=self.__DB_USER,password=self.__DB_PASS,database = None,login_timeout = 30,timeout = 0,autocommit = True)
+                except:
+                    self.__DB_ERR = '连接数据库失败!请检查远程数据库信息是否正确'
+                    return False
             else:
                 self.__DB_CONN = pymssql.connect(server = self.__DB_HOST, port= str(self.__DB_PORT),login_timeout = 30,timeout = 0,autocommit = True)
             self.__DB_CUR = self.__DB_CONN.cursor()  #将数据库连接信息，赋值给cur。

@@ -8,7 +8,7 @@
 # +-------------------------------------------------------------------
 
 # +-------------------------------------------------------------------
-# | 宝塔HTTP通信库
+# |  宝塔HTTP通信库
 # +-------------------------------------------------------------------
 import os,sys,re
 import ssl
@@ -17,18 +17,34 @@ import public
 import json
 import socket
 import requests
-import config
 import requests.packages.urllib3.util.connection as urllib3_conn
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+
 class http:
     _ip_type = None
     def __init__(self):
-        self._ip_type = config.config().get_request_iptype()
+        self._ip_type = self.get_request_iptype()
 
-    def get(self,url,timeout = 60,headers = {},verify = False,type = 'python'):
+
+    def get_request_iptype(self, get=None):
+        '''
+            @name 获取云端请求线路
+            @author hwliang<2022-02-09>
+            @return auto/ipv4/ipv6
+        '''
+
+        v4_file = '{}/data/v4.pl'.format(public.get_panel_path())
+        if not os.path.exists(v4_file): return 'auto'
+        iptype = public.readFile(v4_file).strip()
+        if not iptype: return 'auto'
+        if iptype == '-4': return 'ipv4'
+        return 'ipv6'
+
+    def get(self,url,timeout = (6,60),headers = {},verify = False,type = 'python'):
         url = self.quote(url)
+        url = public.get_home_node(url)
         if type in ['python','src','php']:
             old_family = urllib3_conn.allowed_gai_family
             try:
@@ -91,8 +107,9 @@ class http:
                 result = self._get_py3(url,timeout,headers,verify)
         return result
 
-    def post(self,url,data,timeout = 60,headers = {},verify = False,type = 'python'):
+    def post(self,url,data,timeout = (6,60),headers = {},verify = False,type = 'python'):
         url = self.quote(url)
+        url = public.get_home_node(url)
         if type in ['python','src','php']:
             old_family = urllib3_conn.allowed_gai_family
             try:
@@ -103,7 +120,6 @@ class http:
 
                 result = requests.post(url,data,timeout=timeout,headers=headers,verify=verify)
             except:
-                public.print_log(public.get_error_info())
                 try:
                     # IPV6？
                     if self._ip_type != 'ipv6':
@@ -150,6 +166,59 @@ class http:
                 result = self._post_py3(url,data,timeout,headers,verify)
         return result
 
+
+
+    def node_check(self,url,timeout = (6,60),headers = {},verify = False,type = 'python'):
+        """
+        @name 检测节点是否可用
+        """
+        url = self.quote(url)
+        url = public.get_home_node(url)
+        if type in ['python','src','php']:
+            old_family = urllib3_conn.allowed_gai_family
+            try:
+                # 默认使用IPv4
+                if self._ip_type == 'ipv4':
+                    urllib3_conn.allowed_gai_family = lambda: socket.AF_INET
+                elif self._ip_type == 'ipv6':
+                    urllib3_conn.allowed_gai_family = lambda: socket.AF_INET6
+
+                result = requests.get(url,timeout=timeout,headers=get_headers(headers),verify=verify)
+            except Exception as ex:
+                result = False
+            finally:
+                urllib3_conn.allowed_gai_family = old_family
+
+        elif type == 'curl':
+            result = self._get_curl(url,timeout,headers,verify)
+            if result.status_code == 0:
+                if self._ip_type == 'ipv4':
+                    self._ip_type = 'ipv6'
+                elif self._ip_type == 'ipv6':
+                    self._ip_type = 'ipv4'
+                else:
+                    return result
+                result = self._get_curl(url,timeout,headers,verify)
+                if result.status_code != 0:
+                    self.save_ip_type()
+        elif type == 'php':
+            result = self._get_php(url,timeout,headers,verify)
+            if result.status_code == 0:
+                if self._ip_type == 'ipv4':
+                    self._ip_type = 'ipv6'
+                elif self._ip_type == 'ipv6':
+                    self._ip_type = 'ipv4'
+                else:
+                    return result
+                result = self._get_php(url,timeout,headers,verify)
+                if result.status_code != 0:
+                    self.save_ip_type()
+        elif type == 'src':
+            if sys.version_info[0] == 2:
+                result = self._get_py2(url,timeout,headers,verify)
+            else:
+                result = self._get_py3(url,timeout,headers,verify)
+        return result
 
     def save_ip_type(self):
         v_file = '{}/data/v4.pl'.format(public.get_panel_path())
@@ -220,6 +289,8 @@ class http:
 
     #POST请求，通过CURL
     def _post_curl(self,url,data,timeout,headers,verify):
+        if isinstance(timeout,tuple):
+            timeout = timeout[1]
         headers_str = self._str_headers(headers)
         pdata = self._str_post(data,headers_str)
         _ssl_verify = ''
@@ -230,6 +301,8 @@ class http:
 
     #POST请求，通过PHP
     def _post_php(self,url,data,timeout,headers,verify):
+        if isinstance(timeout,tuple):
+            timeout = timeout[1]
         php_version = self._get_php_version()
         if not php_version:
             raise Exception('没有可用的PHP版本!')
@@ -338,6 +411,8 @@ exit($header."\r\n\r\n".json_encode($body));
 
     #GET请求，通过CURL
     def _get_curl(self,url,timeout,headers,verify):
+        if isinstance(timeout,tuple):
+            timeout = timeout[1]
         headers_str = self._str_headers(headers)
         _ssl_verify = ''
         if not verify: _ssl_verify = ' -k'
@@ -347,6 +422,8 @@ exit($header."\r\n\r\n".json_encode($body));
 
     #GET请求，通过PHP
     def _get_php(self,url,timeout,headers,verify):
+        if isinstance(timeout,tuple):
+            timeout = timeout[1]
         php_version = self._get_php_version()
         if not php_version:
             raise Exception('没有可用的PHP版本!')
@@ -441,15 +518,21 @@ exit($header."\r\n\r\n".json_encode($body));
     def _curl_format(self,req):
         match = re.search("(.|\n)+\r\n\r\n",req)
         if not match: return req,{},0
-        tmp = match.group().split("\r\n")
-        i = 0
-        if tmp[i].find('Continue') != -1: i+=1
-        if not tmp[i]: i+=1
+        tmp = match.group()
+        body = req.replace(tmp,'')
         try:
-            status_code = int(tmp[i].split()[1])
+            for line in tmp.split('\r\n'):
+                if line.find('HTTP/') != -1:
+                    if line.find('Continue') != -1: continue
+                    status_code = int(re.search('HTTP/[\d\.]+\s(\d+)',line).groups()[0])
+                    break
+            if status_code == 100:
+                status_code = 200
         except:
-            status_code = 0
-        body = req.replace(match.group(),'')
+            if body:
+                status_code = 200
+            else:
+                status_code = 0
         return body,tmp,status_code
 
     #构造适用于PHP的headers
@@ -494,6 +577,7 @@ exit($header."\r\n\r\n".json_encode($body));
                 return pdata
         return public.url_encode(pdata)
 
+
 #响应头对象
 class http_headers:
     def __contains__(self, key):
@@ -523,6 +607,12 @@ class response:
         self.format_headers(headers)
 
     def format_headers(self,raw_headers):
+        if isinstance(raw_headers,str):
+            raw_headers = raw_headers.strip().split('\r\n')
+        if isinstance(raw_headers,dict):
+            for k in raw_headers.keys():
+                self.headers[k] = raw_headers[k]
+            return
         raw = []
         for h in raw_headers:
             if not h: continue
@@ -581,7 +671,7 @@ def get_headers(headers):
         headers['User-Agent'] = DEFAULT_HEADERS['User-Agent']
     return headers
 
-def post(url,data = {},timeout = 60,headers = {},verify = False,s_type = None):
+def post(url,data = {},timeout = (15,120),headers = {},verify = False,s_type = None):
     '''
         POST请求
         @param [url] string URL地址
@@ -591,13 +681,15 @@ def post(url,data = {},timeout = 60,headers = {},verify = False,s_type = None):
         @param [verify] bool 是否验证ssl证书 默认False
         @param [s_type] string 请求方法 默认python 可选：curl或php
     '''
+    if isinstance(timeout,list):
+        timeout = tuple(timeout)
     p = http()
     try:
         return p.post(url,data,timeout,get_headers(headers),verify,get_stype(s_type))
     except:
         raise Exception(public.get_error_info())
 
-def get(url,timeout = 60,headers = {},verify = False,s_type = None):
+def get(url,timeout = (15,120),headers = {},verify = False,s_type = None):
     '''
         GET请求
         @param [url] string URL地址
@@ -606,9 +698,30 @@ def get(url,timeout = 60,headers = {},verify = False,s_type = None):
         @param [verify] bool 是否验证ssl证书 默认False
         @param [s_type] string 请求方法 默认python 可选：curl或php
     '''
+    if isinstance(timeout,list):
+        timeout = tuple(timeout)
     p = http()
     try:
         return p.get(url,timeout,get_headers(headers),verify,get_stype(s_type))
+    except:
+        raise Exception(public.get_error_info())
+
+
+
+def node_check(url,timeout = (15,120),headers = {},verify = False,s_type = None):
+    '''
+        GET请求
+        @param [url] string URL地址
+        @param [timeout] int 超时时间 默认60秒
+        @param [headers] dict 请求头 默认{"Content-type":"application/x-www-form-urlencoded","User-Agent":"BT-Panel"}
+        @param [verify] bool 是否验证ssl证书 默认False
+        @param [s_type] string 请求方法 默认python 可选：curl或php
+    '''
+    if isinstance(timeout,list):
+        timeout = tuple(timeout)
+    p = http()
+    try:
+        return p.node_check(url,timeout,get_headers(headers),verify,get_stype(s_type))
     except:
         raise Exception(public.get_error_info())
 

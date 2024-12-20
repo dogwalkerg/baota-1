@@ -25,7 +25,12 @@ class panelApi:
 
         data['limit_addr'] = '\n'.join(data['limit_addr'])
         data['bind'] = self.get_bind_token()
-        qrcode = (public.getPanelAddr() + "|" + data['token'] + "|" + data['key'] + '|' + data['bind']['token']).encode('utf-8')
+        if not os.path.exists('/data/panel_generation.pl'):
+            qrcode = (public.getPanelAddr() + "|" + data['token'] + "|" + data['key'] + '|' + data['bind']['token']).encode('utf-8')
+        else:
+            conf = json.loads(public.readFile('/data/panel_generation.pl'))
+            __http = 'https://' if os.path.exists("data/ssl.pl") else 'http://'
+            qrcode = (__http + conf['domain'] + "|" + data['token'] + "|" + data['key'] + '|' + data['bind']['token']).encode('utf-8')
         data['qrcode'] = public.base64.b64encode(qrcode).decode('utf-8')
         data['apps'] = sorted(data['apps'],key=lambda x: x['time'],reverse=True)
         del(data['key'])
@@ -57,13 +62,20 @@ class panelApi:
             return public.returnMsg(False,'无效的登录密钥')
 
     def get_api_config(self):
-        tmp = public.ReadFile(self.save_path)
+        try:
+            tmp = public.ReadFile(self.save_path)
+        except json.decoder.JSONDecodeError:
+            tmp = {}
         if not tmp or not os.path.exists(self.save_path):
             data = { "open":False, "token":"", "limit_addr":[] }
             public.WriteFile(self.save_path,json.dumps(data))
             public.ExecShell("chmod 600 " + self.save_path)
             tmp = public.ReadFile(self.save_path)
-        data = json.loads(tmp)
+        try:
+            data = json.loads(tmp)
+        except:
+            data = {"open": False, "token": "", "limit_addr": []}
+            public.WriteFile(self.save_path,json.dumps(data))
 
         is_save = False
         if not 'binds' in data:
@@ -146,6 +158,13 @@ class panelApi:
         return None
 
     def add_bind_app(self,args):
+        from BTPanel import session
+        if not 'username' in session:
+            return public.returnMsg(False, '请先登录面板!')
+        username = session.get("username")
+        # 判断是否为  临时  开头的用户
+        if username.find('临时') != -1:
+            return public.returnMsg(False, '临时用户无法使用API')
         bind = self.get_bind_token(args.bind_token)
         if bind['status'] == 0:
             return public.returnMsg(False,'未通过验证!')

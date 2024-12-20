@@ -12,7 +12,7 @@
 # 网站证书过期检测
 # -------------------------------------------------------------------
 
-import os,sys,re,public,OpenSSL,time
+import os,sys,re,public,time
 
 _title = '网站证书到期检测'
 _version = 1.0                              # 版本
@@ -25,6 +25,8 @@ _tips = [
     "SSL证书过期后，用户访问网站将被浏览器提示为不安全，且大部分浏览器会阻止访问，严重影响线上业务"
     ]
 _help = ''
+_remind = 'SSL证书确保了网站通信的安全性，防止数据传输过程中被黑客窃取。'
+
 
 def check_run():
     '''
@@ -61,11 +63,16 @@ def check_run():
 # 获取证书到期时间
 def get_cert_timeout(cert_file):
     try:
-        cert = split_ca_data(public.readFile(cert_file))
-        x509 = OpenSSL.crypto.load_certificate(
-            OpenSSL.crypto.FILETYPE_PEM, cert)
-        cert_timeout = bytes.decode(x509.get_notAfter())[:-1]
-        return int(time.mktime(time.strptime(cert_timeout, '%Y%m%d%H%M%S')))
+        # cert = split_ca_data(public.readFile(cert_file))
+        # x509 = OpenSSL.crypto.load_certificate(
+        #     OpenSSL.crypto.FILETYPE_PEM, cert)
+        # cert_timeout = bytes.decode(x509.get_notAfter())[:-1]
+        if "/www/server/panel/class" not in sys.path:
+            sys.path.insert(0, "/www/server/panel/class")
+        import ssl_info
+        data = ssl_info.ssl_info().load_ssl_info(cert_file)
+
+        return int(time.mktime(time.strptime(data["notAfter"], "%Y-%m-%d %H:%M:%S")))
     except:
         return time.time() + 86400
 

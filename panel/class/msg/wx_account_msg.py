@@ -15,12 +15,20 @@ import time,base64
 panelPath = "/www/server/panel"
 os.chdir(panelPath)
 sys.path.insert(0,panelPath + "/class/")
-import public, json, requests
-from requests.packages import urllib3
-# 关闭警告
-urllib3.disable_warnings()
-import socket
-import requests.packages.urllib3.util.connection as urllib3_cn
+import public, json
+
+try:
+    import socket
+    import requests
+    from requests.packages import urllib3
+    # 关闭警告
+    urllib3.disable_warnings()
+
+    import requests.packages.urllib3.util.connection as urllib3_cn
+except:
+    pass
+
+
 class wx_account_msg:
 
     __module_name = None
@@ -136,6 +144,30 @@ class wx_account_msg:
         except:
             public.WriteFile(self.conf_path, json.dumps({"success":False,"res":"链接云端失败,请检查网络"}))
             return public.returnMsg(False,"链接云端失败,请检查网络")
+        
+    def unbind(self):
+        if self.user_info is None:
+            return public.returnMsg(False, '未获取到用户绑定的信息')
+        url = "https://www.bt.cn/api/v2/user/wx_web/unbind"
+        data = {
+            "uid": self.user_info["uid"],
+            "access_key": self.user_info["access_key"],
+            "serverid": self.user_info["serverid"]
+        }
+        try:
+
+            datas = json.loads(public.httpPost(url, data))
+
+            if os.path.exists(self.conf_path):
+                os.remove(self.conf_path)
+
+            if datas["success"]:
+                return public.returnMsg(True, datas)
+            else:
+                return public.returnMsg(False, datas)
+        except:
+            public.WriteFile(self.conf_path, json.dumps({"success":False,"res":"链接云端失败,请检查网络"}))
+            return public.returnMsg(False, "链接云端失败,请检查网络")
 
     def get_web_info2(self):
         if self.user_info is None: return public.returnMsg(False, '未获取到用户绑定的信息')
@@ -218,6 +250,9 @@ class wx_account_msg:
         if self.user_info is None:
             return public.returnMsg(False,'未获取到用户信息')
 
+        if not isinstance(msg, str):
+            return self.send_msg_v2(msg)
+
         msg,title = self.get_send_msg(msg)
         url="https://www.bt.cn/api/v2/user/wx_web/send_template_msg_v2"
         datassss = {
@@ -248,7 +283,6 @@ class wx_account_msg:
             error,success = 0,0
 
             x = json.loads(public.httpPost(url,data))
-            # public.print_log(json.dumps(x))
             conf = self.get_config(None)['list']
 
             #立即刷新剩余次数
@@ -274,9 +308,73 @@ class wx_account_msg:
             print(public.get_error_info())
             return public.returnMsg(False,'微信消息发送失败。 --> {}'.format(public.get_error_info()))
 
-    def push_data(self,data):
-        return self.send_msg(data['msg'])
+    def push_data(self, data):
+        if isinstance(data, dict):
+            return self.send_msg(data['msg'])
+        else:
+            return self.send_msg_v2(data)
 
     def uninstall(self):
         if os.path.exists(self.conf_path):
             os.remove(self.conf_path)
+    
+    def send_msg_v2(self, msg):
+        from push.base_push import WxAccountMsgBase, WxAccountMsg
+        if self.user_info is None:
+            return public.returnMsg(False, '未获取到用户信息')
+
+        if isinstance(msg, public.dict_obj):
+            msg = getattr(msg, "msg", "测试信息")
+            if len(msg) >= 20:
+                return self.send_msg(msg)
+
+        if isinstance(msg, str):
+            the_msg = WxAccountMsg.new_msg()
+            the_msg.thing_type = msg
+            the_msg.msg = msg
+            msg = the_msg
+
+        if not isinstance(msg, WxAccountMsgBase):
+            return public.returnMsg(False, '消息类型错误')
+
+        msg.set_ip_address(self.user_info["address"], self.get_local_ip())
+
+        template_id, msg_data = msg.to_send_data()
+        url = "https://www.bt.cn/api/v2/user/wx_web/send_template_msg_v2"
+        data = {
+            "uid": self.user_info["uid"],
+            "access_key": self.user_info["access_key"],
+            "data": base64.b64encode(json.dumps(msg_data).encode('utf-8')).decode('utf-8'),
+        }
+        if template_id != "":
+            data["template_id"] = template_id
+
+        try:
+            error, success = 0, 0
+            resp = public.httpPost(url, data)
+            x = json.loads(resp)
+            conf = self.get_config(None)['list']
+
+            # 立即刷新剩余次数
+            public.run_thread(self.get_web_info2)
+
+            res = {
+                conf['default']['title']: 0
+            }
+            if x['success']:
+                res[conf['default']['title']] = 1
+                success += 1
+            else:
+                error += 1
+
+            try:
+                public.write_push_log(self.__module_name, msg.thing_type, res)
+            except:
+                pass
+            result = public.returnMsg(True, '发送完成,发送成功{},发送失败{}.'.format(success, error))
+            result['success'] = success
+            result['error'] = error
+            return result
+
+        except:
+            return public.returnMsg(False, '微信消息发送失败。 --> {}'.format(public.get_error_info()))

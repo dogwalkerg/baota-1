@@ -1,0 +1,1 @@
+import{c as t,ba as a,e as s,m as o,aw as e,a5 as r}from"./base-lib.js?v=1734676359";const p=t({name:"BtPopover",props:{...a},setup:(t,{attrs:a,slots:p})=>()=>{return s(e,o(a,t),"function"==typeof(c=p)||"[object Object]"===Object.prototype.toString.call(c)&&!r(c)?p:{default:()=>[p]});var c}});export{p as B};

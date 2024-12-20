@@ -13,7 +13,7 @@
 # MySQL端口安全检测
 # -------------------------------------------------------------------
 
-import os,sys,re,public,json
+import os,re,public,json, psutil
 
 _title = 'MySQL端口安全'
 _version = 1.1                              # 版本
@@ -27,6 +27,7 @@ _tips = [
     "使用【Fail2ban防爆破】插件对MySQL服务进行保护"
     ]
 _help = ''
+_remind = '此方案加强的对MySQL数据库的防护，降低服务器被窃取数据的风险。修复之前要根据业务需求开放可访问IP，确保网站运行正常。'
 
 def check_run():
     '''
@@ -42,50 +43,91 @@ def check_run():
                 print('Warning: {}'.format(msg))
 
     '''
-    mycnf_file = '/etc/my.cnf'
-    if not os.path.exists(mycnf_file):
-        return True,'未安装MySQL'
-    mycnf = public.readFile(mycnf_file)
-    port_tmp = re.findall(r"port\s*=\s*(\d+)",mycnf)
-    if not port_tmp:
-        return True,'未安装MySQL'
-    if not public.is_mysql_process_exists():
-        return True,'未启动MySQL'
+    import time
+    s_time = time.time()
+    mysql_port = ""
+    datadir = public.get_datadir()
+    if not datadir:
+        return True, '无风险'
+    pid_file = "{}/{}.pid".format(datadir, public.get_hostname())
+    if os.path.exists(pid_file):
+        try:
+            pid = int(public.readFile(pid_file))
+            status = public.pid_exists(pid)
+            if not status: return True, '无风险'
+            process = psutil.Process(pid)
+            con = process.connections()
+            for c in con:
+                if c.status == psutil.CONN_LISTEN:
+                    mysql_port = str(c.laddr.port)
+        except:
+            return True, '无风险'
+    else:
+        return True, '无风险'
+    if mysql_port:
+        try:
+            sql = public.M('firewall_new')
+            if sql.where("ports = ? and address = ?", (mysql_port, "")).count() == 0:
+                return True, '无风险'
+        except Exception as e:
+            public.print_log("查询firewall_new数据库报错：{}".format(e))
+            return True, '无风险'
 
-    result = public.check_port_stat(int(port_tmp[0]),public.GetLocalIp())
-    #兼容socket能连通但实际端口不通情况
-    if result != 0:
-        res=''
-        if os.path.exists('/usr/sbin/firewalld'):
-            res=public.readFile("/etc/firewalld/zones/public.xml")
-            if res and res.find('"{}"'.format(port_tmp[0]) == -1):
-                return True,'无风险'
-        elif os.path.exists('/usr/sbin/ufw'):
-            rule_file = '/etc/ufw/user.rules'
-            if os.path.exists(rule_file):
-                res=public.readFile(rule_file)
-                if res and res.find('input -p tcp --dport {} -j ACCEPT'.format(port_tmp[0])) == -1:
-                    return True,'无风险'
-            else:
-                res=public.ExecShell('ufw status verbose|grep {}'.format(port_tmp[0]))
-                check_str=' '+port_tmp[0]+'/'
-                if res[0].find(check_str) == -1:
-                    return True,'无风险'
-        elif os.path.exists('/usr/sbin/iptables'):
-                res=public.ExecShell("iptables --list-rules|grep -v '\-s '|grep {}".format(port_tmp[0]))[0]
-                if res and res.find('-p tcp -m state --state NEW -m tcp --dport {} -j ACCEPT'.format(port_tmp[0])) == -1:
-                    return True,'无风险'
-
-    else:return True,'无风险'
-
-
+    # mycnf_file = '/etc/my.cnf'
+    # if not os.path.exists(mycnf_file):
+    #     return True,'未安装MySQL'
+    # mycnf = public.readFile(mycnf_file)
+    # port_tmp = re.findall(r"port\s*=\s*(\d+)",mycnf)
+    # if not port_tmp:
+    #     return True,'未安装MySQL'
+    # if not public.is_mysql_process_exists():
+    #     return True,'未启动MySQL'
+    #
+    # # result = public.check_port_stat(int(port_tmp[0]),public.GetLocalIp())
+    # # 兼容socket能连通但实际端口不通情况
+    # import socket
+    # temp = {'port': port_tmp[0], 'local': True}
+    # result = 0
+    # try:
+    #     s = socket.socket()
+    #     s.settimeout(0.15)
+    #     s.connect(("127.0.0.1", mysql_port))
+    #     s.close()
+    #     result += 2
+    # except:
+    #     temp['local'] = False
+    #
+    # if result != 0:
+    #     public.print_log("旧：{}".format(time.time() - s_time))
+    #     if os.path.exists('/usr/sbin/firewalld'):
+    #         res=public.readFile("/etc/firewalld/zones/public.xml")
+    #         if res and res.find('"{}"'.format(port_tmp[0]) == -1):
+    #             public.print_log("走掉了")
+    #             return True,'无风险'
+    #     elif os.path.exists('/usr/sbin/ufw'):
+    #         rule_file = '/etc/ufw/user.rules'
+    #         if os.path.exists(rule_file):
+    #             res=public.readFile(rule_file)
+    #             if res and res.find('input -p tcp --dport {} -j ACCEPT'.format(port_tmp[0])) == -1:
+    #                 return True,'无风险'
+    #         else:
+    #             res=public.ExecShell('ufw status verbose|grep {}'.format(port_tmp[0]))
+    #             check_str=' '+port_tmp[0]+'/'
+    #             if res[0].find(check_str) == -1:
+    #                 return True,'无风险'
+    #     elif os.path.exists('/usr/sbin/iptables'):
+    #             res=public.ExecShell("iptables --list-rules|grep -v '\-s '|grep {}".format(port_tmp[0]))[0]
+    #             if res and res.find('-p tcp -m state --state NEW -m tcp --dport {} -j ACCEPT'.format(port_tmp[0])) == -1:
+    #                 return True,'无风险'
+    #
+    # else:return True,'无风险'
     fail2ban_file = '/www/server/panel/plugin/fail2ban/config.json'
     if os.path.exists(fail2ban_file):
         try:
             fail2ban_config = json.loads(public.readFile(fail2ban_file))
             if 'mysql' in fail2ban_config.keys():
                 if fail2ban_config['mysql']['act'] == 'true':
-                    return True,'已开启Fail2ban防爆破'
+                    # public.print_log("不对")
+                    return True, '已开启Fail2ban防爆破'
         except: pass
-
-    return False,'当前MySQL端口: {}，可被任意服务器访问，这可能导致MySQL被暴力破解，存在安全隐患'.format(port_tmp[0])
+    return False, '当前MySQL端口: {}，可被任意服务器访问，这可能导致MySQL被暴力破解，存在安全隐患'.format(mysql_port)

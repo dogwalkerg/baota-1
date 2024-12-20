@@ -13,7 +13,7 @@ _tips = [
     "在【/etc/ssh/sshd_config】中修改X11Forwarding为no",
     ]
 _help = ''
-
+_remind = '此方案可以加强SSH登录的安全性，加快SSH连接速度。注意修复方案会关闭X11图形界面转发，若需要使用该服务请不要配置。'
 
 def check_run():
     conf = '/etc/ssh/sshd_config'

@@ -44,12 +44,14 @@ class tomcat:
         return data
 
     #添加虚拟主机
-    def AddVhost(self,path,domain):
-        if self.GetVhost(domain): return False
-        if not os.path.exists(path): return False
-        attr = {"autoDeploy":"true","name":domain,"unpackWARs":"true","xmlNamespaceAware":"false","xmlValidation":"false"}
+    def AddVhost(self, path, domain):
+        if self.GetVhost(domain):
+            return False
+        if not os.path.exists(path):
+            return False
+        attr = {"autoDeploy":"true","name":domain,"unpackWARs":"true","xmlNamespaceAware":"false","xmlValidation":"false", "appBase": path}
         Host = Element("Host", attr)
-        attr = {"docBase":path,"path":"","reloadable":"true","crossContext":"true",}
+        attr = {"path":"","reloadable":"true","crossContext":"true"}
         Context = Element("Context", attr)
         Host.append(Context)
         self.__ENGINE.append(Host)

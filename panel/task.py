@@ -1,22 +1,22 @@
-#!/bin/python
-#coding: utf-8
-# +-------------------------------------------------------------------
-# | 宝塔Linux面板
-# +-------------------------------------------------------------------
-# | Copyright (c) 2015-2016 宝塔软件(http://bt.cn) All rights reserved.
-# +-------------------------------------------------------------------
-# | Author: hwliang <hwl@bt.cn>
-# +-------------------------------------------------------------------
+# #!/bin/python
+# # coding: utf-8
+# # +-------------------------------------------------------------------
+# # | 宝塔Linux面板
+# # +-------------------------------------------------------------------
+# # | Copyright (c) 2015-2016 宝塔软件(http://bt.cn) All rights reserved.
+# # +-------------------------------------------------------------------
+# # | Author: hwliang <hwl@bt.cn>
+# # +-------------------------------------------------------------------
 
-# ------------------------------
-# 计划任务
-# ------------------------------
+# # ------------------------------
+# # 计划任务
+# # ------------------------------
 
 import sys
 import os
-import logging
-from json import dumps, loads
-from psutil import Process, pids, cpu_count, cpu_percent, net_io_counters, disk_io_counters, virtual_memory
+import psutil
+import json
+
 os.environ['BT_TASK'] = '1'
 sys.path.insert(0, "/www/server/panel/class/")
 import time
@@ -25,841 +25,1457 @@ import db
 import threading
 import panelTask
 import process_task
-task_obj = panelTask.bt_task()
-task_obj.not_web = True
-global pre, timeoutCount, logPath, isTask, oldEdate, isCheck
-pre = 0
-timeoutCount = 0
-isCheck = 0
-oldEdate = None
-logPath = '/tmp/panelExec.log'
-isTask = '/tmp/panelTask.pl'
-python_bin = None
-thread_dict = {}
+import PluginLoader
+from datetime import datetime
 
-def get_python_bin():
-    global python_bin
-    if python_bin: return python_bin
-    bin_file = '/www/server/panel/pyenv/bin/python'
-    bin_file2 = '/usr/bin/python'
-    if os.path.exists(bin_file):
-        python_bin = bin_file
-        return bin_file
-    python_bin = bin_file2
-    return bin_file2
-def WriteFile(filename,s_body,mode='w+'):
-    """
-    写入文件内容
-    @filename 文件名
-    @s_body 欲写入的内容
-    return bool 若文件不存在则尝试自动创建
-    """
-    try:
-        fp = open(filename, mode)
-        fp.write(s_body)
-        fp.close()
-        return True
-    except:
+
+class Task:
+    task_obj = None
+    pre = 0
+    timeout_count = 0
+    log_path = '/tmp/panelExec.log'
+    is_task = '/tmp/panelTask.pl'
+    __api_root_url = 'https://api.bt.cn'
+    _check_url = __api_root_url + '/panel/get_soft_list_status'
+    end_time = None
+    is_check = 0
+    python_bin = None
+    thread_dict = {}
+    setup_path = None
+    panel_path = None
+    old_edate = None
+    log_file = None
+    __path_error = None
+    __error_html = None
+
+    # 系统监控相关属性
+    diskio_1 = None
+    diskio_2 = None
+    networkInfo = None
+    cpuInfo = None
+    diskInfo = None
+    network_up = {}
+    network_down = {}
+    cycle = 60
+    last_delete_time = 0
+    # 实例化进程监控对象
+    proc_task_obj = None
+
+    def __init__(self) -> None:
+        if not self.task_obj: self.task_obj = panelTask.bt_task()
+        if not self.python_bin: self.python_bin = public.get_python_bin()
+        if not self.setup_path: self.setup_path = public.get_setup_path()
+        if not self.panel_path: self.panel_path = public.get_panel_path()
+        if not self.log_file: self.log_file = self.panel_path + '/logs/task.log'
+        if not self.__path_error: self.__path_error = self.panel_path + '/data/error_pl.pl'
+        if not self.__error_html: self.__error_html = self.panel_path + '/BTPanel/templates/default/block_error.html'
+        if not self.proc_task_obj: self.proc_task_obj = process_task.process_task()
+
+    def write_log(self, *args, _level='INFO', color="debug"):
+        '''
+            @name 写入日志
+            @author hwliang<2021-08-12>
+            @param *args <any> 要写入到日志文件的信息可以是多个，任意类型
+            @param _level<string> 日志级别
+            @param color<string> 日志颜色，可选值：red,green,yellow,blue,purple,cyan,white,gray,black,info,success,warning,warn,err,error,debug,trace,critical,fatal
+            @return void
+        '''
+
+        color_start = ''
+        color_end = ''
+        color_dict = {
+            'red': '\033[31m',
+            'green': '\033[32m',
+            'yellow': '\033[33m',
+            'blue': '\033[34m',
+            'purple': '\033[35m',
+            'cyan': '\033[36m',
+            'white': '\033[37m',
+            'gray': '\033[90m',
+            'black': '\033[30m',
+            'info': '\033[0m',
+            'success': '\033[32m',
+            'warning': '\033[33m',
+            'warn': '\033[33m',
+            'err': '\033[31m',
+            'error': '\033[31m',
+            'debug': '\033[36m',
+            'trace': '\033[35m',
+            'critical': '\033[31m',
+            'fatal': '\033[31m'
+        }
+        if color:
+            color = color.strip().lower()
+            if color in color_dict:
+                color_start = color_dict[color]
+                color_end = '\033[0m'
+
+        log_body = "{}[{}][{}]".format(color_start, public.format_date(), _level.upper())
+        for _info in args:
+            try:
+                if type(_info) == dict:
+                    _info = json.dumps(_info, indent=4, ensure_ascii=False)
+                elif type(_info) == list:
+                    _info = json.dumps(_info, ensure_ascii=False)
+                elif type(_info) == tuple:
+                    _info = json.dumps(_info, ensure_ascii=False)
+            except:
+                _info = str(_info)
+
+            log_body += " {}".format(_info)
+
+        log_body += "{}\n".format(color_end)
+        # print(log_body.strip())
+        public.WriteFile(self.log_file, log_body, 'a+')
+
+    def exec_shell(self, cmdstring, cwd=None, timeout=None, shell=True):
+        '''
+            @name 执行shell命令
+            @param cmdstring: str  要执行的shell命令
+            @param cwd: str  执行命令的路径
+            @param timeout: int  超时时间
+            @param shell: bool  是否使用shell
+            return int  返回命令执行结果
+        '''
         try:
-            fp = open(filename, mode,encoding="utf-8")
-            fp.write(s_body)
-            fp.close()
-            return True
+            import subprocess
+            import time
+            sub = subprocess.Popen(cmdstring + ' &> ' + self.log_path, cwd=cwd,
+                                   stdin=subprocess.PIPE, shell=shell, bufsize=4096)
+
+            while sub.poll() is None:
+                time.sleep(0.1)
+
+            return sub.returncode
         except:
-            return False
+            return None
 
-def ReadFile(filename, mode='r'):
-    """
-    读取文件内容
-    @filename 文件名
-    return string(bin) 若文件不存在，则返回None
-    """
-    if not os.path.exists(filename):
-        return False
-    f_body = None
-    with open(filename, mode) as fp:
-        f_body = fp.read()
-    return f_body
+    def get_soft_name_of_version(self, name):
+        '''
+            @name 获取软件名称和版本
+            @param name<string> 软件名称
+            @return tuple(string, string) 返回软件名称和版本
+        '''
+        if name.find('Docker') != -1:
+            return ('docker', '1.0')
+        return_default = ('', '')
+        arr1 = name.split('[')
+        if len(arr1) < 2:
+            return return_default
+        arr2 = arr1[1].split(']')
+        if len(arr2) < 2:
+            return return_default
+        arr3 = arr2[0].split('-')
+        if len(arr3) < 2:
+            return return_default
 
-# 下载文件
-def DownloadFile(url, filename):
-    try:
-        import urllib
-        import socket
-        socket.setdefaulttimeout(10)
-        urllib.urlretrieve(url, filename=filename, reporthook=DownloadHook)
-        os.system('chown www.www ' + filename)
-        WriteLogs('done')
-    except:
-        WriteLogs('done')
+        soft_name = arr3[0]
+        soft_version = arr3[1]
+        if soft_name == 'php':
+            soft_version = soft_version.replace('.', '')
+        return (soft_name, soft_version)
 
-
-# 下载文件进度回调
-def DownloadHook(count, blockSize, totalSize):
-    global pre
-    used = count * blockSize
-    pre1 = int((100.0 * used / totalSize))
-    if pre == pre1:
-        return
-    speed = {'total': totalSize, 'used': used, 'pre': pre}
-    WriteLogs(dumps(speed))
-    pre = pre1
-
-# 写输出日志
-def WriteLogs(logMsg):
-    try:
-        global logPath
-        with open(logPath, 'w+') as fp:
-            fp.write(logMsg)
-            fp.close()
-    except:
-        pass
-
-
-def ExecShell(cmdstring, cwd=None, timeout=None, shell=True):
-    try:
-        global logPath
-        import subprocess
-        import time
-        sub = subprocess.Popen(cmdstring+' &> '+logPath, cwd=cwd,
-                               stdin=subprocess.PIPE, shell=shell, bufsize=4096)
-
-        while sub.poll() is None:
-            time.sleep(0.1)
-
-        return sub.returncode
-    except:
-        return None
-
-
-# 任务队列
-def startTask():
-    global isTask,logPath,thread_dict
-    tip_file = '/dev/shm/.panelTask.pl'
-    n = 0
-    while 1:
+    def check_install_status(self, name):
+        '''
+            @name 检查软件是否安装成功
+            @param name<string> 软件名称
+            @return tuple(bool, string) 返回是否安装成功和安装信息
+        '''
+        return_default = (1, '安装成功')
         try:
-            if os.path.exists(isTask):
-                with db.Sql() as sql:
-                    sql.table('tasks').where(
-                        "status=?", ('-1',)).setField('status', '0')
-                    taskArr = sql.table('tasks').where("status=?", ('0',)).field('id,type,execstr').order("id asc").select()
-                    for value in taskArr:
-                        start = int(time.time())
-                        if not sql.table('tasks').where("id=?", (value['id'],)).count():
-                            public.writeFile(tip_file, str(int(time.time())))
-                            continue
-                        sql.table('tasks').where("id=?", (value['id'],)).save('status,start', ('-1', start))
-                        if value['type'] == 'download':
-                            argv = value['execstr'].split('|bt|')
-                            DownloadFile(argv[0], argv[1])
-                        elif value['type'] == 'execshell':
-                            ExecShell(value['execstr'])
-                        end = int(time.time())
-                        sql.table('tasks').where("id=?", (value['id'],)).save('status,end', ('1', end))
-                        if(sql.table('tasks').where("status=?", ('0')).count() < 1):
-                            if os.path.exists(isTask):
-                                os.remove(isTask)
-                    sql.close()
-                    taskArr = None
-            public.writeFile(tip_file, str(int(time.time())))
+            # 获取软件名称和版本
+            soft_name, soft_version = self.get_soft_name_of_version(name)
+            if not soft_name or not soft_version:
+                return return_default
 
-            # 线程检查
-            n+=1
-            if n > 60:
-                run_thread()
-                n = 0
+            # 获取安装检查配置
+            install_config = public.read_config('install_check')
+            if not install_config:
+                return return_default
+
+            if soft_name not in install_config:
+                return return_default
+
+            if os.path.exists("/www/server/panel/install/{}_not_support.pl".format(soft_name)):
+                return (0, '不兼容此系统！请点详情说明！')
+
+            soft_config = install_config[soft_name]
+
+            def replace_all(data):
+                '''
+                    @name 替换所有变量
+                    @param data<string> 需要替换的字符串
+                    @return string 替换后的字符串
+                '''
+                if not data:
+                    return data
+                if data.find('{') == -1:
+                    return data
+                # 替换安装路径
+                data = data.replace('{SetupPath}', self.setup_path)
+                # 替换版本号
+                data = data.replace('{Version}', soft_version)
+                # 替换主机名
+                if data.find("{Host") != -1:
+                    host_name = public.get_hostname()
+                    host = host_name.split('.')[0]
+                    data = data.replace("{Hostname}", host_name)
+                    data = data.replace("{Host}", host)
+                return data
+
+            # 检查文件是否存在
+            if 'files_exists' in soft_config:
+                for fname in soft_config['files_exists']:
+                    filename = replace_all(fname)
+                    if not os.path.exists(filename):
+                        return (0, '安装失败,文件不存在:{}'.format(filename))
+
+            # 检查pid文件是否有效
+            if 'pid' in soft_config and soft_config['pid']:
+                pid_file = replace_all(soft_config['pid'])
+                if not os.path.exists(pid_file):
+                    return (0, '启动失败,pid文件不存在:{}'.format(pid_file))
+                pid = public.readFile(pid_file)
+                if not pid:
+                    return (0, '启动失败,pid文件为空:{}'.format(pid_file))
+                proc_file = '/proc/{}/cmdline'.format(pid.strip())
+                if not os.path.exists(proc_file):
+                    return (0, '启动失败,指定PID: {}({}) 进程不存在'.format(pid_file, pid))
+
+            # 执行命令检查
+            if 'cmd' in soft_config:
+                for cmd in soft_config['cmd']:
+                    res = '\n'.join(public.ExecShell(replace_all(cmd['exec'])))
+                    if res.find(replace_all(cmd['success'])) == -1:
+                        return (0, '{}服务启动状态异常'.format(soft_name))
         except:
             pass
-        time.sleep(2)
 
+        return return_default
 
+    def task_table_rep(self):
+        '''
+            @name 修复任务表
+            @param None
+        '''
+        task_obj = public.M('tasks')
+        res = task_obj.query("SELECT count(*) FROM sqlite_master where type='table' and name='tasks' and sql like '%msg%'")
+        if res and res[0][0] == 0:
+            task_obj.execute("ALTER TABLE tasks ADD COLUMN msg TEXT DEFAULT '安装成功'", ())
+        res = task_obj.query("SELECT count(*) FROM sqlite_master where type='table' and name='tasks' and sql like '%install_status%'")
+        if res and res[0][0] == 0:
+            task_obj.execute("ALTER TABLE tasks ADD COLUMN install_status INTEGER DEFAULT 1", ())
+        task_obj.close()
 
-# 网站到期处理
-def siteEdate():
-    global oldEdate
-    try:
-        if not oldEdate:
-            oldEdate = ReadFile('/www/server/panel/data/edate.pl')
-        if not oldEdate:
-            oldEdate = '0000-00-00'
-        mEdate = time.strftime('%Y-%m-%d', time.localtime())
-        if oldEdate == mEdate:
-            return False
-        oldEdate = mEdate
-        os.system("nohup " + get_python_bin() + " /www/server/panel/script/site_task.py > /dev/null 2>&1 &")
-
-    except Exception as ex:
-        logging.info(ex)
-        pass
-
-
-def GetLoadAverage():
-    c = os.getloadavg()
-    data = {}
-    data['one'] = float(c[0])
-    data['five'] = float(c[1])
-    data['fifteen'] = float(c[2])
-    data['max'] = cpu_count() * 2
-    data['limit'] = data['max']
-    data['safe'] = data['max'] * 0.75
-    return data
-
-
-# 系统监控任务
-def systemTask():
-    try:
-        filename = 'data/control.conf'
-        with db.Sql() as sql:
-            sql = sql.dbfile('system')
-            csql = '''CREATE TABLE IF NOT EXISTS `load_average` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-  `pro` REAL,
-  `one` REAL,
-  `five` REAL,
-  `fifteen` REAL,
-  `addtime` INTEGER
-)'''
-            sql.execute(csql, ())
-            sql.close()
-
-        count = 0
-        reloadNum = 0
-        diskio_1 = diskio_2 = networkInfo = cpuInfo = diskInfo = None
-        network_up = {}
-        network_down = {}
-        cycle = 60
+    def save_installed_msg(self, task_id):
+        '''
+            @name 保存安装脚本执行日志
+            @param task_id<int> 任务ID
+            @return None
+        '''
         try:
-            from panelDaily import panelDaily
-            panelDaily().check_databases()
-        except Exception as e:
-            logging.info(e)
+            from panel_msg.msg_file import message_mgr
 
-        proc_task_obj = process_task.process_task()
+            msg = message_mgr.get_by_task_id(task_id)
+            if msg is None:
+                return None
+            else:
+                msg.title = "正在" + msg.title[2:]
+                msg.sub["file_name"] = "/tmp/panelExec.log"
+                msg.sub["install_status"] = "正在" + msg.sub["install_status"][2:]
+                msg.sub["status"] = 1
+                msg.read = False
+                msg.read_time = 0
+
+                res = msg.save_to_file()
+                return msg
+        except:
+            return public.get_error_info()
+
+    def update_installed_msg(self, msg):
+        '''
+            @name 更新安装脚本执行日志
+            @param msg<Message> 消息对象
+            @return None
+        '''
+        try:
+            import shutil
+            logs_dir = public.get_panel_path() + "/logs/installed"
+            if not os.path.exists(logs_dir):
+                os.makedirs(logs_dir, 0o600)
+
+            filename = logs_dir + "/{}_{}.log".format(msg.sub["soft_name"], int(time.time()))
+            if os.path.exists(self.log_path):
+                shutil.copyfile(self.log_path, filename)
+                msg.sub["file_name"] = filename
+                msg.sub["install_status"] = msg.sub["install_status"][2:] + "结束"
+                msg.sub["status"] = 2
+                msg.read = False
+                msg.title = msg.title[2:] + "已结束"
+                msg.read_time = 0
+
+            msg.save_to_file()
+        except:
+            public.writeFile("{}/logs/task.error".format(self.panel_path), public.get_error_info())
+
+    def task_end(self, value):
+        '''
+            @name 任务结束处理
+            @param value<dict> 任务信息
+            @return None
+        '''
+        # 安装PHP后需要重新加载PHP环境
+        if value['execstr'].find('install php') != -1:
+            os.system("{} {}/tools.py phpenv".format(self.python_bin, self.panel_path))
+        elif value['execstr'].find('install nginx') != -1:
+            # 修复nginx配置文件到支持当前安装的nginx版本
+            os.system("{} {}/script/nginx_conf_rep.py".format(self.python_bin, self.panel_path))
+
+    # 任务队列
+    def startTask(self):
+        '''
+            @name 开始任务队列
+            @param None
+        '''
+        tip_file = '/dev/shm/.panelTask.pl'
+        self.task_table_rep()
+        n = 0
+        tasks_obj = None
+        while 1:
+            try:
+                if os.path.exists(self.is_task):
+                    tasks_obj = public.M('tasks')
+                    # 重置所有任务状态
+                    tasks_obj.where("status=?", ('-1',)).setField('status', '0')
+
+                    # 获取所有未执行的任务
+                    taskArr = tasks_obj.where("status=?", ('0',)).field('id,name,type,execstr').order("id asc").select()
+
+                    # 逐个执行任务
+                    for value in taskArr:
+
+                        # 检查关键目录是否可写
+                        public.check_sys_write()
+
+                        # 检查任务类型是否为shell执行
+                        if value['type'] != 'execshell': continue
+
+                        # 检查任务是否存在
+                        if not tasks_obj.where("id=?", (value['id'],)).count():
+                            public.writeFile(tip_file, str(int(time.time())))
+                            continue
+
+                        # 写入状态和任务开始时间
+                        start = int(time.time())
+                        tasks_obj.where("id=?", (value['id'],)).save('status,start', ('-1', start))
+
+                        # 保存安装日志
+                        msg = self.save_installed_msg(value["id"])
+
+                        # 执行任务
+                        self.write_log("正在执行任务: {}".format(value['name']))
+
+                        self.exec_shell(value['execstr'])
+
+                        # 处理任务结束事件
+                        self.task_end(value)
+
+                        # 检查软件是否安装成功
+                        end = int(time.time())
+                        install_status, install_msg = self.check_install_status(value['name'])
+
+                        self.write_log("任务执行结果: {},".format(install_msg), "耗时: {}秒".format(end - start))
+
+                        # 写入任务结束状态到数据库
+                        status_code = 1
+
+                        tasks_obj.where("id=?", (value['id'],)).save('status,end,msg,install_status', (status_code, end, install_msg, install_status))
+
+                        # 更新安装日志
+                        self.update_installed_msg(msg)
+
+                        # 移除任务标记文件
+                        if (tasks_obj.where("status=?", ('0')).count() < 1):
+                            if os.path.exists(self.is_task):
+                                os.remove(self.is_task)
+
+                        # 重置系统加固状态
+                        public.start_syssafe()
+
+                # 写入任务循环标记
+                public.writeFile(tip_file, str(int(time.time())))
+
+                # 线程检查
+                n += 1
+                if n > 60:
+                    self.run_thread()
+                    n = 0
+            except:
+                pass
+            finally:
+                if tasks_obj:
+                    tasks_obj.close()
+                    tasks_obj = None
+
+            time.sleep(2)
+
+    # 定时任务去检测邮件信息
+    def send_mail_time(self):
+        self.write_log("启动邮件发送定时任务")
+        time.sleep(60)
+        while True:
+            try:
+                os.system("nohup {} {}/script/mail_task.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+                time.sleep(59)
+            except:
+                time.sleep(59)
+                self.send_mail_time()
+
+    def get_mac_address(self):
+        '''
+            @name 获取MAC地址
+            @return string
+        '''
+        import uuid
+        mac = uuid.UUID(int=uuid.getnode()).hex[-12:]
+        return ":".join([mac[e:e + 2] for e in range(0, 11, 2)])
+
+    def get_user_info(self):
+        user_file = '{}/data/userInfo.json'.format(self.panel_path)
+        if not os.path.exists(user_file): return {}
+        userInfo = {}
+        try:
+            userTmp = json.loads(public.readFile(user_file))
+            if not 'serverid' in userTmp or len(userTmp['serverid']) != 64:
+                return userInfo
+            userInfo['uid'] = userTmp['uid']
+            userInfo['address'] = userTmp['address']
+            userInfo['access_key'] = userTmp['access_key']
+            userInfo['username'] = userTmp['username']
+            userInfo['serverid'] = userTmp['serverid']
+            userInfo['oem'] = public.get_oem_name()
+            userInfo['o'] = userInfo['oem']
+            userInfo['mac'] = self.get_mac_address()
+        except:
+            pass
+        return userInfo
+
+    # 获取云端帐户状态
+    def get_cloud_list_status(self):
+        '''
+            @name 获取云端软件列表状态
+            @return str or bool
+        '''
+        try:
+            pdata = public.get_user_info()
+            pdata['mac'] = self.get_mac_address()
+            list_body = self.HttpPost(self._check_url, pdata)
+            if not list_body: return False
+
+            list_body = json.loads(list_body)
+            if not list_body['status']:
+                public.writeFile(self.__path_error, "error")
+                msg = '''{% extends "layout.html" %}
+{% block content %}
+<div class="main-content pb55" style="min-height: 525px;">
+    <div class="container-fluid">
+        <div class="site_table_view bgw mtb15 pd15 text-center">
+            <div style="padding:50px">
+                <h1 class="h3"></h1>
+                '''
+                msg += list_body['title'] + list_body['body']
+                msg += '''
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% endblock %}'''
+                public.writeFile(self.__error_html, msg)
+                return '3'
+            else:
+                if os.path.exists(self.__path_error):
+                    os.remove(self.__path_error)
+                if os.path.exists(self.__error_html):
+                    os.remove(self.__error_html)
+                return '2'
+        except Exception as ex:
+            self.write_log(ex)
+            if os.path.exists(self.__path_error): os.remove(self.__path_error)
+            if os.path.exists(self.__error_html): os.remove(self.__error_html)
+            return '1'
+
+    # 5个小时更新一次更新软件列表
+    def update_software_list(self):
+        '''
+            @name 更新软件列表
+            @return void
+        '''
+        self.write_log("启动软件列表定时更新")
+        time.sleep(120)
+        while True:
+            try:
+                self.get_cloud_list_status()
+                time.sleep(18000)
+            except Exception as ex:
+                self.write_log(ex)
+                time.sleep(1800)
+                self.update_software_list()
+
+    # 面板消息提醒
+    def check_panel_msg(self):
+        '''
+            @name 面板消息提醒
+            @return None
+        '''
+        self.write_log("启动面板消息提醒")
+        time.sleep(120)
+        while True:
+            #统计ssh的错误次数
+            PluginLoader.module_run("syslog", "task_ssh_error_count", public.dict_obj())
+            os.system('nohup {} {}/script/check_msg.py > /dev/null 2>&1 &'.format(self.python_bin, self.panel_path))
+            time.sleep(3000)
+
+    # 面板推送消息
+    def push_msg(self):
+        '''
+            @name 面板推送消息
+            @return None
+        '''
+        self.write_log("启动面板推送消息")
+        time.sleep(120)
+        while True:
+            time.sleep(60)
+            os.system('nohup {} {}/script/push_msg.py > /dev/null 2>&1 &'.format(self.python_bin, self.panel_path))
+
+    def ProLog(self):
+        '''
+            @name 项目日志清理
+            @return None
+        '''
+        path_list = ["{}/go_project/vhost/logs".format(self.setup_path), "/var/tmp/springboot/vhost/logs/"]
+        try:
+            for i2 in path_list:
+                if os.path.exists(i2):
+                    for dir in os.listdir(i2):
+                        dir = os.path.join(i2, dir)
+                        # 判断当前目录是否为文件夹
+                        if os.path.isfile(dir):
+                            if dir.endswith(".log"):
+                                # 文件大于500M的时候则清空文件
+                                if os.stat(dir).st_size > 200000000:
+                                    public.ExecShell("echo ''>{}".format(dir))
+        except:
+            pass
+
+    def ProDadmons(self):
+        '''
+            @name 项目守护进程
+            @author
+        '''
+        n = 30
+        self.write_log("启动项目守护进程")
+        while 1:
+            n += 1
+            if n >= 30:
+                n = 1
+                self.ProLog()
+            self.wait_daemon_time()
+            os.system("nohup {} {}/script/project_daemon.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+
+    def wait_daemon_time(self):
+        '''
+            @name 等待守护进程时间
+            @return None
+        '''
+        last_time_out = self.get_daemon_time()
+        use_time = 0
+        while use_time < last_time_out:
+            time.sleep(5)
+            use_time += 5
+            new_time_out = self.get_daemon_time()
+            if new_time_out != last_time_out:
+                if use_time > new_time_out:
+                    break
+                else:
+                    last_time_out = new_time_out
+
+    def get_daemon_time(self):
+        '''
+            @name 获取守护进程时间
+            @return int
+        '''
+        daemon_time_file = os.path.join(self.panel_path, '/data/daemon_time.pl')
+        if os.path.exists(daemon_time_file):
+            time_out = int(public.readFile(daemon_time_file))
+            if time_out < 10:
+                time_out = 10
+            if time_out > 30 * 60:
+                time_out = 30 * 60
+        else:
+            time_out = 120
+        return time_out
+
+    def process_task_thread(self):
+        '''
+            @name 进程监控
+            @auther hwliang
+        '''
+        time.sleep(60)
+        # 进程流量监控，如果文件：/www/server/panel/data/is_net_task.pl 或 /www/server/panel/data/control.conf不存在，则不监控进程流量
+        is_net_task = self.panel_path + '/data/is_net_task.pl'
+        control_file = self.panel_path + '/data/control.conf'
+        if not os.path.exists(is_net_task) or not os.path.exists(control_file):
+            return
+        self.write_log("启动进程流量监控")
+        net_task_obj = process_task.process_network_total()
+        net_task_obj.start()
+
+    def run_tasks_list(self):
+        """
+        @name 延时启动任务
+        """
+
+        self.write_log("启动延时任务")
+        spath = '{}/data/tasks'.format(self.panel_path)
+
+        try:
+            import PluginLoader
+        except:
+            pass
 
         while True:
-            if not os.path.exists(filename):
-                time.sleep(10)
+            if os.path.exists(spath):
+                for file in os.listdir(spath):
+                    filename = '{}/{}'.format(spath, file)
+                    try:
+                        data = json.loads(public.readFile(filename))
+                        # 超过执行时间
+                        if time.time() > data['time']:
+                            # 插件
+                            if data['type'] == 2:
+                                res = PluginLoader.plugin_run(data['name'], data['fun'], public.to_dict_obj(data['args']))
+                                if not res['status']: continue
+
+                                os.remove(filename)
+                                public.WriteLog(data['title'], res['msg'])
+                            elif data['type'] == 1:
+                                # 面板
+                                pass
+                    except:
+                        os.remove(filename)
+            time.sleep(60)
+
+    def check_database_quota(self):
+        '''
+            @name 数据库配额检查
+            @return None
+        '''
+        get = public.dict_obj()
+        get.model_index = "project"
+        self.write_log("启动数据库配额检查")
+        while True:
+            num = PluginLoader.module_run("quota", "database_quota_check", get)
+            if num == 0:
+                break
+            time.sleep(60)
+
+    # 取内存使用率
+    def GetMemUsed(self):
+        '''
+            @name 获取内存使用率
+            @return float
+        '''
+        try:
+            mem = psutil.virtual_memory()
+            memInfo = {'memTotal': mem.total / 1024 / 1024, 'memFree': mem.free / 1024 / 1024,
+                       'memBuffers': mem.buffers / 1024 / 1024, 'memCached': mem.cached / 1024 / 1024}
+            tmp = memInfo['memTotal'] - memInfo['memFree'] - \
+                  memInfo['memBuffers'] - memInfo['memCached']
+            tmp1 = memInfo['memTotal'] / 100
+            return (tmp / tmp1)
+        except:
+            return 1
+
+    # 检查502错误
+    def check502(self):
+        '''
+            @name 检查PHP导致的502错误
+            @return None
+        '''
+        try:
+            phpversions = public.get_php_versions()
+            for version in phpversions:
+                if version in ['52', '5.2']: continue
+                php_path = self.setup_path + '/php/' + version + '/sbin/php-fpm'
+                if not os.path.exists(php_path):
+                    continue
+                if self.checkPHPVersion(version):
+                    continue
+                if self.startPHPVersion(version):
+                    public.WriteLog('PHP守护程序', '检测到PHP-' + version + '处理异常,已自动修复!', not_web=True)
+                    self.write_log('PHP守护程序', '检测到PHP-' + version + '处理异常,已自动修复!', 'ERROR', 'red')
+        except Exception as ex:
+            self.write_log(ex)
+
+    # 处理指定PHP版本
+    def startPHPVersion(self, version):
+        '''
+            @name 修复指定PHP版本服务状态
+            @param version<string> PHP版本
+            @return bool
+        '''
+        try:
+            fpm = '/etc/init.d/php-fpm-' + version
+            php_path = self.setup_path + '/php/' + version + '/sbin/php-fpm'
+            if not os.path.exists(php_path):
+                if os.path.exists(fpm):
+                    os.remove(fpm)
+                return False
+
+            # 尝试重载服务
+            os.system(fpm + ' start')
+            os.system(fpm + ' reload')
+            if self.checkPHPVersion(version):
+                return True
+
+            # 尝试重启服务
+            cgi = '/tmp/php-cgi-' + version + '.sock'
+            pid = self.setup_path + '/php/' + version + '/var/run/php-fpm.pid'
+            os.system('pkill -9 php-fpm-' + version)
+            time.sleep(0.5)
+            if os.path.exists(cgi):
+                os.remove(cgi)
+            if os.path.exists(pid):
+                os.remove(pid)
+            os.system(fpm + ' start')
+            if self.checkPHPVersion(version):
+                return True
+            # 检查是否正确启动
+            if os.path.exists(cgi):
+                return True
+            return False
+        except Exception as ex:
+            self.write_log(ex)
+            return True
+
+    # 检查指定PHP版本
+    def checkPHPVersion(self, version):
+        '''
+            @name 检查指定PHP版本服务状态
+            @param version<string> PHP版本
+            @return bool
+        '''
+        try:
+            cgi_file = '/tmp/php-cgi-{}.sock'.format(version)
+            if os.path.exists(cgi_file):
+                init_file = '/etc/init.d/php-fpm-{}'.format(version)
+                if os.path.exists(init_file):
+                    init_body = public.ReadFile(init_file)
+                    if not init_body: return True
+                uri = "http://127.0.0.1/phpfpm_" + version + "_status?json"
+                result = self.HttpGet(uri)
+                json.loads(result)
+            return True
+        except:
+            self.write_log("检测到PHP-{}无法访问".format(version))
+            return False
+
+    """
+    @name 检查当前节点是否可用
+    """
+
+    def check_node_status(self):
+        try:
+            node_path = '{}/data/node_url.pl'.format(self.panel_path)
+            if not os.path.exists(node_path):
+                return False
+
+            mtime = os.path.getmtime(node_path)
+            if time.time() - mtime < 86400:
+                return False
+            self.write_log("更新节点状态")
+            os.system("nohup {} {}/script/reload_check.py auth_day > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+        except:
+            pass
+
+    # 502错误检查线程
+    def check502Task(self):
+        try:
+            while True:
+                self.check_node_status()
+                public.auto_backup_panel()
+                # public.auto_backup_defalt_db()
+                # self.check502()
+                self.sess_expire()
+                # self.mysql_quota_check()
+                self.siteEdate()
+                time.sleep(600)
+                PluginLoader.daemon_panel()
+
+        except Exception as ex:
+            self.write_log(ex)
+            time.sleep(600)
+            PluginLoader.daemon_panel()
+            self.check502Task()
+
+    # MySQL配额检查
+    def mysql_quota_check(self):
+        os.system("nohup {} {}/script/mysql_quota.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+
+    # session过期处理
+    def sess_expire(self):
+        try:
+            sess_path = os.path.join(self.panel_path, 'data/session')
+            if not os.path.exists(sess_path):
+                return
+            s_time = time.time()
+            f_list = os.listdir(sess_path)
+            f_num = len(f_list)
+            for fname in f_list:
+                filename = '/'.join((sess_path, fname))
+                fstat = os.stat(filename)
+                f_time = s_time - fstat.st_mtime
+                if f_time > 3600:
+                    os.remove(filename)
+                    continue
+                if fstat.st_size < 256 and len(fname) == 32:
+                    if f_time > 60 or f_num > 30:
+                        os.remove(filename)
+                        continue
+            del (f_list)
+        except Exception as ex:
+            self.write_log(str(ex))
+
+    # 检查面板证书是否有更新
+    def check_panel_ssl(self):
+        time.sleep(60)
+        try:
+            self.write_log("启动面板SSL证书监控")
+            while True:
+                lets_info = public.ReadFile(os.path.join(self.panel_path, "ssl/lets.info"))
+                if not lets_info:
+                    time.sleep(3600)
+                    continue
+                os.system("nohup {} {}/script/panel_ssl_task.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+                time.sleep(3600)
+        except Exception as e:
+            public.writeFile("/tmp/panelSSL.pl", str(e), "a+")
+
+    # 面板进程守护
+    def daemon_panel(self):
+        cycle = 10
+        panel_pid_file = "{}/logs/panel.pid".format(self.panel_path)
+        self.write_log("启动面板进程守护")
+        while 1:
+            time.sleep(cycle)
+
+            # 检查pid文件是否存在
+            if not os.path.exists(panel_pid_file):
                 continue
 
+            # 读取pid文件
+            panel_pid = public.readFile(panel_pid_file)
+            if not panel_pid:
+                self.service_panel('start')
+                continue
+
+            # 检查进程是否存在
+            comm_file = "/proc/{}/comm".format(panel_pid)
+            if not os.path.exists(comm_file):
+                self.service_panel('start')
+                continue
+
+            # 是否为面板进程
+            comm = public.readFile(comm_file)
+            if comm.find('BT-Panel') == -1:
+                self.service_panel('start')
+                continue
+
+    def update_panel(self):
+        os.system("curl -k https://download.bt.cn/install/update6.sh|bash &")
+
+    def service_panel(self, action='reload'):
+        init_file = os.path.join(self.panel_path, 'init.sh')
+        if not os.path.exists(init_file):
+            self.update_panel()
+        else:
+            os.system("nohup bash {} {} > /dev/null 2>&1 &".format(init_file, action))
+        self.write_log("面板服务: {}".format(action))
+
+    # 重启面板服务
+    def restart_panel_service(self):
+        rtips = os.path.join(self.panel_path, 'data/restart.pl')
+        reload_tips = os.path.join(self.panel_path, 'data/reload.pl')
+        self.write_log("启动面板服务监控")
+        while True:
+            if os.path.exists(rtips):
+                os.remove(rtips)
+                self.service_panel('restart')
+            if os.path.exists(reload_tips):
+                os.remove(reload_tips)
+                self.service_panel('reload')
+            time.sleep(1)
+
+    # 取面板pid
+    def get_panel_pid(self):
+        try:
+            panel_pid_file = os.path.join(self.panel_path, 'logs/panel.pid')
+            pid = public.ReadFile(panel_pid_file)
+            if pid:
+                return int(pid)
+            for pid in psutil.pids():
+                try:
+                    p = psutil.Process(pid)
+                    n = p.cmdline()[-1]
+                    if n.find('runserver') != -1 or n.find('BT-Panel') != -1:
+                        return pid
+                except:
+                    pass
+        except:
+            pass
+        return None
+
+    def HttpGet(self, url, timeout=6, UserAgent='BT-Panel'):
+        try:
+            curl_cmd = "curl -sS --connect-timeout {} --max-time {} --user-agent '{}' '{}'".format(timeout, timeout, UserAgent, url)
+            result = public.ExecShell(curl_cmd)
+            if result[1]:
+                self.write_log("httpGet:", result[1])
+            return result[0]
+        except Exception as ex:
+            self.write_log("URL: {}  => {}".format(url, ex))
+            return str(ex)
+
+    def HttpPost(self, url, data, timeout=6, UserAgent='BT-Panel'):
+        try:
+            pdata = ""
+            if type(data) == dict:
+                for key in data:
+                    pdata += "{}={}&".format(key, data[key])
+                pdata = pdata.strip('&')
+            else:
+                pdata = data
+            curl_cmd = "curl -sS --connect-timeout {} --max-time {} --user-agent '{}' -d '{}' '{}'".format(timeout, timeout, UserAgent, pdata, url)
+
+            result = public.ExecShell(curl_cmd)
+            if result[1]:
+                self.write_log("httpPost:", result[1])
+            return result[0]
+        except Exception as ex:
+            self.write_log("URL: {}  => {}".format(url, ex))
+            return str(ex)
+
+    # 网站到期处理
+    def siteEdate(self):
+        try:
+            import psutil
+            pids = psutil.pids()
+            for pid in pids:
+                try:
+                    p = psutil.Process(pid)
+                    if "python3" in p.name() and p.cmdline()[1].find('site_task.py') != -1:
+                        p.kill()
+                except:
+                    pass
+
+            if not self.old_edate:
+                end_tip_file = os.path.join(self.panel_path, 'data/edate.pl')
+                self.old_edate = public.ReadFile(end_tip_file)
+            if not self.old_edate:
+                self.old_edate = '0000-00-00'
+
+            import time
+            mEdate = time.strftime('%Y-%m-%d', time.localtime())
+            if self.old_edate == mEdate:
+                return False
+            self.old_edate = mEdate
+
+            import time,random
+
+            time.sleep(random.uniform(90, 1800))
+            os.system("nohup {} {}/script/site_task.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+        except Exception as ex:
+            self.write_log(ex)
+            pass
+
+    def GetLoadAverage(self):
+        c = os.getloadavg()
+        data = {}
+        data['one'] = float(c[0])
+        data['five'] = float(c[1])
+        data['fifteen'] = float(c[2])
+        data['max'] = psutil.cpu_count() * 2
+        data['limit'] = data['max']
+        data['safe'] = data['max'] * 0.75
+        return data
+
+    def system_task_save_day(self):
+        '''
+            @name 保存系统监控天数
+            @return int 0=未开启，>0=天数
+        '''
+        filename = os.path.join(self.panel_path, 'data/control.conf')
+        if not os.path.exists(filename): return 0
+        day = public.ReadFile(filename)
+        if not day: return 0
+        try:
+            day = int(day)
+        except ValueError:
             day = 30
-            try:
-                day = int(ReadFile(filename))
-                if day < 1:
-                    time.sleep(10)
-                    continue
-            except:
-                day = 30
+        if day < 1: day = 30
+        return day
 
+    def system_task_get_cpuio(self, now_time) -> dict:
+        '''
+            @name 获取CPU Io
+            @param now_time<int> 当前时间
+            @return dict
+        '''
+        try:
+            if not self.cpuInfo: self.cpuInfo = {}
+            self.cpuInfo['used'] = self.proc_task_obj.get_monitor_list(now_time)
+            self.cpuInfo['mem'] = self.GetMemUsed()
+            return self.cpuInfo
+        except:
+            self.write_log(public.get_error_info())
+            return {'used': 0, 'mem': 0}
 
-            addtime = int(time.time())
-            deltime = addtime - (day * 86400)
-            # 取当前CPU Io
-            tmp = {}
-            tmp['used'] = proc_task_obj.get_monitor_list(addtime)
-            tmp['mem'] = GetMemUsed()
-            cpuInfo = tmp
+    def system_task_get_networkio(self, now_time) -> dict:
+        '''
+            @name 获取网络Io
+            @param now_time<int> 当前时间
+            @return dict
+        '''
 
+        tmp = {}
+        tmp['upTotal'] = 0
+        tmp['downTotal'] = 0
+        tmp['up'] = 0
+        tmp['down'] = 0
+        tmp['downPackets'] = {}
+        tmp['upPackets'] = {}
+        try:
             # 取当前网络Io
-            networkIo_list = net_io_counters(pernic=True)
-            tmp = {}
-            tmp['upTotal'] = 0
-            tmp['downTotal'] = 0
-            tmp['up'] = 0
-            tmp['down'] = 0
-            tmp['downPackets'] = {}
-            tmp['upPackets'] = {}
-
+            networkIo_list = psutil.net_io_counters(pernic=True)
             for k in networkIo_list.keys():
                 networkIo = networkIo_list[k][:4]
-                if not k in network_up.keys():
-                    network_up[k] = networkIo[0]
-                    network_down[k] = networkIo[1]
+                if not k in self.network_up.keys():
+                    self.network_up[k] = networkIo[0]
+                    self.network_down[k] = networkIo[1]
 
                 tmp['upTotal'] += networkIo[0]
                 tmp['downTotal'] += networkIo[1]
                 tmp['downPackets'][k] = round(
-                    float((networkIo[1] - network_down[k]) / 1024)/cycle, 2)
+                    float((networkIo[1] - self.network_down[k]) / 1024) / self.cycle, 2)
                 tmp['upPackets'][k] = round(
-                    float((networkIo[0] - network_up[k]) / 1024)/cycle, 2)
+                    float((networkIo[0] - self.network_up[k]) / 1024) / self.cycle, 2)
                 tmp['up'] += tmp['upPackets'][k]
                 tmp['down'] += tmp['downPackets'][k]
 
-                network_up[k] = networkIo[0]
-                network_down[k] = networkIo[1]
+                self.network_up[k] = networkIo[0]
+                self.network_down[k] = networkIo[1]
+        except:
+            self.write_log(public.get_error_info())
 
-            # if not networkInfo:
-            #     networkInfo = tmp
-            # if (tmp['up'] + tmp['down']) > (networkInfo['up'] + networkInfo['down']):
-            networkInfo = tmp
+        self.networkInfo = tmp
+        return self.networkInfo
 
-            # 取磁盘Io
-            disk_ios = True
-            try:
-                if os.path.exists('/proc/diskstats'):
-                    diskio_2 = disk_io_counters()
+    def system_task_get_diskio(self, now_time) -> dict:
+        '''
+            @name 获取磁盘Io
+            @param now_time<int> 当前时间
+            @return dict
+        '''
 
-                    if not diskio_1:
-                        diskio_1 = diskio_2
-                    tmp = {}
-                    tmp['read_count'] = int((diskio_2.read_count - diskio_1.read_count) / cycle)
-                    tmp['write_count'] = int((diskio_2.write_count - diskio_1.write_count) / cycle)
-                    tmp['read_bytes'] = int((diskio_2.read_bytes - diskio_1.read_bytes) / cycle)
-                    tmp['write_bytes'] = int((diskio_2.write_bytes -  diskio_1.write_bytes) / cycle)
-                    tmp['read_time'] = int((diskio_2.read_time - diskio_1.read_time) / cycle)
-                    tmp['write_time'] = int((diskio_2.write_time - diskio_1.write_time) / cycle)
+        if os.path.exists('/proc/diskstats'):
+            self.diskio_2 = psutil.disk_io_counters()
 
-                    if not diskInfo:
-                        diskInfo = tmp
+            if not self.diskio_1:
+                self.diskio_1 = self.diskio_2
+            tmp = {}
+            tmp['read_count'] = int((self.diskio_2.read_count - self.diskio_1.read_count) / self.cycle)
+            tmp['write_count'] = int((self.diskio_2.write_count - self.diskio_1.write_count) / self.cycle)
+            tmp['read_bytes'] = int((self.diskio_2.read_bytes - self.diskio_1.read_bytes) / self.cycle)
+            tmp['write_bytes'] = int((self.diskio_2.write_bytes - self.diskio_1.write_bytes) / self.cycle)
+            tmp['read_time'] = int((self.diskio_2.read_time - self.diskio_1.read_time) / self.cycle)
+            tmp['write_time'] = int((self.diskio_2.write_time - self.diskio_1.write_time) / self.cycle)
 
-                    # if (tmp['read_bytes'] + tmp['write_bytes']) > (diskInfo['read_bytes'] + diskInfo['write_bytes']):
-                    diskInfo['read_count'] = tmp['read_count']
-                    diskInfo['write_count'] = tmp['write_count']
-                    diskInfo['read_bytes'] = tmp['read_bytes']
-                    diskInfo['write_bytes'] = tmp['write_bytes']
-                    diskInfo['read_time'] = tmp['read_time']
-                    diskInfo['write_time'] = tmp['write_time']
+            if not self.diskInfo:
+                self.diskInfo = tmp
 
-                    # logging.info(['read: ',tmp['read_bytes'] / 1024 / 1024,'write: ',tmp['write_bytes'] / 1024 / 1024])
-                    diskio_1 = diskio_2
-            except:
-                logging.info(public.get_error_info())
-                disk_ios = False
+            # if (tmp['read_bytes'] + tmp['write_bytes']) > (diskInfo['read_bytes'] + diskInfo['write_bytes']):
+            self.diskInfo['read_count'] = tmp['read_count']
+            self.diskInfo['write_count'] = tmp['write_count']
+            self.diskInfo['read_bytes'] = tmp['read_bytes']
+            self.diskInfo['write_bytes'] = tmp['write_bytes']
+            self.diskInfo['read_time'] = tmp['read_time']
+            self.diskInfo['write_time'] = tmp['write_time']
 
-            try:
-                sql = db.Sql().dbfile('system')
-                data = (cpuInfo['used'], cpuInfo['mem'], addtime)
-                sql.table('cpuio').add('pro,mem,addtime', data)
-                sql.table('cpuio').where("addtime<?", (deltime,)).delete()
-                data = (networkInfo['up'], networkInfo['down'], networkInfo['upTotal'], networkInfo['downTotal'], dumps(networkInfo['downPackets']), dumps(networkInfo['upPackets']), addtime)
-                sql.table('network').add('up,down,total_up,total_down,down_packets,up_packets,addtime', data)
-                sql.table('network').where("addtime<?", (deltime,)).delete()
-                # logging.info(diskInfo)
-                if os.path.exists('/proc/diskstats') and disk_ios:
-                    data = (diskInfo['read_count'], diskInfo['write_count'], diskInfo['read_bytes'],diskInfo['write_bytes'], diskInfo['read_time'], diskInfo['write_time'], addtime)
-                    sql.table('diskio').add('read_count,write_count,read_bytes,write_bytes,read_time,write_time,addtime', data)
-                    sql.table('diskio').where("addtime<?", (deltime,)).delete()
+            # self.write_log(['read: ',tmp['read_bytes'] / 1024 / 1024,'write: ',tmp['write_bytes'] / 1024 / 1024])
+            self.diskio_1 = self.diskio_2
+            return self.diskio_1
 
-                # LoadAverage
-                load_average = GetLoadAverage()
-                lpro = round(
-                    (load_average['one'] / load_average['max']) * 100, 2)
-                if lpro > 100:
-                    lpro = 100
-                sql.table('load_average').add('pro,one,five,fifteen,addtime', (lpro, load_average['one'], load_average['five'], load_average['fifteen'], addtime))
-                sql.table('load_average').where("addtime<?", (deltime,)).delete()
+    def system_task_init_db(self):
+        '''
+            @name 初始化系统监控数据库
+            @return None
+        '''
+        with db.Sql() as sql:
+            sql = sql.dbfile('system')
+            csql = '''CREATE TABLE IF NOT EXISTS `load_average` (
+    `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+    `pro` REAL,
+    `one` REAL,
+    `five` REAL,
+    `fifteen` REAL,
+    `addtime` INTEGER
+    )'''
+            sql.execute(csql, ())
+            sql.close()
+
+    # 系统监控任务
+    def systemTask(self):
+        time.sleep(60)
+        try:
+            filename = os.path.join(self.panel_path, 'data/control.conf')
+            with db.Sql() as sql:
+                sql = sql.dbfile('system')
+                csql = '''CREATE TABLE IF NOT EXISTS `load_average` (
+    `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+    `pro` REAL,
+    `one` REAL,
+    `five` REAL,
+    `fifteen` REAL,
+    `addtime` INTEGER
+    )'''
+                sql.execute(csql, ())
                 sql.close()
 
-                lpro = None
-                load_average = None
-                cpuInfo = None
-                networkInfo = None
-                diskInfo = None
-                data = None
-                count = 0
-                reloadNum += 1
-                if reloadNum > 1440:
-                    reloadNum = 0
+            diskio_1 = diskio_2 = networkInfo = cpuInfo = diskInfo = None
+            network_up = {}
+            network_down = {}
+            cycle = 60
+            last_delete_time = 0
+            # 实例化进程监控对象
+            proc_task_obj = process_task.process_task()
 
-
-
-                # 日报数据收集
-                if os.path.exists("/www/server/panel/data/start_daily.pl"):
-                    try:
-                        from panelDaily import panelDaily
-                        pd = panelDaily()
-                        t_now = time.localtime()
-                        yesterday  = time.localtime(time.mktime((
-                            t_now.tm_year, t_now.tm_mon, t_now.tm_mday-1,
-                            0,0,0,0,0,0
-                        )))
-                        yes_time_key = pd.get_time_key(yesterday)
-                        con = ReadFile("/www/server/panel/data/store_app_usage.pl")
-                        # logging.info(str(con))
-                        store = False
-                        if con:
-                            if con != str(yes_time_key):
-                                store = True
-                        else:
-                            store = True
-
-                        if store:
-                            date_str = str(yes_time_key)
-                            daily_data = pd.get_daily_data_local(date_str)
-                            if "status" in daily_data.keys():
-                                if daily_data["status"]:
-                                    score = daily_data["score"]
-                                    if public.M("system").dbfile("system").table("daily").where("time_key=?", (yes_time_key,)).count() == 0:
-                                        public.M("system").dbfile("system").table("daily").add("time_key,evaluate,addtime", (yes_time_key, score, time.time()))
-                                    pd.store_app_usage(yes_time_key)
-                                    WriteFile("/www/server/panel/data/store_app_usage.pl", str(yes_time_key), "w")
-                                # logging.info("更新应用存储信息:"+str(yes_time_key))
-                                pd.check_server()
-                    except Exception as e:
-                        logging.info("存储应用空间信息错误:"+str(e))
-            except Exception as ex:
-                logging.info(str(ex))
-            del(tmp)
-            time.sleep(cycle)
-            count += 1
-    except Exception as ex:
-        logging.info(ex)
-        time.sleep(cycle)
-        systemTask()
-
-
-# 取内存使用率
-def GetMemUsed():
-    try:
-        mem = virtual_memory()
-        memInfo = {'memTotal': mem.total/1024/1024, 'memFree': mem.free/1024/1024,
-                   'memBuffers': mem.buffers/1024/1024, 'memCached': mem.cached/1024/1024}
-        tmp = memInfo['memTotal'] - memInfo['memFree'] - \
-            memInfo['memBuffers'] - memInfo['memCached']
-        tmp1 = memInfo['memTotal'] / 100
-        return (tmp / tmp1)
-    except:
-        return 1
-
-# 检查502错误
-
-
-def check502():
-    try:
-        phpversions = public.get_php_versions()
-        for version in phpversions:
-            if version in ['52','5.2']: continue
-            php_path = '/www/server/php/' + version + '/sbin/php-fpm'
-            if not os.path.exists(php_path):
-                continue
-            if checkPHPVersion(version):
-                continue
-            if startPHPVersion(version):
-                public.WriteLog('PHP守护程序', '检测到PHP-' + version + '处理异常,已自动修复!', not_web=True)
-    except Exception as ex:
-        logging.info(ex)
-
-# 处理指定PHP版本
-def startPHPVersion(version):
-    try:
-        fpm = '/etc/init.d/php-fpm-'+version
-        php_path = '/www/server/php/' + version + '/sbin/php-fpm'
-        if not os.path.exists(php_path):
-            if os.path.exists(fpm):
-                os.remove(fpm)
-            return False
-
-        # 尝试重载服务
-        os.system(fpm + ' start')
-        os.system(fpm + ' reload')
-        if checkPHPVersion(version):
-            return True
-
-        # 尝试重启服务
-        cgi = '/tmp/php-cgi-'+version + '.sock'
-        pid = '/www/server/php/'+version+'/var/run/php-fpm.pid'
-        os.system('pkill -9 php-fpm-'+version)
-        time.sleep(0.5)
-        if os.path.exists(cgi):
-            os.remove(cgi)
-        if os.path.exists(pid):
-            os.remove(pid)
-        os.system(fpm + ' start')
-        if checkPHPVersion(version):
-            return True
-        # 检查是否正确启动
-        if os.path.exists(cgi):
-            return True
-        return False
-    except Exception as ex:
-        logging.info(ex)
-        return True
-
-
-# 检查指定PHP版本
-def checkPHPVersion(version):
-    try:
-        cgi_file = '/tmp/php-cgi-{}.sock'.format(version)
-        if os.path.exists(cgi_file):
-            init_file = '/etc/init.d/php-fpm-{}'.format(version)
-            if os.path.exists(init_file):
-                init_body = public.ReadFile(init_file)
-                if not init_body: return True
-            uri = "/phpfpm_"+version+"_status?json"
-            result = public.request_php(version, uri, '')
-            loads(result)
-        return True
-    except:
-        logging.info("检测到PHP-{}无法访问".format(version))
-        return False
-
-
-# 502错误检查线程
-def check502Task():
-    try:
-        while True:
-            public.auto_backup_panel()
-            check502()
-            sess_expire()
-            mysql_quota_check()
-            siteEdate()
-            time.sleep(600)
-    except Exception as ex:
-        logging.info(ex)
-        time.sleep(600)
-        check502Task()
-
-# MySQL配额检查
-def mysql_quota_check():
-    os.system("nohup " + get_python_bin() +" /www/server/panel/script/mysql_quota.py > /dev/null 2>&1 &")
-
-# session过期处理
-def sess_expire():
-    try:
-        sess_path = '/www/server/panel/data/session'
-        if not os.path.exists(sess_path):
-            return
-        s_time = time.time()
-        f_list = os.listdir(sess_path)
-        f_num = len(f_list)
-        for fname in f_list:
-            filename = '/'.join((sess_path, fname))
-            fstat = os.stat(filename)
-            f_time = s_time - fstat.st_mtime
-            if f_time > 3600:
-                os.remove(filename)
-                continue
-            if fstat.st_size < 256 and len(fname) == 32:
-                if f_time > 60 or f_num > 30:
-                    os.remove(filename)
+            self.write_log("启动系统监控任务")
+            while True:
+                if not os.path.exists(filename):
+                    time.sleep(10)
                     continue
-        del(f_list)
-    except Exception as ex:
-        logging.info(str(ex))
 
+                day = 30
+                try:
+                    day = int(public.ReadFile(filename))
+                    if day < 1:
+                        time.sleep(10)
+                        continue
+                except:
+                    day = 30
 
-# 检查面板证书是否有更新
-def check_panel_ssl():
-    try:
+                addtime = int(time.time())
+                deltime = addtime - (day * 86400)
+                # 取当前CPU Io
+                tmp = {}
+                # 通过进程监控获取CPU使用率，不得使用psutil.cpu_percent代替，这会导致没有进程监控数据
+                tmp['used'] = proc_task_obj.get_monitor_list(addtime)
+                tmp['mem'] = self.GetMemUsed()
+                cpuInfo = tmp
+
+                # 取当前网络Io
+                networkIo_list = psutil.net_io_counters(pernic=True)
+                tmp = {}
+                tmp['upTotal'] = 0
+                tmp['downTotal'] = 0
+                tmp['up'] = 0
+                tmp['down'] = 0
+                tmp['downPackets'] = {}
+                tmp['upPackets'] = {}
+
+                for k in networkIo_list.keys():
+                    networkIo = networkIo_list[k][:4]
+                    if not k in network_up.keys():
+                        network_up[k] = networkIo[0]
+                        network_down[k] = networkIo[1]
+
+                    tmp['upTotal'] += networkIo[0]
+                    tmp['downTotal'] += networkIo[1]
+                    tmp['downPackets'][k] = round(
+                        float((networkIo[1] - network_down[k]) / 1024) / cycle, 2)
+                    tmp['upPackets'][k] = round(
+                        float((networkIo[0] - network_up[k]) / 1024) / cycle, 2)
+                    tmp['up'] += tmp['upPackets'][k]
+                    tmp['down'] += tmp['downPackets'][k]
+
+                    network_up[k] = networkIo[0]
+                    network_down[k] = networkIo[1]
+
+                # if not networkInfo:
+                #     networkInfo = tmp
+                # if (tmp['up'] + tmp['down']) > (networkInfo['up'] + networkInfo['down']):
+                networkInfo = tmp
+
+                # 取磁盘Io
+                disk_ios = True
+                try:
+                    if os.path.exists('/proc/diskstats'):
+                        diskio_2 = psutil.disk_io_counters()
+
+                        if not diskio_1:
+                            diskio_1 = diskio_2
+                        tmp = {}
+                        tmp['read_count'] = int((diskio_2.read_count - diskio_1.read_count) / cycle)
+                        tmp['write_count'] = int((diskio_2.write_count - diskio_1.write_count) / cycle)
+                        tmp['read_bytes'] = int((diskio_2.read_bytes - diskio_1.read_bytes) / cycle)
+                        tmp['write_bytes'] = int((diskio_2.write_bytes - diskio_1.write_bytes) / cycle)
+                        tmp['read_time'] = int((diskio_2.read_time - diskio_1.read_time) / cycle)
+                        tmp['write_time'] = int((diskio_2.write_time - diskio_1.write_time) / cycle)
+
+                        if not diskInfo:
+                            diskInfo = tmp
+
+                        # if (tmp['read_bytes'] + tmp['write_bytes']) > (diskInfo['read_bytes'] + diskInfo['write_bytes']):
+                        diskInfo['read_count'] = tmp['read_count']
+                        diskInfo['write_count'] = tmp['write_count']
+                        diskInfo['read_bytes'] = tmp['read_bytes']
+                        diskInfo['write_bytes'] = tmp['write_bytes']
+                        diskInfo['read_time'] = tmp['read_time']
+                        diskInfo['write_time'] = tmp['write_time']
+
+                        # self.write_log(['read: ',tmp['read_bytes'] / 1024 / 1024,'write: ',tmp['write_bytes'] / 1024 / 1024])
+                        diskio_1 = diskio_2
+                except:
+                    self.write_log(public.get_error_info())
+                    disk_ios = False
+
+                try:
+                    sql = db.Sql().dbfile('system')
+                    # 插入CPU监控数据
+                    data = (round(cpuInfo['used'], 2), round(cpuInfo['mem'], 2), addtime)
+                    sql.table('cpuio').add('pro,mem,addtime', data)
+
+                    # 插入网络监控数据
+                    data = (networkInfo['up'], networkInfo['down'], networkInfo['upTotal'], networkInfo['downTotal'], json.dumps(networkInfo['downPackets']), json.dumps(networkInfo['upPackets']), addtime)
+                    sql.table('network').add('up,down,total_up,total_down,down_packets,up_packets,addtime', data)
+
+                    # 插入磁盘监控数据
+                    if os.path.exists('/proc/diskstats') and disk_ios:
+                        data = (diskInfo['read_count'], diskInfo['write_count'], diskInfo['read_bytes'], diskInfo['write_bytes'], diskInfo['read_time'], diskInfo['write_time'], addtime)
+                        sql.table('diskio').add('read_count,write_count,read_bytes,write_bytes,read_time,write_time,addtime', data)
+
+                    # 插入负载监控数据
+                    load_average = self.GetLoadAverage()
+                    lpro = round(
+                        (load_average['one'] / load_average['max']) * 100, 2)
+                    if lpro > 100:
+                        lpro = 100
+                    sql.table('load_average').add('pro,one,five,fifteen,addtime', (lpro, load_average['one'], load_average['five'], load_average['fifteen'], addtime))
+
+                    # 每隔1小时清理一次过期数据
+                    if addtime - last_delete_time > 3600:
+                        sql.table('diskio').where("addtime<?", (deltime,)).delete()
+                        sql.table('cpuio').where("addtime<?", (deltime,)).delete()
+                        sql.table('network').where("addtime<?", (deltime,)).delete()
+                        sql.table('load_average').where("addtime<?", (deltime,)).delete()
+                        last_delete_time = addtime
+
+                    sql.close()
+
+                    lpro = None
+                    load_average = None
+                    cpuInfo = None
+                    networkInfo = None
+                    diskInfo = None
+                    data = None
+
+                except Exception as ex:
+                    self.write_log(str(ex))
+                del (tmp)
+                time.sleep(cycle)
+        except Exception as ex:
+            self.write_log(ex)
+            time.sleep(cycle)
+            self.systemTask()
+
+    def start_daily(self):
+        '''
+            @name 日报统计
+            @return None
+        '''
         while True:
-            lets_info = ReadFile("/www/server/panel/ssl/lets.info")
-            if not lets_info:
-                time.sleep(3600)
-                continue
-            os.system("nohup " + get_python_bin() + " /www/server/panel/script/panel_ssl_task.py > /dev/null 2>&1 &")
-            time.sleep(3600)
-    except Exception as e:
-        public.writeFile("/tmp/panelSSL.pl", str(e), "a+")
-
-# 面板进程守护
-def daemon_panel():
-    cycle = 10
-    panel_pid_file = "{}/logs/panel.pid".format(public.get_panel_path())
-    while 1:
-        time.sleep(cycle)
-
-        # 检查pid文件是否存在
-        if not os.path.exists(panel_pid_file):
-            continue
-
-        # 读取pid文件
-        panel_pid = public.readFile(panel_pid_file)
-        if not panel_pid:
-            service_panel('start')
-            continue
-
-        # 检查进程是否存在
-        comm_file = "/proc/{}/comm".format(panel_pid)
-        if not os.path.exists(comm_file):
-            service_panel('start')
-            continue
-
-        # 是否为面板进程
-        comm = public.readFile(comm_file)
-        if comm.find('BT-Panel') == -1:
-            service_panel('start')
-            continue
-
-
-
-
-def update_panel():
-    os.system("curl -k https://download.bt.cn/install/update6.sh|bash &")
-
-
-def service_panel(action='reload'):
-    if not os.path.exists('/www/server/panel/init.sh'):
-        update_panel()
-    else:
-        os.system("nohup bash /www/server/panel/init.sh {} > /dev/null 2>&1 &".format(action))
-    logging.info("面板服务: {}".format(action))
-
-
-# 重启面板服务
-def restart_panel_service():
-    rtips = 'data/restart.pl'
-    reload_tips = 'data/reload.pl'
-    while True:
-        if os.path.exists(rtips):
-            os.remove(rtips)
-            service_panel('restart')
-        if os.path.exists(reload_tips):
-            os.remove(reload_tips)
-            service_panel('reload')
-        time.sleep(1)
-
-# 取面板pid
-def get_panel_pid():
-    try:
-        pid = ReadFile('/www/server/panel/logs/panel.pid')
-        if pid:
-            return int(pid)
-        for pid in pids():
             try:
-                p = Process(pid)
-                n = p.cmdline()[-1]
-                if n.find('runserver') != -1 or n.find('BT-Panel') != -1:
-                    return pid
+                time.sleep(7200)
+                os.system("nohup {} {}/script/daily.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
             except:
-                pass
-    except:
-        pass
-    return None
+                time.sleep(7200)
 
+    def count_ssh_logs(self):
+        '''
+            @name 统计SSH登录日志
+            @return None
+        '''
+        time.sleep(360)
 
-def HttpGet(url, timeout=6, headers={}):
-    if sys.version_info[0] == 2:
+        if os.path.exists("/etc/debian_version"):
+            version = public.readFile('/etc/debian_version').strip()
+            if 'bookworm' in version or 'jammy' in version or 'impish' in version:
+                version = 12
+            else:
+                try:
+                    version = float(version)
+                except:
+                    version = 11
+
+            if version >= 12:
+                while True:
+                    filepath = "/www/server/panel/data/ssh_login_counts.json"
+
+                    # 获取今天的日期
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    result = {
+                        'date': today,  # 添加日期字段
+                        'error': 0,
+                        'success': 0,
+                        'today_error': 0,
+                        'today_success': 0
+                    }
+
+                    try:
+                        filedata = public.readFile(filepath) if os.path.exists(filepath) else public.writeFile(filepath, "[]")
+                        try:
+                            data_list = json.loads(filedata)
+                        except:
+                            data_list = []
+
+                        # 检查是否已有今天的记录，避免重复统计
+                        found_today = False
+                        for day in data_list:
+                            if day['date'] == today:
+                                found_today = True
+                                break
+
+                        if found_today:
+                            break  # 如果找到今天的记录，跳出while循环
+
+                        today_err_num1 = int(public.ExecShell(
+                            "journalctl -u ssh --no-pager -S today |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
+                        today_err_num2 = int(public.ExecShell(
+                            "journalctl -u ssh --no-pager -S today |grep -a 'Connection closed by authenticating user' |grep -a 'preauth' |wc -l")[0])
+                        today_success = int(public.ExecShell("journalctl -u ssh --no-pager -S today |grep -a 'Accepted' |wc -l")[0])
+
+                        # 查看文件大小 判断是否超过5G
+                        is_bigfile = False
+
+                        res, err = public.ExecShell("journalctl --disk-usage")
+                        total_bytes = public.parse_journal_disk_usage(res)
+                        limit_bytes = 5 * 1024 * 1024 * 1024
+                        if total_bytes > limit_bytes:
+                            is_bigfile = True
+
+                        if is_bigfile:
+                            err_num1 = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
+                            err_num2 = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager --grep='Connection closed by authenticating user|preauth' |wc -l")[0])
+                            success = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager |grep -a 'Accepted' |wc -l")[0])
+                        else:
+                            # 统计失败登陆次数
+                            err_num1 = int(public.ExecShell(
+                                "journalctl -u ssh --no-pager |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
+                            err_num2 = int(public.ExecShell(
+                                "journalctl -u ssh --no-pager --grep='Connection closed by authenticating user|preauth' |wc -l")[0])
+                            success = int(public.ExecShell("journalctl -u ssh --no-pager|grep -a 'Accepted' |wc -l")[0])
+                        result['error'] = err_num1 + err_num2
+                        # 统计成功登录次数
+                        result['success'] = success
+                        result['today_error'] = today_err_num1 + today_err_num2
+                        result['today_success'] = today_success
+
+                        data_list.insert(0, result)
+                        data_list = data_list[:7]
+                        public.writeFile(filepath, json.dumps(data_list))
+                    except:
+                        public.writeFile(filepath, json.dumps([{
+                            'date': today,  # 添加日期字段
+                            'error': 0,
+                            'success': 0,
+                            'today_error': 0,
+                            'today_success': 0
+                        }]))
+                    time.sleep(86400)
+
+    # 2024/11/19 11:00 Docker网站项目-网站到期处理
+    def deal_with_docker_expired_site(self):
+        '''
+            @name Docker网站项目-网站到期处理
+        '''
         try:
-            import urllib2
-            req = urllib2.Request(url, headers=headers)
-            response = urllib2.urlopen(req, timeout=timeout,)
-            return response.read()
-        except Exception as ex:
-            logging.info(str(ex))
-            return str(ex)
-    else:
-        try:
-            import urllib.request
-            req = urllib.request.Request(url, headers=headers)
-            response = urllib.request.urlopen(req, timeout=timeout)
-            result = response.read()
-            if type(result) == bytes:
-                result = result.decode('utf-8')
-            return result
-        except Exception as ex:
-            logging.info("URL: {}  => {}".format(url, ex))
-            return str(ex)
+            # 2024/11/19 11:13 1天只检查1次
+            pl_file = '{}/data/check_deal_with_docker_expired_site.pl'.format(self.panel_path)
+            if os.path.exists(pl_file):
+                mtime = os.path.getmtime(pl_file)
+                if time.time() - mtime < 86400: return
 
+            from btdockerModel import dk_public as dp
+            sresult = dp.sql("docker_sites").field("id,name,edate").select()
+            if not sresult: return
 
-# 定时任务去检测邮件信息
-def send_mail_time():
-    while True:
-        try:
-            os.system("nohup " + get_python_bin() +" /www/server/panel/script/mail_task.py > /dev/null 2>&1 &")
-            time.sleep(50)
-        except:
-            time.sleep(50)
-            send_mail_time()
+            from mod.project.docker.sites.sitesManage import SitesManage
+            site_manage = SitesManage()
 
-#5个小时更新一次更新软件列表
-def update_software_list():
-    while True:
-        try:
-            import panelPlugin
-            panelPlugin.panelPlugin().get_cloud_list_status(None)
-            time.sleep(18000)
-        except:
-            time.sleep(1800)
-            update_software_list()
+            for site in sresult:
+                if not site: continue
+                if site['edate'] == '0000-00-00': continue
+                if site['edate'] == time.strftime('%Y-%m-%d', time.localtime()): continue
+                if site['edate'] < time.strftime('%Y-%m-%d', time.localtime()):
+                    args = public.dict_obj()
+                    args.id = site['id']
+                    args.status = 0
+                    args.site_name = site['name']
+                    site_manage.set_site_status(args)
+                    public.WriteLog("Docker网站项目-网站到期处理", "网站{}已到期".format(site['name']))
 
-
-# 面板消息提醒
-def check_panel_msg():
-    python_bin = get_python_bin()
-    while True:
-        os.system('nohup {} /www/server/panel/script/check_msg.py > /dev/null 2>&1 &'.format(python_bin))
-        time.sleep(3600)
-
-# 面板推送消息
-def push_msg():
-    python_bin = get_python_bin()
-    while True:
-        time.sleep(60)
-        os.system('nohup {} /www/server/panel/script/push_msg.py > /dev/null 2>&1 &'.format(python_bin))
-
-
-def JavaProDaemons():
-    '''
-        @name Java 项目守护进程
-        @author lkq@bt.cn
-        @time 2022-07-19
-        @param None
-    '''
-    if public.M('sites').where('project_type=?',('Java')).count()>=1:
-        project_info=public.M('sites').where('project_type=?',('Java')).select()
-        for i in project_info:
-            try:
-                import json
-                i['project_config'] = json.loads(i['project_config'])
-                #判断项目是否设置了守护进程
-                if  i['project_config']['java_type']!='springboot':continue
-                if 'auth' in i['project_config'] and i['project_config']['auth']==1 or i['project_config']['auth']=='1':
-                    print("Java",i['name'])
-                    from projectModel import javaModel
-                    java = javaModel.main()
-                    if java.get_project_run_state(project_name=i['name']):
-                        continue
-                    else:
-                        #如果项目是在后台停止的，那么就不再启动
-                        if  os.path.exists("/var/tmp/springboot/vhost/pids/{}.pid".format(i['name'])):
-                            get=public.dict_obj()
-                            get.project_name=i['name']
-                            java.start_project(get)
-                            public.WriteLog('守护进程','Java项目[{}]已经被守护进程启动'.format(i['name']))
-            except:
-                continue
-
-def GoDaemons():
-    '''
-        @name Go 项目守护进程
-        @author lkq@bt.cn
-        @time 2022-07-19
-        @param None
-    '''
-    if public.M('sites').where('project_type=?',('Go')).count()>=1:
-        project_info=public.M('sites').where('project_type=?',('Go')).select()
-        for i in project_info:
-            try:
-                import json
-                i['project_config'] = json.loads(i['project_config'])
-                if 'is_power_on' in i['project_config'] and i['project_config']['is_power_on']==1 or i['project_config']['is_power_on']=='1':
-                    from projectModel import goModel
-                    java = goModel.main()
-                    if java.get_project_run_state(project_name=i['name']):
-                        continue
-                    else:
-                        #如果项目是在后台停止的，那么就不再启动
-                        if os.path.exists("/var/tmp/gopids/{}.pid".format(i['name'])):
-                            get=public.dict_obj()
-                            get.project_name=i['name']
-                            java.start_project(get)
-                            public.WriteLog('守护进程','Go项目[{}]已经被守护进程启动'.format(i['name']))
-            except:
-                continue
-
-def ProLog():
-    path_list=["/www/server/go_project/vhost/logs","/var/tmp/springboot/vhost/logs/"]
-    try:
-        for i2 in path_list:
-            if os.path.exists(i2):
-                for dir in os.listdir(i2):
-                    dir = os.path.join(i2, dir)
-                    # 判断当前目录是否为文件夹
-                    if os.path.isfile(dir):
-                        if dir.endswith(".log"):
-                            #文件大于500M的时候则清空文件
-                            if os.stat(dir).st_size >200000000:
-                                public.ExecShell("echo ''>{}".format(dir))
-    except:
-        pass
-
-def ProDadmons():
-    '''
-        @name 项目守护进程
-        @author
-    '''
-    n = 30
-    while 1:
-        n += 1
-        if n >= 30:
-            n = 1
-            ProLog()
-        time.sleep(120)
-        try:
-            JavaProDaemons()
+            if not os.path.exists(pl_file): public.writeFile(pl_file, 'True')
         except:
             pass
-        GoDaemons()
 
-def process_task_thread():
-    '''
-        @name 进程监控
-        @auther hwliang
-    '''
+    def run_thread(self):
+        '''
+            @name 运行线程集合
+            @return None
+        '''
+        tkeys = self.thread_dict.keys()
 
+        thread_list = {
+            "start_task": self.task_obj.start_task,
+            "systemTask": self.systemTask,
+            "check502Task": self.check502Task,
+            "daemon_panel": self.daemon_panel,
+            "restart_panel_service": self.restart_panel_service,
+            "check_panel_ssl": self.check_panel_ssl,
+            "update_software_list": self.update_software_list,
+            "send_mail_time": self.send_mail_time,
+            "check_panel_msg": self.check_panel_msg,
+            "push_msg": self.push_msg,
+            "ProDadmons": self.ProDadmons,
+            "process_task_thread": self.process_task_thread,
+            'run_tasks_list': self.run_tasks_list,
+            # "check_database_quota": self.check_database_quota,
+            "start_daily": self.start_daily,
+            "count_ssh_logs": self.count_ssh_logs,
+            "deal_with_docker_expired_site": self.deal_with_docker_expired_site,
+        }
 
-    # 进程流量监控，如果文件：/www/server/panel/data/is_net_task.pl 或 /www/server/panel/data/control.conf不存在，则不监控进程流量
-    net_task_obj = process_task.process_network_total()
-    net_task_obj.start()
-
-
-def run_tasks_list():
-    """
-    @name 延时启动任务
-    """
-    spath = '{}/data/tasks'.format(public.get_panel_path())
-
-    try:
-        import PluginLoader
-    except:pass
-
-    while True:
-        if os.path.exists(spath):
-            for file in os.listdir(spath):
-                filename = '{}/{}'.format(spath,file)
-                try:
-                    data = loads(public.readFile(filename))
-                    #超过执行时间
-                    if time.time() > data['time']:
-                        #插件
-                        if data['type'] == 2 :
-                            res = PluginLoader.plugin_run(data['name'], data['fun'], data['args'])
-                            if not res['status']: continue
-
-                            os.remove(filename)
-                            public.WriteLog(data['title'],res['msg'])
-                        elif data['type'] == 1:
-                            #面板
-                            pass
-                except:
-                    os.remove(filename)
-        time.sleep(60)
-
-
-
-
-
-
-def run_thread():
-    global thread_dict,task_obj
-    tkeys = thread_dict.keys()
-
-    thread_list = {
-        "start_task": task_obj.start_task,
-        "systemTask": systemTask,
-        "check502Task": check502Task,
-        "daemon_panel": daemon_panel,
-        "restart_panel_service": restart_panel_service,
-        "check_panel_ssl": check_panel_ssl,
-        "update_software_list": update_software_list,
-        "send_mail_time": send_mail_time,
-        "check_panel_msg": check_panel_msg,
-        "push_msg": push_msg,
-        "ProDadmons":ProDadmons,
-        "process_task_thread":process_task_thread,
-        'run_tasks_list':run_tasks_list
-    }
-
-    for skey in thread_list.keys():
-        if not skey in tkeys or not thread_dict[skey].is_alive():
-            thread_dict[skey] = threading.Thread(target=thread_list[skey])
-            thread_dict[skey].setDaemon(True)
-            thread_dict[skey].start()
-
+        for skey in thread_list.keys():
+            if not skey in tkeys or not self.thread_dict[skey].is_alive():
+                self.thread_dict[skey] = threading.Thread(target=thread_list[skey])
+                self.thread_dict[skey].setDaemon(True)
+                self.thread_dict[skey].start()
 
 
 def main():
-    main_pid = 'logs/task.pid'
+    main_pid = os.path.join('/www/server/panel', 'logs/task.pid')
     if os.path.exists(main_pid):
         os.system("kill -9 $(cat {}) &> /dev/null".format(main_pid))
     pid = os.fork()
@@ -875,16 +1491,12 @@ def main():
 
     sys.stdout.flush()
     sys.stderr.flush()
-    task_log_file = 'logs/task.log'
-    try:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S', filename=task_log_file, filemode='a+')
-    except Exception as ex:
-        print(ex)
-    logging.info('服务已启动')
+
+    p = Task()
+    p.write_log('服务已启动')
     time.sleep(5)
-    run_thread()
-    startTask()
+    p.run_thread()
+    p.startTask()
 
 
 if __name__ == "__main__":

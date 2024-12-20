@@ -26,11 +26,12 @@ _level = 3                                  # 风险级别： 1.提示(低)  2.�
 _date = '2022-8-10'                        # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_php_disable_functions.pl")
 _tips = [
-    "在【php.ini】文件中设置【disable_functions】未配置system,exec,passthru,shell_exec,popen,proc_open等危险函数",
-    "提示：【php.ini】未配置system,exec,passthru,shell_exec,popen,proc_open等危险函数"
+    "在软件商店-运行环境-打开对应的PHP插件，在禁用函数中添加风险描述中的函数名",
+    "system,exec,passthru,shell_exec,popen,proc_open等函数都属于危险函数，若非业务需要请添加到禁止函数列表中"
     ]
 
 _help = ''
+_remind = '此方案可以加强对网站的防护，降低服务器被入侵的风险。'
 
 def check_run():
     path ="/www/server/php"
@@ -60,7 +61,7 @@ def check_run():
     if result:
         ret=""
         for i in result:
-            ret+="【PHP"+i+"】未禁用的危险函数如下:"+",".join(result[i])+"\n"
+            ret+="【PHP"+i+"】未禁用的危险函数如下: "+",".join(result[i])+"<br/>"
         return False,ret
     else:
         return True, "无风险"

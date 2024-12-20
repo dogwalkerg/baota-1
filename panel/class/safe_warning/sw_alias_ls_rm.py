@@ -15,6 +15,7 @@ _tips = [
     "执行【source ~/.bashrc】使配置生效",
 ]
 _help = ''
+_remind = '此方案可以让ls命令列出更详细的文件信息以及降低rm命令误删文件的风险，但可能会影响原来的操作习惯'
 
 
 def check_run():
@@ -28,15 +29,15 @@ def check_run():
     if not os.path.exists(cfile):
         return True, '无风险'
     conf = public.readFile(cfile)
-    rep1 = 'alias(\s*)ls(\s*)=(\s*)[\'\"]ls(\s*)-.*[alh].*[alh].*[alh]'
-    tmp1 = re.search(rep1, conf)
-    if not tmp1:
-        result_list.append('ls')
+    # rep1 = 'alias(\s*)ls(\s*)=(\s*)[\'\"]ls(\s*)-.*[alh].*[alh].*[alh]'
+    # tmp1 = re.search(rep1, conf)
+    # if not tmp1:
+    #     result_list.append('ls')
     rep2 = 'alias(\s*)rm(\s*)=(\s*)[\'\"]rm(\s*)-.*[i?].*'
     tmp2 = re.search(rep2, conf)
     if not tmp2:
         result_list.append('rm')
-    if result_list:
+    if len(result_list) > 0:
         return False, '{}命令未配置别名或配置不当'.format('、'.join(result_list))
     else:
         return True, '无风险'

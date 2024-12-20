@@ -17,14 +17,17 @@ import os, re, public, panelMysql
 _title = '数据库备份权限检测'
 _version = 1.0  # 版本
 _ps = "检测MySQL root用户是否具备数据库备份权限"  # 描述
-_level = 3  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
+_level = 0  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2020-09-19'  # 最后更新时间
-_ignore = os.path.exists("data/warning/ignore/sw_database_priv.pl")
+_ignore = os.path.exists("data/warning/ignore/sw_mysql_priv.pl")
 _tips = [
-    "临时以无授权方式进入数据库，建议恢复root用户所有权限。",
+    "登录Mysql执行【SHOW GRANTS FOR root;】查看root权限情况",
+    "【GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;】授予root用户所有权限/或是根据需求授予部分权限",
+    "【FLUSH PRIVILEGES;】刷新MySQL用户权限，并再次查看root权限情况"
 ]
 
 _help = ''
+_remind = '此方案保障了root用户备份数据库的权限，确保数据库备份工作的进行。'
 
 
 def check_run():

@@ -110,5 +110,3 @@ if __name__ == "__main__":
         if os.path.exists(tip_file): os.remove(tip_file)
 
 
-
-

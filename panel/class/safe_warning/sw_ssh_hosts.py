@@ -7,7 +7,7 @@ import os,sys,re,public
 _title = 'ssh访问控制列表检查'
 _version = 1.0  # 版本
 _ps = "设置ssh登录白名单"  # 描述
-_level = 1  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
+_level = 0  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2023-03-09'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_ssh_hosts.pl")
 _tips = [
@@ -15,6 +15,7 @@ _tips = [
     "在【/etc/hosts.allow】添加sshd:【来访者IP地址】"
 ]
 _help = ''
+_remind = '此方案会阻挡除白名单以外的其余IP登录服务器，增强服务器的安全防护。注意此方案存在风险，修复之前一定要确保已添加可访问服务器的IP。'
 
 
 def check_run():
@@ -28,4 +29,3 @@ def check_run():
         return True, '无风险'
     else:
         return False, '未设置ssh登录白名单'
-

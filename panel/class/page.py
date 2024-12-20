@@ -8,6 +8,44 @@
 # +-------------------------------------------------------------------
 import math,string,public,re
 
+def page_data(get, data_list, result = '1,2,3,4,5,8'):
+    p = 1
+    if hasattr(get, 'p'):
+        p = int(get.p)
+        if p < 1: p = 1
+    limit = 20
+    if hasattr(get, 'limit'):
+        limit = int(get.limit)
+        if limit < 1: limit = 20
+    count = len(data_list)
+    info = {}
+    info['p'] = p
+    info['count'] = count
+    info['row'] = limit
+
+    try:
+        from flask import request
+        info['uri'] = public.url_encode(request.full_path)
+    except:
+        info['uri'] = ''
+    info['return_js'] = ''
+    if hasattr(get, 'tojs'):
+        if re.match(r"^[\w\.\-]+$", get.tojs):
+            info['return_js'] = get.tojs
+    if hasattr(get, 'result'):
+        # 验证参数格式
+        if re.match(r"^[\d\,]+$", get.result):
+            result = get.result
+
+    # 实例化分页类
+    new_page = Page()
+    # 获取分页数据
+    page = new_page.GetPage(info, result)
+    start_idx = (int(p) - 1) * limit
+    end_idx = p * limit
+    data_list = data_list[start_idx:end_idx]
+    return page, data_list
+
 class Page():
     #--------------------------
     # 分页类 - JS回调版

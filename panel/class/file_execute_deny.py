@@ -125,13 +125,16 @@ class FileExecuteDeny:
             return False
         data = re.findall('BEGIN_DENY_.*',conf)
         exist_deny_name = [i.split('_')[-1] for i in data]
+        res = self.check_contradiction(dir, website)
+        if res:
+            return public.returnMsg(False, res)
         if args.act == 'edit':
             if deny_name not in exist_deny_name:
                 return public.returnMsg(False, '指定的规则名不存在! [ {} ]'.format(deny_name))
             self.del_file_deny(args)
         else:
             if deny_name in exist_deny_name:
-                return public.returnMsg(False,'指定的规则名不存在! [ {} ]'.format(deny_name))
+                return public.returnMsg(False,'指定的规则名已存在! [ {} ]'.format(deny_name))
         self._set_nginx_file_deny(deny_name,dir,suffix)
         self._set_apache_file_deny(deny_name,dir,suffix)
         self._set_ols_file_deny(deny_name,dir,suffix)
@@ -163,9 +166,11 @@ class FileExecuteDeny:
         conf = public.readFile(self.ap_website_conf)
         if not conf:
             return False
+        # 删除
         if not dir and not suffix:
-            reg = '\s*#BEGIN_DENY_{n}\n(.|\n)*#END_DENY_{n}'.format(n=name)
+            reg = '\s*#BEGIN_DENY_{%s}\n(.*\n){3,5}\s*#END_DENY_{%s}'%(name, name)
             conf = re.sub(reg,'',conf)
+        # 更新或设置
         else:
             new = '''
     #BEGIN_DENY_{n}
@@ -228,3 +233,32 @@ class FileExecuteDeny:
         if hasattr(args,'dir'):
             if not args.dir:
                 return public.returnMsg(False, '目录不可为空！')
+
+    def check_contradiction(self, path, site_name):
+        from panelSite import panelSite
+        args = public.dict_obj()
+        args.sitename = site_name
+        proxy_list = panelSite().GetProxyList(args)  # type: list[dict]
+        for proxy in proxy_list:
+            if path.startswith(proxy['proxydir']):
+                return "目录已被【反向代理】至其他站点，无法添加"
+
+        # 加密访问的冲突
+        from site_dir_auth import SiteDirAuth
+        args = public.dict_obj()
+        args.siteName = site_name
+        auth_config = SiteDirAuth().get_dir_auth(args)
+        tmp = []
+        for k, v in auth_config.items():
+            tmp = [k, v]
+        if not tmp:
+            return None
+        else:
+            site_name, auth_conf = tmp[0], tmp[1] 
+        _dir = ""
+        for i in auth_conf:
+            if path.startswith(i['site_dir']):
+                _dir = i['site_dir']
+        if bool(_dir):
+            return "目录【{}】会被【加密访问】中【{}】的加密效果覆盖，请先到【加密访问】删除后再添加。".format(path, _dir)
+        return None

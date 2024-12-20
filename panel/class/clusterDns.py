@@ -8,7 +8,7 @@
 # +-------------------------------------------------------------------
 import public,os,sys,json,time,random
 import requests
-from OpenSSL import crypto
+# from OpenSSL import crypto
 import sys, os
 import time
 import copy
@@ -36,11 +36,11 @@ try:
 except:
     public.ExecShell('pip install requests')
     import requests
-try:
-    import OpenSSL
-except:
-    public.ExecShell('pip install pyopenssl')
-    import OpenSSL
+# try:
+#     import OpenSSL
+# except:
+#     public.ExecShell('pip install pyopenssl')
+#     import OpenSSL
 import random
 import datetime
 import logging

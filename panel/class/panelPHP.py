@@ -551,7 +551,7 @@ class FPM(object):
             'DOCUMENT_ROOT': self.document_root,
             'SERVER_PROTOCOL' : 'HTTP/1.1',
             'REMOTE_ADDR': request.remote_addr.replace('::ffff:',''),
-            'REMOTE_PORT': str(request.environ.get('REMOTE_PORT')),
+            'REMOTE_PORT': str(public.get_remote_port()),
             'SERVER_ADDR': request.headers.get('host'),
             'SERVER_PORT': '80',
             'SERVER_NAME': 'BT-Panel',

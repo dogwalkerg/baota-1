@@ -7,7 +7,7 @@
 # Author: cjxin <cjxin@bt.cn>
 #-------------------------------------------------------------------
 
-# 免费IP库
+# 免费IP库1
 #------------------------------
 import os,re,json,time
 from safeModel.base import safeBase

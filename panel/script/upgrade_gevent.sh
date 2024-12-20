@@ -8,6 +8,7 @@ check_gevent_version(){
 
 check_gevent_version
 if [ "${is_gevent140}" = "" ];then
+    echo > /www/server/panel/data/upgrade_gevent.lock
     exit;
 fi
 
@@ -16,5 +17,6 @@ fi
 check_gevent_version
 if [ "${is_gevent140}" = "" ];then
     rm -f /www/server/panel/script/upgrade_gevent.sh
+    echo > /www/server/panel/data/upgrade_gevent.lock
     bash /www/server/panel/init.sh reload
 fi

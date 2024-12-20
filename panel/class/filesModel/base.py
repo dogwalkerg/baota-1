@@ -70,7 +70,8 @@ class filesBase:
         if 'status' in res and not res['status']:
             return 0
         for key in res:
-            if not res[key].strip(): return 0
+            if not isinstance(res[key], str): continue
+            if not str(res[key]).strip(): return 0
         return 1
 
 

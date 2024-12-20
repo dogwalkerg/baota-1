@@ -9,8 +9,31 @@ export PATH
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 
+if [ -f "/www/server/panel/install/d_node.pl" ];then
+	LOCAL_DATE=$(date +%Y-%m-%d)
+	FILE_DATE=$(stat /www/server/panel/install/d_node.pl|grep Change|awk '{print $2}')
+	if [ "${LOCAL_DATE}" != "${FILE_DATE}" ];then
+		rm -f /www/server/panel/install/d_node.pl
+	else
+		test_url=$(cat /www/server/panel/install/d_node.pl)
+		HTTP_CHECK=$(curl --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${test_url}/net_test|xargs|awk '{print $2}')
+		if [ "${HTTP_CHECK}" == "200" ];then
+			NODE_URL=$test_url
+		fi
+	fi
+fi
+
+NODE_FILE_CHECK=$(cat /www/server/panel/data/node.json |grep 125.88.182.172)
+if [ "${NODE_FILE_CHECK}" ];then
+	rm -f /www/server/panel/data/node.json
+fi
+
 get_node_url(){
-	nodes=(https://dg2.bt.cn https://dg1.bt.cn https://download.bt.cn https://hk1-node.bt.cn https://na1-node.bt.cn https://jp1-node.bt.cn);
+	nodes=(https://dg2.bt.cn https://download.bt.cn https://ctcc1-node.bt.cn https://cmcc1-node.bt.cn https://ctcc2-node.bt.cn https://hk1-node.bt.cn https://na1-node.bt.cn https://jp1-node.bt.cn https://cf1-node.aapanel.com);
+
+	if [ -f "/www/server/panel/data/domestic_ip.pl" ];then
+		nodes=(https://dg2.bt.cn https://download.bt.cn https://ctcc1-node.bt.cn https://cmcc1-node.bt.cn https://ctcc2-node.bt.cn https://hk1-node.bt.cn);
+	fi
 
 	if [ "$1" ];then
 		nodes=($(echo ${nodes[*]}|sed "s#${1}##"))
@@ -24,12 +47,12 @@ get_node_url(){
 	touch $tmp_file2
 	for node in ${nodes[@]};
 	do
-		NODE_CHECK=$(curl -k --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${node}/net_test|xargs)
+		NODE_CHECK=$(curl --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${node}/net_test|xargs)
 		RES=$(echo ${NODE_CHECK}|awk '{print $1}')
 		NODE_STATUS=$(echo ${NODE_CHECK}|awk '{print $2}')
 		TIME_TOTAL=$(echo ${NODE_CHECK}|awk '{print $3 * 1000 - 500 }'|cut -d '.' -f 1)
 		if [ "${NODE_STATUS}" == "200" ];then
-			if [ $TIME_TOTAL -lt 100 ];then
+			if [ $TIME_TOTAL -lt 300 ];then
 				if [ $RES -ge 1500 ];then
 					echo "$RES $node" >> $tmp_file1
 				fi
@@ -40,11 +63,11 @@ get_node_url(){
 			fi
 
 			i=$(($i+1))
-			if [ $TIME_TOTAL -lt 100 ];then
-				if [ $RES -ge 3000 ];then
+			if [ $TIME_TOTAL -lt 300 ];then
+				if [ $RES -ge 2390 ];then
 					break;
 				fi
-			fi
+			fi	
 		fi
 	done
 
@@ -81,7 +104,7 @@ GetPackManager(){
 	if [ -f "/usr/bin/yum" ] && [ -f "/etc/yum.conf" ]; then
 		PM="yum"
 	elif [ -f "/usr/bin/apt-get" ] && [ -f "/usr/bin/dpkg" ]; then
-		PM="apt-get"
+		PM="apt-get"		
 	fi
 }
 
@@ -93,7 +116,7 @@ bt_check(){
 			send_check
 		fi
 	fi
-
+	
 	p_path=/www/server/panel/BTPanel/templates/default/index.html
 	if [ -f $p_path ];then
 		is_ext=$(cat $p_path|grep fbi)
@@ -108,7 +131,7 @@ send_check(){
 	chmod +x /etc/init.d/bt
 	p_path2=/www/server/panel/class/common.py
 	p_version=$(cat $p_path2|grep "version = "|awk '{print $3}'|tr -cd [0-9.])
-	curl -k -sS --connect-timeout 3 -m 60 https://www.bt.cn/api/panel/notpro?version=$p_version
+	curl -sS --connect-timeout 3 -m 60 https://www.bt.cn/api/panel/notpro?version=$p_version
 	NODE_URL=""
 	exit 0;
 }
@@ -141,9 +164,9 @@ if [ -d "/www/server/phpmyadmin/pma" ];then
 	rm -rf /www/server/phpmyadmin/pma
 	EN_CHECK=$(cat /www/server/panel/config/config.json |grep English)
 	if [ "${EN_CHECK}" ];then
-		curl -k https://download.bt.cn/install/update6_en.sh|bash
+		curl https://download.bt.cn/install/update6_en.sh|bash
 	else
-		curl -k https://download.bt.cn/install/update6.sh|bash
+		curl https://download.bt.cn/install/update6.sh|bash
 	fi
 	echo > /www/server/panel/data/restart.pl
 fi

@@ -6,10 +6,7 @@
 # +-------------------------------------------------------------------
 # | Author: 沐落 <cjx@bt.cn>
 # | Author: lx
-# | 消息通道邮箱模块
-# | 常用功能
-#   字体加粗  **bold**  ，[这是一个链接](http://bt.cn)，代码段：`code`
-#   支持3种字体颜色 <font color="info">绿色</font> <font color="comment">灰色</font> <font color="warning">橙红色</font>
+# | 消息通道企业微信模块
 # +-------------------------------------------------------------------
 
 import os, sys, public, json, requests,re

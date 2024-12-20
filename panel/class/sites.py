@@ -131,10 +131,10 @@ server
         for domain in domains:
             tmp = domain.split(':')
             if len(tmp) == 1: tmp.append('80')
-            pid = sql.table('domain').where('name=? and port=?',(tmp[0],tmp[1])).getField('pid')
+            pid = public.M('domain').where('name=? and port=?',(tmp[0],tmp[1])).getField('pid')
             if pid:
-                if not sql.table('sites').where('id=?',(pid,)).count():
-                    sql.table('domain').where('pid=?',(pid,)).delete()
+                if not public.M('sites').where('id=?',(pid,)).count():
+                    public.M('domain').where('pid=?',(pid,)).delete()
                 else:
                     return domain
         return False

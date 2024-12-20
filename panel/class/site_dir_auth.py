@@ -49,8 +49,10 @@ class SiteDirAuth:
         webserver = public.get_webserver()
         conf_file = "{setup_path}/panel/vhost/{webserver}/{site_name}.conf".format(
             setup_path=self.setup_path, site_name=site_name, webserver=webserver)
-        if "Authorization" in public.readFile(conf_file):
+        conf_content = public.readFile(conf_file)
+        if re.search("auth_basic[^\n]+Authorization", conf_content):
             return True
+        return False
 
     # 设置目录加密
     def set_dir_auth(self, get):
@@ -81,14 +83,16 @@ class SiteDirAuth:
         site_info = self.get_site_info(get.id)
         site_name = site_info["site_name"]
         if self._check_site_authorization(site_name):
-            return public.returnMsg(False, '已经设置站点密码保护，请取消后再设置 站点配置 --> 站点目录 --> 密码访问')
-        #检测目录是否已经设置过  hezhihong
-        result=self._check_dir_auth(site_name, name, site_dir)
-        if isinstance(result,list) and result:
-            if '1' in result:
-                return public.returnMsg(False, '目录已经保护！')
-            elif '2' in result:
-                return public.returnMsg(False, '此名称已存在！')
+            return public.returnMsg(False, '已经设置站点密码保护，请取消后再设置 站点配置 --> 访问限制 --> 加密访问')
+        if self._check_dir_auth(site_name, name, site_dir):
+            return public.returnMsg(False, '此名称已经存在！')
+        # 与禁止访问做冲突建检查
+        if not getattr(get, "force", False):
+            flag, c_msg = self.check_contradiction(get.site_dir, site_name)
+            if flag is None:
+                return {'status': False, "tip": c_msg}
+            if flag is False:
+                return public.returnMsg(False, c_msg)
         auth = "{user}:{passwd}".format(user=username, passwd=passwd)
         auth_file = '{setup_path}/pass/{site_name}'.format(setup_path=self.setup_path, site_name=site_name)
         if not os.path.exists(auth_file):
@@ -114,19 +118,13 @@ class SiteDirAuth:
 
     # 检查配置是否存在
     def _check_dir_auth(self, site_name, name, site_dir):
-        """
-        @name 检查配置是否存在
-        @auth hezhihong
-        """
         conf = self._read_conf()
-        result =[]
         if not conf:
             return False
         if site_name in conf:
             for i in conf[site_name]:
-                if site_dir == i["site_dir"]:result.append('1')
-                if name in i.values():result.append('2')
-        return result
+                if name in i.values() or site_dir == i["site_dir"]:
+                    return True
 
     # 获取当前站点php版本
     def get_site_php_version(self, siteName):
@@ -213,37 +211,41 @@ class SiteDirAuth:
 
     # 设置apache配置
     def set_conf(self, site_name, act):
-        for i in ["nginx", "apache"]:
-            dir_auth_file = "%s/panel/vhost/%s/dir_auth/%s/*.conf" % (self.setup_path, i, site_name,)
-            file = self.setup_path + "/panel/vhost/{}/".format(i) + site_name + ".conf"
-            shutil.copyfile(file, '/tmp/{}_file_bk.conf'.format(i))
+        try:
+            for i in ["nginx", "apache"]:
+                dir_auth_file = "%s/panel/vhost/%s/dir_auth/%s/*.conf" % (self.setup_path, i, site_name,)
+                file = self.setup_path + "/panel/vhost/{}/".format(i) + site_name + ".conf"
+                if os.path.exists(file):
+                    shutil.copyfile(file, '/tmp/{}_file_bk.conf'.format(i))
 
-            if os.path.exists(file):
-                conf = public.readFile(file)
-                if i == "apache":
-                    if act == "create":
-                        rep = "IncludeOptional.*\/dir_auth\/.*conf(\n|.)+<\/VirtualHost>"
-                        rep1 = "</VirtualHost>"
-                        if not re.search(rep, conf):
-                            conf = conf.replace(rep1,
-                                                "\n\t#Directory protection rules, do not manually delete\n\tIncludeOptional {}\n</VirtualHost>".format(
-                                                    dir_auth_file))
+                if os.path.exists(file):
+                    conf = public.readFile(file)
+                    if i == "apache":
+                        if act == "create":
+                            rep = "IncludeOptional.*\/dir_auth\/.*conf(\n|.)+<\/VirtualHost>"
+                            rep1 = "</VirtualHost>"
+                            if not re.search(rep, conf):
+                                conf = conf.replace(rep1,
+                                                    "\n\t#Directory protection rules, do not manually delete\n\tIncludeOptional {}\n</VirtualHost>".format(
+                                                        dir_auth_file))
+                        else:
+                            rep = "\n*#Directory protection rules, do not manually delete\n+\s+IncludeOptional[\s\w\/\.\*]+"
+                            conf = re.sub(rep, '', conf)
+                        public.writeFile(file, conf)
                     else:
-                        rep = "\n*#Directory protection rules, do not manually delete\n+\s+IncludeOptional[\s\w\/\.\*]+"
-                        conf = re.sub(rep, '', conf)
-                    public.writeFile(file, conf)
-                else:
-                    if act == "create":
-                        rep = "#SSL-END(\n|.)+include.*\/dir_auth\/.*conf;"
-                        rep1 = "#SSL-END"
-                        if not re.search(rep, conf):
-                            conf = conf.replace(rep1,
-                                                rep1 + "\n\t#Directory protection rules, do not manually delete\n\tinclude {};".format(
-                                                    dir_auth_file))
-                    else:
-                        rep = "\n*#Directory protection rules, do not manually delete\n+\s+include[\s\w\/\.\*]+;"
-                        conf = re.sub(rep, '', conf)
-                    public.writeFile(file, conf)
+                        if act == "create":
+                            rep = "#SSL-END(\n|.)+include.*\/dir_auth\/.*conf;"
+                            rep1 = "#SSL-END"
+                            if not re.search(rep, conf):
+                                conf = conf.replace(rep1,
+                                                    rep1 + "\n\t#Directory protection rules, do not manually delete\n\tinclude {};".format(
+                                                        dir_auth_file))
+                        else:
+                            rep = "\n*#Directory protection rules, do not manually delete\n+\s+include[\s\w\/\.\*]+;"
+                            conf = re.sub(rep, '', conf)
+                        public.writeFile(file, conf)
+        except:
+            pass
 
     # 验证站点配置
     def check_site_conf(self, webserver, site_name, name):
@@ -329,15 +331,18 @@ class SiteDirAuth:
         :param get:
         :return:
         '''
-        if not hasattr(get, 'siteName'):
-            site_info = self.get_site_info(get.id)
-            site_name = site_info["site_name"]
-        else:
-            site_name = get.siteName
-        conf = self._read_conf()
-        if site_name in conf:
-            return {site_name: conf[site_name]}
-        return {}
+        try:
+            if not hasattr(get, 'siteName'):
+                site_info = self.get_site_info(get.id)
+                site_name = site_info["site_name"]
+            else:
+                site_name = get.siteName
+            conf = self._read_conf()
+            if site_name in conf:
+                return {site_name: conf[site_name]}
+            return {}
+        except :
+            return {}
 
     def __check_param(self, get):
         values = {}
@@ -374,3 +379,24 @@ class SiteDirAuth:
             values['name'] = name
 
         return public.returnMsg(True, values)
+
+    def check_contradiction(self, path, site_name ):
+        from panelSite import panelSite
+        args = public.dict_obj()
+        args.sitename = site_name
+        proxy_list = panelSite().GetProxyList(args)  # type: list[dict]
+        for proxy in proxy_list:
+            if path.startswith(proxy['proxydir']):
+                return False, "目录已被【反向代理】至其他站点，无法添加"
+
+        from file_execute_deny import FileExecuteDeny
+        args.website = site_name
+        deny_config = FileExecuteDeny().get_file_deny(args)
+        names = []
+        for i in deny_config:
+            if i["dir"].startswith(path):
+                names.append(i["dir"])
+        if bool(names):
+            names_str = "，".join(names)
+            return None, "目录【{}】将会覆盖【禁止访问】中【{}】的禁止访问效果，使之变为加密访问，是否继续添加？".format(path, names_str)
+        return True, ''

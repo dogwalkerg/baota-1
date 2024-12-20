@@ -1,15 +1,15 @@
-#coding: utf-8
-#-------------------------------------------------------------------
+# coding: utf-8
+# -------------------------------------------------------------------
 # 宝塔Linux面板
-#-------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Copyright (c) 2015-2099 宝塔软件(http://bt.cn) All rights reserved.
-#-------------------------------------------------------------------
+# -------------------------------------------------------------------
 # Author: zouhw <zhw@bt.cn>
-#-------------------------------------------------------------------
+# -------------------------------------------------------------------
 
-#------------------------------
+# ------------------------------
 # Docker模型
-#------------------------------
+# ------------------------------
 
 import db
 import public
@@ -19,7 +19,7 @@ import os
 def check_db():
     db_path = "/www/server/panel/data/docker.db"
     if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
-        execstr = "wget -O {} https://download.bt.cn/install/src/docker.db".format(db_path)
+        execstr = "wget -O {} {}/install/src/docker.db".format(db_path, public.get_url())
         public.ExecShell(execstr)
 
 def sql(table):
@@ -169,3 +169,13 @@ def check_socket(port):
         return True
     else:
         return False
+
+def download_file(url, filename):
+    '''
+    下载方法
+    @param url:
+    @param filename:
+    @return:
+    '''
+    return public.ExecShell(f"wget -O {filename} {url} --no-check-certificate")
+

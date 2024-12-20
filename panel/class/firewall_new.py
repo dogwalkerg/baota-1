@@ -290,10 +290,12 @@ class firewalls:
 
     #设置ping
     def SetPing(self,get):
+        if "status" not in get:
+            return public.returnMsg(False,'请传入status参数')
         if get.status == '1':
-            get.status = '0';
+            get.status = '0'
         else:
-            get.status = '1';
+            get.status = '1'
         filename = '/etc/sysctl.conf'
         conf = public.readFile(filename)
         if conf.find('net.ipv4.icmp_echo') != -1:
@@ -301,7 +303,6 @@ class firewalls:
             conf = re.sub(rep,'net.ipv4.icmp_echo_ignore_all='+get.status,conf)
         else:
             conf += "\nnet.ipv4.icmp_echo_ignore_all="+get.status
-
 
         public.writeFile(filename,conf)
         public.ExecShell('sysctl -p')

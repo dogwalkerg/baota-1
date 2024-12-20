@@ -23,10 +23,11 @@ _level = 2  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2022-08-10'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_cshrc.pl")
 _tips = [
-    "【/etc/csh.cshrc】 文件中所所设置的umask为002,不符合要求，建议设置为027",
-    "操作如下：修改 umask 为027",
+    "【/etc/csh.cshrc】 文件中所设置的umask为002,不符合要求，建议设置为027",
+    "操作如下：打开【/etc/csh.cshrc】文件，修改 umask值为027"
 ]
 _help = ''
+_remind = '此方案可以加强对系统用户权限的防护。'
 
 def check_run():
       # 判断是否存在/etc/profile文件

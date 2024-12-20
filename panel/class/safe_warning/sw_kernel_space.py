@@ -27,6 +27,7 @@ _tips = [
     "操作如下：sysctl -w kernel.randomize_va_space=2",
 ]
 _help = ''
+_remind = '此方案可以降低入侵者利用缓冲区溢出攻击服务器的风险，加强对服务器的防护。'
 
 def check_run():
        try:

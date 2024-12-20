@@ -30,6 +30,7 @@ _tips = [
 ]
 
 _help = ''
+_remind = '此方案可以加强对FTP服务器的防护，防止入侵者通过爆破入侵FTP服务器。'
 
 
 def check_run():
@@ -45,9 +46,24 @@ def check_run():
     ret = ""
     for i in data:
         if i['password'] in pass_list:
-            ret += "FTP：" + i['name'] + "存在弱口密码：" + i['password'] + "\n"
+            ret += "FTP用户：" + i['name'] + "存在弱口密码：" + short_passwd(i['password']) + "<br/>"
     if ret:
         # print(ret)
         return False, ret
     else:
         return True, '无风险'
+
+
+def short_passwd(text):
+    """
+    @name 密码脱敏
+    @author lwh
+    """
+    text_len = len(text)
+    if text_len > 4:
+        return text[:2] + "**" + text[text_len-2:]
+    else:
+        if 1 < text_len <= 4:
+            return text[:1] + "****" + text[text_len-1]
+        else:
+            return "******"

@@ -24,9 +24,10 @@ _date = '2022-08-10'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_bashrc.pl")
 _tips = [
     "【/etc/bashrc】 文件中所所设置的umask为002,不符合要求，建议设置为027",
-    "操作如下：修改 umask 为027",
+    "操作如下：打开【/etc/bashrc】文件，修改 umask值 为027"
 ]
 _help = ''
+_remind = '此方案可以加强对系统用户权限的保护，但是可能会影响原有的操作习惯。'
 
 def check_run():
       # 判断是否存在/etc/profile文件

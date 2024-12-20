@@ -12,6 +12,7 @@ _tips = [
     "在【/www/server/pure-ftpd/etc/pure-ftpd.conf】在配置文件中修改Umask的值为177:077",
 ]
 _help = ''
+_remind = '此方案可以增强对FTP服务器的防护，降低服务器被入侵的风险。'
 
 
 def check_run():

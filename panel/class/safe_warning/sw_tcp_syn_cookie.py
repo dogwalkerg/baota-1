@@ -15,6 +15,7 @@ _tips = [
     "然后执行命令sysctl -p生效配置",
 ]
 _help = ''
+_remind = '此方案可以缓解网络洪水攻击，增强服务器运行的稳定性。'
 
 
 def check_run():

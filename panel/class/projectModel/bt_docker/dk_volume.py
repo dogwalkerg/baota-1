@@ -22,12 +22,23 @@ class main:
         import projectModel.bt_docker.dk_public as dp
         return dp.docker_client(url)
 
-
-    def get_volume_container_name(self,volume_detail):
+    def get_container_list(self):
+        '''
+        获取容器详情生成列表
+        @return: list
+        '''
         containers = self.docker_client(self.__docker_url).containers
         c_list = containers.list(all=True)
         # 获取容器详情生成列表
-        container_list = [container_info.attrs for container_info in c_list]
+        return [container_info.attrs for container_info in c_list]
+
+    def get_volume_container_name(self, volume_detail, container_list):
+        '''
+        拼接对应的容器名与卷名
+        @param volume_detail: 卷字典
+        @param container_list: 容器详情列表
+        @return:
+        '''
         for container in container_list:
             if not container['Mounts']:
                 continue
@@ -70,8 +81,9 @@ class main:
     def get_volume_attr(self,volumes):
         volume_list = volumes.list()
         data = list()
+        container_list = self.get_container_list()
         for v in volume_list:
-            v = self.get_volume_container_name(v.attrs)
+            v = self.get_volume_container_name(v.attrs, container_list)
             data.append(v)
         return data
 

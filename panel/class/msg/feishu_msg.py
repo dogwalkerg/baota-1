@@ -192,7 +192,6 @@ class feishu_msg:
                     error += 1
                     res[conf[to_key]['title']] = 0
             except:
-                public.print_log(public.get_error_info())
                 error += 1
                 res[conf[to_key]['title']] = 0
 

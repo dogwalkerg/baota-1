@@ -12,7 +12,7 @@
 #------------------------------
 
 import requests,os,re,time
-from BTPanel import request,Response,public,app,get_phpmyadmin_dir,session
+from BTPanel import request,Response,public,app,get_phpmyadmin_dir,session,cache
 from http.cookies import SimpleCookie
 import requests.packages.urllib3.util.connection as urllib3_conn
 import socket
@@ -44,6 +44,9 @@ class HttpProxy:
 
                 if headers[h].find('127.0.0.1') != -1:
                     headers[h] = re.sub(r"https?://127.0.0.1(:\d+)?/",request.url_root,headers[h])
+                # 替换域名和端口 -- 兼容phpmyadmin4.4
+                if h.lower() in ['location']:
+                    headers[h] = re.sub(r'https?://([\w\-]+\.?){1,}(:\d+)?/','/',headers[h])
                 if request.url_root.find('https://') == 0:
                     headers[h] = headers[h].replace('http://','https://')
         return headers
@@ -98,7 +101,9 @@ class HttpProxy:
             @author hwliang<2022-01-19>
             @return str
         '''
-
+        skey = 'set_pma_phpversion'
+        if cache.get(skey): return False
+        cache.set(skey,1,10)
         pma_version = self.get_pma_version()
         if not pma_version: return False
 
@@ -120,8 +125,8 @@ class HttpProxy:
             php_versions = ['72','73','74','80','81']
         else:
             return False
-
         if old_phpversion in php_versions: return True
+        
 
         installed_php_versions = []
         php_install_path = '/www/server/php'
@@ -137,6 +142,16 @@ class HttpProxy:
         import ajax
         args = public.dict_obj()
         args.phpversion = php_version
+
+        enable_file = '{}/nginx/conf/enable-php.conf'.format(public.get_setup_path())
+        if os.path.exists(enable_file):
+            enable_conf = public.ReadFile(enable_file)
+            if len(enable_conf) < 10:
+                src_enable_file = '{}/nginx/conf/enable-php-{}.conf'.format(public.get_setup_path(),php_version)
+                if os.path.exists(src_enable_file):
+                    public.ExecShell('cp -f {} {}'.format(src_enable_file,enable_file))
+                    public.serviceReload()
+                
         ajax.ajax().setPHPMyAdmin(args)
         public.WriteLog('数据库','检测到phpMyAdmin使用的PHP版本不兼容，已自动修改为最佳兼容版本: PHP-' + php_version)
         time.sleep(0.5)
@@ -200,7 +215,9 @@ class HttpProxy:
                         session[s_key].cookies.update({'pma_lang_https':'zh_CN'})
                     else:
                         session[s_key].cookies.update({'pma_lang':'zh_CN'})
-                    self.set_pma_phpversion()
+            
+            if proxy_url.find('phpmyadmin') != -1:
+                self.set_pma_phpversion()
 
             if 'Authorization' in request.headers:
                 session[s_key].headers['Authorization'] = request.headers['Authorization']

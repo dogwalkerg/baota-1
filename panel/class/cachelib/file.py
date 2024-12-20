@@ -98,7 +98,7 @@ class FileSystemCache(BaseCache):
 
                 if remove:
                     os.remove(fname)
-            except (IOError, OSError):
+            except Exception:
                 pass
         self._update_count(value=len(self._list_dir()))
 
@@ -106,7 +106,7 @@ class FileSystemCache(BaseCache):
         for fname in self._list_dir():
             try:
                 os.remove(fname)
-            except (IOError, OSError):
+            except Exception:
                 self._update_count(value=len(self._list_dir()))
                 return False
         self._update_count(value=0)
@@ -121,6 +121,8 @@ class FileSystemCache(BaseCache):
     def get(self, key):
         filename = self._get_filename(key)
         try:
+            if not os.path.exists(filename):
+                return None
             with open(filename, 'rb') as f:
                 pickle_time = pickle.load(f)
                 if pickle_time == 0 or pickle_time >= time():
@@ -128,7 +130,9 @@ class FileSystemCache(BaseCache):
                 else:
                     os.remove(filename)
                     return None
-        except (IOError, OSError, pickle.PickleError):
+        except Exception:
+            if os.path.exists(filename):
+                os.remove(filename)
             return None
 
     def add(self, key, value, timeout=None):
@@ -157,7 +161,7 @@ class FileSystemCache(BaseCache):
 
             os.rename(tmp, filename)
             os.chmod(filename, self._mode)
-        except (IOError, OSError):
+        except Exception:
             return False
         else:
             # Management elements should not count towards threshold
@@ -168,7 +172,7 @@ class FileSystemCache(BaseCache):
     def delete(self, key, mgmt_element=False):
         try:
             os.remove(self._get_filename(key))
-        except (IOError, OSError):
+        except Exception:
             return False
         else:
             # Management elements should not count towards threshold
@@ -179,6 +183,8 @@ class FileSystemCache(BaseCache):
     def has(self, key):
         filename = self._get_filename(key)
         try:
+            if not os.path.exists(filename):
+                return False
             with open(filename, 'rb') as f:
                 pickle_time = pickle.load(f)
                 if pickle_time == 0 or pickle_time >= time():
@@ -186,5 +192,15 @@ class FileSystemCache(BaseCache):
                 else:
                     os.remove(filename)
                     return False
-        except (IOError, OSError, pickle.PickleError):
+        except Exception:
             return False
+        
+    def get_expire_time(self, key):
+        filename = self._get_filename(key)
+        try:
+            if not os.path.exists(filename):
+                return None
+            with open(filename, 'rb') as f:
+                return pickle.load(f)
+        except Exception:
+            return None

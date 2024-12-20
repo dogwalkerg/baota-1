@@ -19,7 +19,7 @@ import os, sys, re, public
 _title = '检查SSH密码失效时间'
 _version = 1.0  # 版本
 _ps = "检查SSH密码失效时间"  # 描述
-_level = 2  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
+_level = 0  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2022-08-10'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_ssh_passmax.pl")
 _tips = [
@@ -27,6 +27,7 @@ _tips = [
     "PASS_MAX_DAYS 90   需同时执行命令设置root密码到期时间   命令如下:  chage --maxdays 90 root",
 ]
 _help = ''
+_remind = '此方案通过设置root登录密码的有效期，降低被爆破的风险。注意修复方案会使root密码到期后失效，需要在到期之前修改密码，若修改不及时可能会影响部分业务运行。'
 
 
 def check_run():

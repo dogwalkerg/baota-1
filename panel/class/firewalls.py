@@ -147,9 +147,10 @@ class firewalls:
     def DelDropAddress(self,get):
         if not self.CheckFirewallStatus(): return public.returnMsg(False,'当前系统防火墙未开启')
         address = get.port
+        
         id = get.id
         ip_format = get.port.split('/')[0]
-
+        if not public.check_ip(ip_format): return public.returnMsg(False,'FIREWALL_IP_FORMAT')
         if self.__isUfw:
             public.ExecShell('ufw delete deny from ' + address + ' to any')
         else:
@@ -229,7 +230,10 @@ class firewalls:
         if not self.CheckFirewallStatus(): return public.returnMsg(False,'当前系统防火墙未开启')
         port = get.port
         id = get.id
-
+        port2 = port.replace('-',':')
+        rep = r"^\d{1,5}(:\d{1,5})?$"
+        if not re.search(rep,port2):
+            return public.returnMsg(False,'PORT_CHECK_RANGE')
         if public.is_ipv6(port): return self.DelDropAddress(get) # 如果是ipv6地址，则调用DelDropAddress
 
         try:
@@ -284,24 +288,25 @@ class firewalls:
 
 
     #设置ping
-    def SetPing(self,get):
-
+    def SetPing(self, get):
+        if "status" not in get:
+            return public.returnMsg(False,'请传入status参数')
         if get.status == '1':
             get.status = '0'
         else:
             get.status = '1'
         filename = '/etc/sysctl.conf'
         conf = public.readFile(filename)
+        if not conf: return public.returnMsg(False, '/etc/sysctl.conf文件读取失败,无法设置禁ping!')
         if conf.find('net.ipv4.icmp_echo') != -1:
             rep = r"net\.ipv4\.icmp_echo.*"
-            conf = re.sub(rep,'net.ipv4.icmp_echo_ignore_all='+get.status,conf)
+            conf = re.sub(rep, 'net.ipv4.icmp_echo_ignore_all=' + get.status + "\n", conf)
         else:
-            conf += "\nnet.ipv4.icmp_echo_ignore_all="+get.status
+            conf += "\nnet.ipv4.icmp_echo_ignore_all=" + get.status + "\n"
 
-
-        if public.writeFile(filename,conf):
+        if public.writeFile(filename, conf):
             public.ExecShell('sysctl -p')
-            return public.returnMsg(True,'SUCCESS')
+            return public.returnMsg(True, 'SUCCESS')
         else:
             return public.returnMsg(False,'<a style="color:red;">错误：设置失败，sysctl.conf不可写!</a><br>1、如果安装了[宝塔系统加固]，请先关闭<br>2、如果安装了云锁，请关闭[系统加固]功能<br>3、如果安装了安全狗，请关闭[系统防护]功能<br>4、如果使用了其它安全软件，请先卸载<br>')
 
@@ -315,6 +320,7 @@ class firewalls:
         if port in ports: return public.returnMsg(False,'请不要使用常用程序的默认端口!')
         file = '/etc/ssh/sshd_config'
         conf = public.readFile(file)
+        if not conf: return public.returnMsg(False, 'SSH配置文件异常，请手动重新安装SSH服务后再试!')
 
         rep = r"#*Port\s+([0-9]+)\s*\n"
         conf = re.sub(rep, "Port "+port+"\n", conf)

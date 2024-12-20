@@ -204,16 +204,30 @@ class panelMessage:
             if not os.path.exists('class/msg'): os.makedirs('class/msg')
             panelPath = "/www/server/panel"
 
-            sfile = 'class/msg/{}_msg.py'.format(module)
-            if not os.path.exists(sfile): return False
             sys.path.insert(0, "{}/class/msg".format(panelPath))
 
-            msg_main = __import__('{}_msg'.format(module))
+            if module in ("dingding", "feishu", "mail", "sms", "weixin", "wx_account"):
+                sfile = 'class/msg/{}_msg.py'.format(module)
+                if not os.path.exists(sfile):
+                    return False
+                msg_main = __import__('{}_msg'.format(module))
+                is_hook = False
+            else:
+                sfile = 'class/msg/web_hook_msg.py'
+                if not os.path.exists(sfile):
+                    return False
+                msg_main = __import__('web_hook_msg')
+                is_hook = True
             try:
                 public.reload_mod(msg_main)
             except:
                 pass
-            return eval('msg_main.{}_msg()'.format(module));
+            if is_hook:
+                if module == "web_hook":
+                    module = None
+                msg_cls_obj = getattr(msg_main, "web_hook_msg")(module)
+                return msg_cls_obj
+            return eval('msg_main.{}_msg()'.format(module))
         except:
             return None
 

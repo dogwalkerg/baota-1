@@ -10,9 +10,15 @@ install_python() {
   wget -O /tmp/Python-${pyversion}.tar.xz ${download_Url}/src/Python-${pyversion}.tar.xz
   cd /tmp/ && xz -d /tmp/Python-${pyversion}.tar.xz && tar -xvf /tmp/Python-${pyversion}.tar && cd /tmp/Python-${pyversion}
   if [ ${pyversion:2:2} -ge 10 ]; then
-    Install_Openssl111
+    openssl111check=$(openssl version | grep 1.1.1)
+    if [ -z "${openssl111check}" ]; then
+      Install_Openssl111
+      WITH_SSL="--with-openssl=/usr/local/openssl111"
+    else
+      WITH_SSL=""
+    fi
     cd /tmp/Python-${pyversion}
-    ./configure --prefix=${py_path}/${pyversion} --with-openssl=/usr/local/openssl111 -with-openssl-rpath=auto
+    ./configure --prefix=${py_path}/${pyversion} ${WITH_SSL} -with-openssl-rpath=auto
     make && make install
     rm -rf /tmp/Python-*
   else
@@ -27,7 +33,7 @@ Install_Openssl111() {
   if [ -z "${opensslCheck}" ]; then
     opensslVersion="1.1.1o"
     cd /tmp/
-    wget ${download_Url}/src/openssl-${opensslVersion}.tar.gz 
+    wget ${download_Url}/src/openssl-${opensslVersion}.tar.gz
     tar -zxf openssl-${opensslVersion}.tar.gz
     rm -f openssl-${opensslVersion}.tar.gz
     cd openssl-${opensslVersion}
@@ -36,6 +42,7 @@ Install_Openssl111() {
     make install
     echo "/usr/local/openssl111/lib" >>/etc/ld.so.conf.d/openssl111.conf
     ldconfig
+    ldconfig /lib64
     cd ..
     rm -rf openssl-${opensslVersion}
   fi

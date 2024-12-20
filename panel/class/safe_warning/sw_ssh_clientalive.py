@@ -26,7 +26,7 @@ _tips = [
     ]
 
 _help = ''
-
+_remind = '此方案可以增强SSH服务的安全性，修复后连接SSH长时间无操作会自动退出，防止被他人利用。'
 
 
 def check_run():

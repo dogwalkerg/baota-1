@@ -10,8 +10,11 @@
 # |   宝塔内置消息通道
 # +--------------------------------------------------------------------
 import os, sys, public, json, re
-import smtplib, requests
-# import http_requests as requests
+import smtplib
+try:
+    import requests
+except:
+    pass
 from email.mime.text import MIMEText
 from email.utils import formataddr
 

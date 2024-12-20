@@ -19,13 +19,13 @@ class SkPort(threading.Thread):
             tmp = {}
             tmp['port'] = self.port
             tmp['process'] = public.ExecShell("lsof -i :"+str(self.port)+"|grep -v COMMAND|awk '{print $1}'")[0].split('\n')[0].strip();
-            ports.append(tmp);
-        except Exception,e:
+            ports.append(tmp)
+        except Exception as e:
             #print e
             pass
         sk.close()
 def main():
-    ip = '127.0.0.1';
+    ip = '127.0.0.1'
     sport = 1
     eport = 65535
     for port in range(sport,eport+1):
@@ -34,7 +34,7 @@ def main():
         t.start()
 
 
-    print str(ports)
+    print(str(ports))
 
 if __name__ == '__main__':
     main()

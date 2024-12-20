@@ -2,6 +2,7 @@
 import sys,os,time
 os.chdir('/www/server/panel/')
 sys.path.insert(0,"class/")
+sys.path.insert(0,"/www/server/panel/")
 import public
 import http_requests
 http_requests.DEFAULT_TYPE = 'src'
@@ -12,6 +13,11 @@ try:
     import threading
     push = panelPush.panelPush()
     push.start()
+
+    from mod.base.push_mod import PushSystem
+
+    PushSystem().run()
+
     # os.system("echo yes,{} > /tmp/push.pl".format(time.time()))
 except Exception as e:
     pass

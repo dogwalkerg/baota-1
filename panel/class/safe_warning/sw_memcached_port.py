@@ -21,10 +21,12 @@ _level = 2                                  # 风险级别： 1.提示(低)  2.�
 _date = '2020-08-04'                        # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_memcached_port.pl")
 _tips = [
+    "修改【/etc/init.d/memcached】文件中的IP值为指定IP",
     "若非必要，请勿将Memcached的bindIP配置为0.0.0.0",
     "若bindIP为0.0.0.0的情况下，请务必通过【系统防火墙】或【安全组】设置访问IP限制"
     ]
 _help = ''
+_remind = '此方案可以减少服务器风险暴露面，加强网站保护。但需要依照业务需求设置可访问IP。'
 
 def check_run():
     '''

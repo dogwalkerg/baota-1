@@ -27,6 +27,7 @@ _tips = [
     "PermitRootLogin no",
 ]
 _help = ''
+_remind = '此方案修复之后，无法使用root用户进行SSH远程登录'
 
 
 

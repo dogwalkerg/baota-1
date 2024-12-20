@@ -26,7 +26,8 @@ class RestrictedUnpickler(pickle.Unpickler):
         return None
 
 def restricted_loads(s):
-    return True#RestrictedUnpickler(io.BytesIO(s)).load()
+    # return RestrictedUnpickler(io.BytesIO(s)).load()
+    return True
 
 
 
@@ -43,8 +44,6 @@ class SimpleCache(BaseCache):
                             specified on :meth:`~BaseCache.set`. A timeout of
                             0 indicates that the cache never expires.
     """
-    __session_key = 'BT_:'
-    __session_basedir = '/www/server/panel/data/session'
 
     def __init__(self, threshold=500, default_timeout=300):
         BaseCache.__init__(self, default_timeout)
@@ -61,7 +60,6 @@ class SimpleCache(BaseCache):
                     toremove.append(key)
             for key in toremove:
                 self._cache.pop(key, None)
-                self.del_session_by_file(key)
 
 
     def _normalize_timeout(self, timeout):
@@ -70,41 +68,6 @@ class SimpleCache(BaseCache):
             timeout = time() + timeout
         return timeout
 
-    def get_session_by_file(self,key):
-        try:
-            if key[:4] == self.__session_key:
-                filename =  '/'.join((self.__session_basedir,self.md5(key)))
-                if not os.path.exists(filename): return None
-
-                with open(filename, 'rb') as fp:
-                    _val = fp.read()
-                    fp.close()
-                    expires = struct.unpack('f',_val[:4])[0]
-                    if expires == 0 or expires > time():
-                        value = _val[4:]
-
-                        self._cache[key] = (expires,value)
-                        return pickle.loads(value)
-        except :pass
-
-    def set_session_by_file(self,key,_val,expires):
-        try:
-            if key[:4] == self.__session_key:
-                if not os.path.exists(self.__session_basedir): os.makedirs(self.__session_basedir,384)
-                expires = struct.pack('f',expires)
-                filename =  '/'.join((self.__session_basedir,self.md5(key)))
-                fp = open(filename, 'wb+')
-                fp.write(expires + _val)
-                fp.close()
-                os.chmod(filename,384)
-        except :pass
-
-    def del_session_by_file(self,key):
-        try:
-            if key[:4] == self.__session_key:
-                filename =  '/'.join((self.__session_basedir,self.md5(key)))
-                if os.path.exists(filename): os.remove(filename)
-        except : pass
 
     def get(self, key):
         if not isinstance(key,str): return None
@@ -113,7 +76,7 @@ class SimpleCache(BaseCache):
             if expires == 0 or expires > time():
                 return pickle.loads(value)
         except (KeyError, pickle.PickleError):
-            return self.get_session_by_file(key)
+            return None
 
     def set(self, key, value, timeout=None):
 
@@ -135,7 +98,6 @@ class SimpleCache(BaseCache):
         # 转换
         _val =  pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
         self._cache[key] = (expires,_val)
-        self.set_session_by_file(key,_val,expires)
         return True
 
     def add(self, key, value, timeout=None):
@@ -157,12 +119,10 @@ class SimpleCache(BaseCache):
         if key in self._cache:
             return False
         self._cache.setdefault(key, item)
-        self.set_session_by_file(key,item[1],expires)
         return True
 
     def delete(self, key):
         result = self._cache.pop(key, None) is not None
-        self.del_session_by_file(key)
         return result
 
     def has(self, key):
@@ -170,7 +130,6 @@ class SimpleCache(BaseCache):
             expires, value = self._cache[key]
             return expires == 0 or expires > time()
         except KeyError:
-            if self.get_session_by_file(key): return True
             return False
 
 
@@ -180,16 +139,4 @@ class SimpleCache(BaseCache):
             return expires
         except KeyError:
             return 0
-
-    def md5(self,strings):
-        """
-        生成MD5
-        @strings 要被处理的字符串
-        return string(32)
-        """
-        import hashlib
-        m = hashlib.md5()
-
-        m.update(strings.encode('utf-8'))
-        return m.hexdigest()
 

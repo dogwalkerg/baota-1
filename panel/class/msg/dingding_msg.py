@@ -6,7 +6,7 @@
 # +-------------------------------------------------------------------
 # | Author: 沐落 <cjx@bt.cn>
 # | Author: lx
-# | 消息通道邮箱模块
+# | 消息通道钉钉模块
 # +-------------------------------------------------------------------
 
 import os, sys, public, base64, json, re,requests
@@ -120,11 +120,20 @@ class dingding_msg:
         @name 处理md格式
         """
         try:
-            title = '宝塔告警通知'
+            
+            title = '宝塔面板告警通知'
+
             if msg.find("####") >= 0:
                 try:
                     title = re.search(r"####(.+)", msg).groups()[0]
-                except:pass
+                    if "面板" not in title:          
+                            title="宝塔面板"+title
+                    if "计划任务执行失败" in title:
+                        title="宝塔面板计划任务备份失败提醒"
+                    info = public.get_push_info(title,['>发送内容：' + msg])
+                    msg = info['msg']
+                except:
+                    pass
             else:
                 info = public.get_push_info('告警方式配置提醒',['>发送内容：' + msg])
                 msg = info['msg']

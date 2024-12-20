@@ -9,11 +9,12 @@ _level = 2  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2023-03-15'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_bootloader_mod.pl")
 _tips = [
-    "对【/boot/grub2/grub.cfg】文件，配置对应权限",
-    "chmod 600 /boot/grub2/grub.cfg、chown root /boot/grub2/grub.cfg"
+    "根据风险描述提示的文件，对grub配置安全的权限",
+    "若是grub2，则：chmod 600 /boot/grub2/grub.cfg、chown root /boot/grub2/grub.cfg",
+    "若是grub，则：chmod 600 /boot/grub/grub.cfg、chown root /boot/grub/grub.cfg"
 ]
 _help = ''
-
+_remind = '此方案可以加强服务器grub界面的防护，进一步阻止外部入侵服务器。'
 
 def check_run():
     dir_list = [

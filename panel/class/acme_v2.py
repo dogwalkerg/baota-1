@@ -5,12 +5,14 @@
 # -------------------------------------------------------------------
 # Copyright (c) 2015-2099 宝塔软件(http://bt.cn) All rights reserved.
 # -------------------------------------------------------------------
-# Author: hwliang <hwl@bt.cn>
+# Author: hwliang <hwl@bt.cn> a
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # ACME v2客户端
 # -------------------------------------------------------------------
+import warnings
+warnings.filterwarnings("ignore", message=r".*doesn't\s+match\s+a\s+supported\s+version", module="requests")
 import re
 import fcntl
 import datetime
@@ -18,26 +20,39 @@ import binascii
 import hashlib
 import base64
 import json
+import shutil
 import time
 import os
 import sys
+import uuid
+
 os.chdir('/www/server/panel')
 if not 'class/' in sys.path:
     sys.path.insert(0,'class/')
 import http_requests as requests
-requests.DEFAULT_TYPE = 'curl'
+# requests.DEFAULT_TYPE = 'curl'
 import public
 
 try:
     import OpenSSL
 except:
-    public.ExecShell("pip install pyopenssl")
+    public.ExecShell("btpip install pyopenssl")
     import OpenSSL
 try:
     import dns.resolver
 except:
-    public.ExecShell("pip install dnspython")
+    public.ExecShell("btpip install dnspython")
     import dns.resolver
+
+import ssl_info
+####
+# auth to 格式说明
+# 旧版 auth to 格式：
+# 文件验证：/www/server/xxxx/xxxx
+# DNS->手动：dns  DNS->api: CloudFlareDns|XXXXXXXX|XXXXXXXXX
+#
+# 新版 auth to 格式：
+# DNS->手动：dns DNS->api: dns#@api
 
 class acme_v2:
     _url = None
@@ -47,11 +62,11 @@ class acme_v2:
     _bits = 2048
     _acme_timeout = 30
     _dns_class = None
-    _user_agent = "BTPanel"
+    _user_agent = "BaoTa/1.0 (+https://www.bt.cn)"
     _replay_nonce = None
     _verify = False
     _digest = "sha256"
-    _max_check_num = 5
+    _max_check_num = 15
     _wait_time = 5
     _mod_index = {True: "Staging", False: "Production"}
     _debug = False
@@ -59,13 +74,121 @@ class acme_v2:
     _dnsapi_file = 'config/dns_api.json'
     _save_path = 'vhost/letsencrypt'
     _conf_file = 'config/letsencrypt.json'
+    _conf_file_v2 = 'config/letsencrypt_v2.json'
+    _request_type = 'curl'
 
     def __init__(self):
+        if not os.path.exists(self._conf_file_v2) and os.path.exists(self._conf_file):
+            shutil.copyfile(self._conf_file, self._conf_file_v2)
         if self._debug:
             self._url = 'https://acme-staging-v02.api.letsencrypt.org/directory'
         else:
             self._url = 'https://acme-v02.api.letsencrypt.org/directory'
         self._config = self.read_config()
+        self._nginx_cache_file_auth = {}
+        self._can_use_lua = None
+        self._well_known_check_cache = {}
+
+    def can_use_lua_module(self):
+        if self._can_use_lua is None:
+            # 查询lua_module 不为空
+            self._can_use_lua = public.ExecShell("nginx -V 2>&1 |grep lua_nginx_module")[0].strip() != ''
+        return self._can_use_lua
+
+    # 返回是否能通过lua 做了文件验证处理， 如果返回True，则表示可以处理了验证文件， 不再走之前的 if 验证方式
+    def can_use_lua_for_site(self, site_name: str, site_type: str):
+        if self._can_use_lua is None:
+            # 查询lua_module 不为空
+            self._can_use_lua = public.ExecShell("nginx -V 2>&1 |grep lua_nginx_module")[0].strip() != ''
+
+        if not self._can_use_lua:
+            return False
+
+        if site_type.lower() in ("php", "proxy"):
+            prefix = ""
+        else:
+            prefix = site_type.lower() + "_"
+
+        ng_file = "{}/nginx/{}{}.conf".format(public.get_vhost_path(), prefix, site_name)
+        ng_data = public.readFile(ng_file)
+        if not ng_data:
+            return False
+
+        rep_well_known = re.compile(
+            r"(#.*\n)?\s*include\s+/www/server/panel/vhost/nginx/well-known/.*\.conf;.*\n(#.*\n)?"
+            r"(.*\n)*?\s*#error_page 404/404\.html;"
+        )   # 匹配一下引入的外部配置文件，同时保证这个配置在SSL配置之前， 这样避免路由匹配问题
+
+        if rep_well_known.search(ng_data):
+            lua_file = "{}/nginx/well-known/{}.conf".format(public.get_vhost_path(), site_name)
+            lua_data = public.readFile(lua_file)
+            if not lua_data or "set_by_lua_block $well_known" not in lua_data:
+                return False
+            else:
+                return True
+        else:
+            return False
+
+    # 返回是否能通过if 判断方式做了文件验证处理， 如果返回True，则表示可以
+    @staticmethod
+    def can_use_if_for_file_check(site_name: str, site_type: str):
+        if site_type.lower() in ("php", "proxy"):
+            prefix = ""
+        else:
+            prefix = site_type.lower() + "_"
+
+        # if 方式的文件验证必须是可重载的情况
+        if public.checkWebConfig() is not True:
+            return False
+
+        ng_file = "{}/nginx/{}{}.conf".format(public.get_vhost_path(), prefix, site_name)
+        ng_data = public.readFile(ng_file)
+        if not ng_data:
+            return False
+
+        rep_well_known = re.compile(
+            r"(#.*\n)?\s*include\s+/www/server/panel/vhost/nginx/well-known/.*\.conf;.*\n(#.*\n)?"
+            r"(.*\n)*?\s*#error_page 404/404\.html;"
+        )   # 匹配一下引入的外部配置文件，同时保证这个配置在SSL配置之前， 这样避免路由匹配问题
+
+        if rep_well_known.search(ng_data):
+            return True
+        else:
+            return False
+
+    # 返回配置文件是否支持使用普通的文件验证
+    @staticmethod
+    def can_use_base_file_check(site_name: str, site_type: str):
+        if site_type.lower() in ("php", "proxy"):
+            prefix = ""
+        else:
+            prefix = site_type.lower() + "_"
+
+        webserver = public.get_webserver()
+        if webserver == "nginx":
+            ng_file = "{}/nginx/{}{}.conf".format(public.get_vhost_path(), prefix, site_name)
+            ng_data = public.readFile(ng_file)
+            if not ng_data:
+                return False
+            rep_well_known = re.compile(r"location\s+([=~^]*\s*)?/?\\?\.well-known/?\s*{")
+            if rep_well_known.search(ng_data):
+                return True
+            else:
+                return False
+        elif webserver == "apache" and prefix:  # PHP 不用检查
+            ap_file = "{}/apache/{}{}.conf".format(public.get_vhost_path(), prefix, site_name)
+            ap_data = public.readFile(ap_file)
+            if not ap_data:
+                return False
+            rep_well_known_list = [
+                re.compile(r"<IfModule\s+alias_module>\s+Alias\s+/\.well-known/\s+\S+\s+</IfModule>"),
+                re.compile(r"\s*ProxyPass\s+/\.well-known/\s+!", re.M),
+            ]
+            for rep_well_known in rep_well_known_list:
+                if rep_well_known.search(ap_data):
+                    return True
+            return False
+        return True
 
     # 取接口目录
     def get_apis(self):
@@ -81,7 +204,7 @@ class acme_v2:
                         return self._apis
 
             # 尝试从云端获取
-            res = requests.get(self._url)
+            res = requests.get(self._url,s_type=self._request_type)
             if not res.status_code in [200, 201]:
                 result = res.json()
                 if "type" in result:
@@ -244,11 +367,19 @@ class acme_v2:
             return domains
         domain_list = []
         for domain in domains:
-            rootDoamin = self.extract_zone(domain)[0]
-            if not rootDoamin in domain_list:
-                domain_list.append(rootDoamin)
-            if not "*." + rootDoamin in domain_list:
-                domain_list.append("*." + rootDoamin)
+            root, zone = self.extract_zone(domain)
+            tmp_list = zone.rsplit(".", 1)
+            if len(tmp_list) == 1:
+                if root not in domain_list:
+                    domain_list.append(root)
+                if not "*." + root in domain_list:
+                    domain_list.append("*." + root)
+            else:
+                new_root = "{}.{}".format(tmp_list[1], root)
+                if new_root not in domain_list:
+                    domain_list.append(new_root)
+                if not "*." + new_root in domain_list:
+                    domain_list.append("*." + new_root)
         return domain_list
 
     # 构造域名列表
@@ -352,7 +483,35 @@ class acme_v2:
             if not os.path.exists(site_run_path): return site_path
             return site_run_path
         else:
-            return False
+            find = public.M('sites').where('id=?',site_id).find()
+            if not find:
+                return False
+            count = public.M('sites').where(
+                'id=? and project_type in (?,?,?,?)',
+                (site_id, 'Java', 'Go', 'Other', "Python")
+            ).count()
+            if count:
+                try:
+                    project_info = json.loads(find['project_config'])
+                    if 'ssl_path' not in project_info:
+                        ssl_path = '/www/wwwroot/java_node_ssl'
+                    else:
+                        ssl_path = project_info['ssl_path']
+                    if not os.path.exists(ssl_path):
+                        os.makedirs(ssl_path)
+                    return ssl_path
+                except:
+                    return False
+            else:
+                import panelSite
+                auth_to = find['path'] + '/' + panelSite.panelSite().GetRunPath(public.to_dict_obj({"id": site_id}))
+                auth_to = auth_to.replace("//", "/")
+                if auth_to[-1] == '/':
+                    auth_to = auth_to[:-1]
+                if not os.path.exists(auth_to):
+                    return False
+                return auth_to
+
 
     def get_site_run_path(self,domains):
         '''
@@ -413,10 +572,12 @@ class acme_v2:
             identifier_auth['type'] = self._config['orders'][index]['auth_type']
 
             # 设置验证信息
-            self.set_auth_info(identifier_auth)
+            self.set_auth_info(identifier_auth, index=index)
             auths.append(identifier_auth)
         self._config['orders'][index]['auths'] = auths
         self.save_config()
+        if not self.check_config(index, "auths", auths):
+            self.save_config()
         return auths
 
     # 更新随机数
@@ -426,7 +587,7 @@ class acme_v2:
             self._replay_nonce = replay_nonce
 
     # 设置验证信息
-    def set_auth_info(self, identifier_auth):
+    def set_auth_info(self, identifier_auth, index=None):
 
         #从云端验证
         if not self.cloud_check_domain(identifier_auth['domain']):
@@ -439,7 +600,7 @@ class acme_v2:
         # 是否文件验证
         if identifier_auth['type'] in ['http', 'tls']:
             self.write_auth_file(
-                identifier_auth['auth_to'], identifier_auth['token'], identifier_auth['acme_keyauthorization'])
+                identifier_auth['auth_to'], identifier_auth['token'], identifier_auth['acme_keyauthorization'], index)
         else:
             # dnsapi验证
             self.create_dns_record(
@@ -448,7 +609,7 @@ class acme_v2:
     #从云端验证域名是否可访问
     def cloud_check_domain(self,domain):
         try:
-            result = requests.post('https://www.bt.cn/api/panel/check_domain',{"domain":domain,"ssl":1}).json()
+            result = requests.post('https://www.bt.cn/api/panel/check_domain',{"domain":domain,"ssl":1},s_type=self._request_type).json()
             return result['status']
         except: return False
 
@@ -467,15 +628,59 @@ class acme_v2:
         if os.path.exists(acme_path):
             public.ExecShell("rm -f {}/*".format(acme_path))
 
+    def change_well_known_mod(self, path_dir: str):
+        path_dir = path_dir.rstrip("/")
+        if not os.path.isdir(path_dir):
+            return False
+        if path_dir in self._well_known_check_cache:
+            return True
+        else:
+            self._well_known_check_cache[path_dir] = True
+        import stat
+
+        try:
+            import pwd
+            uid_data = pwd.getpwnam("www")
+            uid = uid_data.pw_uid
+            gid = uid_data.pw_gid
+        except:
+            return
+
+        # 逐级给最低访问权限
+        while path_dir != "/":
+            path_dir_stat = os.stat(path_dir)
+            if path_dir_stat.st_uid == 0 and uid != 0:
+                old_mod = stat.S_IMODE(path_dir_stat.st_mode)
+                if not old_mod & (1 << 3):
+                    os.chmod(path_dir, old_mod + (1 << 3))  # chmod g+x
+            if path_dir_stat.st_uid == uid:
+                old_mod = stat.S_IMODE(path_dir_stat.st_mode)
+                if not old_mod & (1 << 6):
+                    os.chmod(path_dir, old_mod + (1 << 6))  # chmod u+x
+            elif path_dir_stat.st_gid == gid:
+                old_mod = stat.S_IMODE(path_dir_stat.st_mode)
+                if not old_mod & (1 << 3):
+                    os.chmod(path_dir, old_mod + (1 << 6))  # chmod g+x
+            elif path_dir_stat.st_uid != uid or path_dir_stat.st_gid != gid:
+                old_mod = stat.S_IMODE(path_dir_stat.st_mode)
+                if not old_mod & 1:
+                    os.chmod(path_dir, old_mod+1)   # chmod o+x
+            path_dir = os.path.dirname(path_dir)
 
     # 写验证文件
-    def write_auth_file(self, auth_to, token, acme_keyauthorization):
+    def write_auth_file(self, auth_to, token, acme_keyauthorization, index):
+        if public.get_webserver() == "nginx":
+            # 如果是nginx尝试使用配置文件进行验证
+            self.write_ngin_authx_file(auth_to, token, acme_keyauthorization, index)
+
+        # 尝试写文件进行验证
         try:
             acme_path = '{}/.well-known/acme-challenge'.format(auth_to)
             acme_path = acme_path.replace("//",'/')
             if not os.path.exists(acme_path):
                 os.makedirs(acme_path)
                 public.set_own(acme_path, 'www')
+            self.change_well_known_mod(acme_path)
             wellknown_path = '{}/{}'.format(acme_path, token)
             public.writeFile(wellknown_path, acme_keyauthorization)
             public.set_own(wellknown_path, 'www')
@@ -484,6 +689,7 @@ class acme_v2:
             if not os.path.exists(acme_path):
                 os.makedirs(acme_path)
                 public.set_own(acme_path, 'www')
+            self.change_well_known_mod(acme_path)
             wellknown_path = '{}/{}'.format(acme_path,token)
             public.writeFile(wellknown_path,acme_keyauthorization)
             public.set_own(wellknown_path, 'www')
@@ -493,19 +699,174 @@ class acme_v2:
             print(err)
             raise Exception("写入验证文件失败: {}".format(err))
 
+    def write_ngin_authx_file(self, auth_to, token, acme_keyauthorization, index):
+        site_name, project_type = self.get_site_name_by_domains(self._config["orders"][index]["domains"])
+        if site_name is None:
+            return
+
+        if self.can_use_lua_for_site(site_name, project_type):
+            return
+
+        if project_type.lower() in ("php", "proxy"):
+            nginx_conf_path = "{}/vhost/nginx/{}.conf".format(public.get_panel_path(), site_name)
+        else:
+            nginx_conf_path = "{}/vhost/nginx/{}_{}.conf".format(public.get_panel_path(), project_type.lower(), site_name)
+        nginx_conf = public.readFile(nginx_conf_path)
+        if nginx_conf is False:
+            return
+
+        file_check_config_path = "/www/server/panel/vhost/nginx/well-known/{}.conf".format(site_name)
+        if not os.path.exists("/www/server/panel/vhost/nginx/well-known"):
+            os.makedirs("/www/server/panel/vhost/nginx/well-known", 0o755)
+
+        # 如果主配置中，没有引用则尝试添加，添加失败就跳出
+        if not re.search(r"\s*include\s+/www/server/panel/vhost/nginx/well-known/.*\.conf;", nginx_conf, re.M):
+            ssl_line = re.search(r"(#.*\n\s*)?#error_page 404/404\.html;", nginx_conf)
+            if ssl_line is None:
+                return
+            default_cert_apply_check = (
+                "#CERT-APPLY-CHECK--START\n"
+                "    # 用于SSL证书申请时的文件验证相关配置 -- 请勿删除\n"
+                "    include /www/server/panel/vhost/nginx/well-known/{}.conf;\n"
+                "    #CERT-APPLY-CHECK--END\n    "
+            ).format(site_name)
+            if not os.path.exists(file_check_config_path):
+                public.writeFile(file_check_config_path, "")
+
+            new_conf = nginx_conf.replace(ssl_line.group(), default_cert_apply_check + ssl_line.group(), 1)
+            public.writeFile(nginx_conf_path, new_conf)
+            isError = public.checkWebConfig()
+            if isError is not True:
+                public.writeFile(nginx_conf_path, nginx_conf)
+                return
+
+        # 如果主配置有引用， 不再检测位置关系，因为不能保证用户的自定义配置的优先级， 直接进行文件验证的 lua 方式和 if 方式的尝试
+        if self.can_use_lua_module():
+            self.write_lua_file_for_site(file_check_config_path)
+            return
+
+        # 开始尝试if 验证方式
+        if auth_to not in self._nginx_cache_file_auth:
+            self._nginx_cache_file_auth[auth_to] = []
+
+        self._nginx_cache_file_auth[auth_to].append((token, acme_keyauthorization))
+
+        tmp_data = []
+        for token, acme_key in self._nginx_cache_file_auth[auth_to]:
+            tmp_data.append((
+                'if ($request_uri ~ "^/\.well-known/acme-challenge/{}.*"){{\n'
+                '    return 200 "{}";\n'
+                '}}\n'
+            ).format(token, acme_key))
+
+        public.writeFile(file_check_config_path, "\n".join(tmp_data))
+        isError = public.checkWebConfig()
+        if isError is True:
+            public.serviceReload()
+        else:
+            public.writeFile(file_check_config_path, "")
+
+    @staticmethod
+    def write_lua_file_for_site(file_check_config_path: str):
+        old_data = public.readFile(file_check_config_path)
+        if isinstance(old_data, str) and "set_by_lua_block $well_known" in old_data:
+            return
+
+        lua_file_data = """
+set $well_known '';
+if ( $uri ~ "^/.well-known/" ) {
+  set_by_lua_block $well_known { 
+    -- 获取路径
+    local m,err = ngx.re.match(ngx.var.uri,"/.well-known/(.*)","isjo")
+    -- 如果路径匹配
+    if m then
+      -- 拼接文件路径
+      local filename = ngx.var.document_root .. m[0]
+      -- 判断文件路径中是否合法
+      if not ngx.re.find(m[1],"\\\\./","isjo") then
+        -- 判断文件是否存在
+        local is_exists = io.open(filename, "r")
+        if not is_exists then
+            -- Java项目?
+            filename = "/www/wwwroot/java_node_ssl" ..  m[0]
+        end
+        -- 释放
+        if is_exists then is_exists:close() end
+        -- 读取文件
+        local fp = io.open(filename,'r')
+        if fp then
+          local file_body = fp:read("*a")
+          fp:close()
+          if file_body then
+            ngx.header['content-type'] = 'text/plain'
+            return file_body
+          end
+        end
+      end
+    end
+    return ""
+  }
+}
+
+if ( $well_known != "" ) {
+  return 200 $well_known;
+}
+"""
+        public.writeFile(file_check_config_path, lua_file_data)
+        isError = public.checkWebConfig()
+        if isError is True:
+            public.serviceReload()
+        else:
+            public.writeFile(file_check_config_path, old_data)
+
+    # 解析域名 新的 前端修改完用这个
+    # def create_dns_record(self, auth_to, domain, dns_value):
+    #     # 如果为手动解析
+    #     if auth_to == 'dns':
+    #         return None
+    #
+    #     from panelDnsapi import DnsMager
+    #
+    #     self._dns_class = DnsMager().get_dns_obj_by_domain(domain)
+    #     self._dns_class.create_dns_record(public.de_punycode(domain), dns_value)
+    #     self._dns_domains.append({"domain": domain, "dns_value": dns_value})
+
     # 解析域名
     def create_dns_record(self, auth_to, domain, dns_value):
         # 如果为手动解析
-        if auth_to == 'dns' or auth_to.find('|') == -1:
+        if auth_to == 'dns':
             return None
-        if not self._dns_class:
+
+        if auth_to.find('|') != -1:
             import panelDnsapi
             dns_name, key, secret = self.get_dnsapi(auth_to)
             self._dns_class = getattr(panelDnsapi, dns_name)(key, secret)
-        self._dns_class.create_dns_record(public.de_punycode(domain), dns_value)
+            self._dns_class.create_dns_record(public.de_punycode(domain), dns_value)
+        # else:
+        #     from panelDnsapi import DnsMager
+        #     self._dns_class = DnsMager().get_dns_obj_by_domain(domain)
+        # self._dns_class.create_dns_record(public.de_punycode(domain), dns_value)
+        # self._dns_domains.append({"domain": domain, "dns_value": dns_value})
+        else:
+            from sslModel import dataModel
+            dataModel.main().add_dns_value_by_domain(domain, dns_value, is_let_txt=True)
         self._dns_domains.append({"domain": domain, "dns_value": dns_value})
+        return
 
-    # 解析DNSAPI信息
+    # 解析域名
+    # def create_dns_record(self, auth_to, domain, dns_value):
+    #     # 如果为手动解析
+    #     if auth_to == 'dns' or auth_to.find('|') == -1:
+    #         return None
+    #
+    #     import panelDnsapi
+    #     dns_name, key, secret = self.get_dnsapi(auth_to)
+    #     self._dns_class = getattr(panelDnsapi, dns_name)(key, secret)
+    #     self._dns_class.create_dns_record(public.de_punycode(domain), dns_value)
+    #     self._dns_domains.append({"domain": domain, "dns_value": dns_value})
+    #     return
+
+    # 解析DNSAPI信息  # 不再使用的
     def get_dnsapi(self, auth_to):
         tmp = auth_to.split('|')
         dns_name = tmp[0]
@@ -530,22 +891,32 @@ class acme_v2:
 
     # 删除域名解析
     def remove_dns_record(self):
-        if not self._dns_class:
+        if not self._dns_domains:
             return None
         for dns_info in self._dns_domains:
             try:
-                self._dns_class.delete_dns_record(
-                    public.de_punycode(dns_info['domain']), dns_info['dns_value'])
-            except:
+                if self._dns_class:
+                    self._dns_class.delete_dns_record(
+                        public.de_punycode(dns_info['domain']), dns_info['dns_value'])
+                else:
+                    from sslModel import dataModel
+                    dataModel.main().del_dns_value_by_domain(dns_info['domain'], is_let_txt=True)
+            except Exception as e:
                 pass
+
     # 验证域名
     def auth_domain(self, index):
-        if not index in self._config['orders']:
+        if index not in self._config['orders']:
             raise Exception('指定订单不存在!')
+
+        if "auths" not in self._config['orders'][index]:
+            raise Exception('订单验证信息丢失，请尝试重新申请!')
 
         # 开始验证
         for auth in self._config['orders'][index]['auths']:
             res = self.check_auth_status(auth['url'])  # 检查是否需要验证
+            if res.json()['status'] == 'invalid':
+                raise Exception('域名验证失败，请尝试重新申请!')
             if res.json()['status'] == 'pending':
                 if auth['type'] == 'dns':  # 尝试提前验证dns解析
                     self.check_dns(
@@ -562,6 +933,54 @@ class acme_v2:
                                    'valid', 'invalid'])
             self._config['orders'][index]['status'] = 'valid'
 
+    def auth_domain_api(self, get):
+        """
+        验证单个域名
+        """
+        index = get.index
+        domain = get.domain
+        self.get_apis()
+
+        write_log("|-正在验证域名：{}".format(domain))
+        if index not in self._config['orders']:
+            return public.returnMsg(False, '指定订单不存在!')
+        order = self._config['orders'][index]
+        if "auths" not in order:
+            return public.returnMsg(False, '订单验证信息丢失，请尝试重新申请!')
+
+        for auth in order['auths']:
+            if auth.get("status") == "invalid":
+                return public.returnMsg(False, "域名验证失败，请尝试重新申请！")
+            if domain and auth['domain'] != domain:
+                continue
+            try:
+                res = self.check_auth_status(auth['url'])  # 检查是否需要验证
+                if res.json()['status'] == 'pending':
+                    self.respond_to_challenge(auth)
+                    _return = self.check_auth_status(auth['url'], ['valid', 'invalid']).json()
+                    auth['status'] = _return['status']
+                    return auth
+                auth['status'] = res.json()['status']
+                write_log("|-验证成功!")
+                return auth
+            except StopIteration as e:
+                auth['status'] = 'invalid'
+                ex = str(e)
+                if ex.find(">>>>") != -1:
+                    msg = ex.split(">>>>")
+                    msg[1] = json.loads(msg[1])
+                else:
+                    msg = ex
+                    write_log(public.get_error_info())
+                auth['error'] = msg
+                return public.returnMsg(False, msg)
+            finally:
+                self.save_config()
+                if "pending" not in [i.get("status", "pending") for i in order['auths']]:
+                    return self.apply_dns_auth(get)
+        write_log("|-没有在订单中找到此域名：{}".format(domain))
+        return public.returnMsg(False, "没有在订单中找到此域名：{}".format(domain))
+
     # 检查验证状态
     def check_auth_status(self, url, desired_status=None):
         desired_status = desired_status or ["pending", "valid", "invalid"]
@@ -572,6 +991,9 @@ class acme_v2:
                 time.sleep(self._wait_time)
             check_authorization_status_response = self.acme_request(url, "")
             a_auth = check_authorization_status_response.json()
+            if not isinstance(a_auth, dict):
+                write_log(a_auth)
+                continue
             authorization_status = a_auth["status"]
             number_of_checks += 1
             if authorization_status in desired_status:
@@ -618,6 +1040,8 @@ class acme_v2:
             return "CA服务器连接超时，请稍候重试."
         elif error.find("The domain name belongs") >= 0:
             return "域名不属于此DNS服务商，请确保域名填写正确."
+        elif error.find("domains in the last 168 hours") != -1 and error.find("Error creating new order") != -1:
+            return "签发失败,该域名%s的根域名超出了每周的最大签发次数限制!" % re.findall("hours:\s+(.+?),", error)
         elif error.find('login token ID is invalid') >= 0:
             return 'DNS服务器连接失败，请检查密钥是否正确.'
         elif error.find('Error getting validation data') != -1:
@@ -650,9 +1074,11 @@ class acme_v2:
             return "域名%s当前被要求验证CAA记录，请手动解析CAA记录，或1小时后重新尝试申请!" % re.findall("looking up CAA for (.+)", error)
         elif error.find("Read timed out.") != -1:
             return "验证超时,请检查域名是否正确解析，若已正确解析，可能服务器与Let'sEncrypt连接异常，请稍候再重试!"
+        elif error.find("The ACME server can not issue a certificate for an IP address") != -1:
+            return "不能使用IP地址申请证书!"
         elif error.find('Cannot issue for') != -1:
             return "无法为{}颁发证书，不能直接用域名后缀申请通配符证书!".format(re.findall(r'for\s+"(.+)"',error))
-        elif error.find('too many failed authorizations recently'):
+        elif error.find('too many failed authorizations recently') != -1:
             return '该帐户1小时内失败的订单次数超过5次，请等待1小时再重试!'
         elif error.find("Error creating new order") != -1:
             return "订单创建失败，请稍候重试!"
@@ -664,6 +1090,10 @@ class acme_v2:
             return '服务器DNS故障，无法解析域名，请使用Linux工具箱检查dns配置'
         elif error.find('Too Many Requests') != -1:
             return '该域名请求申请次数过多，请3小时后重试'
+        elif error.find('Only domain names are supported') != -1:
+            return "Let's Encrypt仅支持使用域名申请证书"
+        elif error.find('DNSSEC: DNSKEY Missing') != -1:
+            return "CA无法找到或获取用于验证DNSSEC签名的DNSKEY记录"
         else:
             return error
 
@@ -698,11 +1128,13 @@ class acme_v2:
 
     # 获取证书到期时间
     def get_cert_timeout(self, cret_data):
+
+        info = ssl_info.ssl_info().load_ssl_info_by_data(cret_data)
+        if not info:
+            return int(time.time() + (86400 * 90))
+
         try:
-            x509 = OpenSSL.crypto.load_certificate(
-                OpenSSL.crypto.FILETYPE_PEM, cret_data)
-            cert_timeout = bytes.decode(x509.get_notAfter())[:-1]
-            return int(time.mktime(time.strptime(cert_timeout, '%Y%m%d%H%M%S')))
+            return public.to_date(times=info['notAfter'])
         except:
             return int(time.time() + (86400 * 90))
 
@@ -741,6 +1173,9 @@ class acme_v2:
     # 保存证书到文件
     def save_cert(self, cert, index):
         try:
+            from ssl_manage import SSLManger
+            SSLManger().save_by_data(cert['cert'] + cert['root'], cert['private_key'])
+
             domain_name = self._config['orders'][index]['domains'][0]
             path = self._config['orders'][index]['save_path']
             if not os.path.exists(path):
@@ -754,9 +1189,15 @@ class acme_v2:
             public.writeFile(path + "/cert.csr", cert['cert'])
             public.writeFile(path + "/root_cert.csr", cert['root'])
 
+            self.set_exclude_hash(index, cert['cert'] + cert['root'])
+
             # 转为IIS证书
-            pfx_buffer = self.dump_pkcs12(
-                cert['private_key'], cert['cert'] + cert['root'], cert['root'], domain_name)
+            try:
+                pfx_buffer = self.dump_pkcs12(
+                    cert['private_key'], cert['cert'] + cert['root'], cert['root'], domain_name)
+            except:
+                pfx_buffer = ssl_info.ssl_info().dump_pkcs12_new(
+                    cert['private_key'], cert['cert'] + cert['root'], cert['root'], domain_name)
             public.writeFile(path + "/fullchain.pfx", pfx_buffer, 'wb+')
 
             ps = '''文件说明：
@@ -775,17 +1216,82 @@ fullchain.pem       粘贴到证书输入框
         except:
             write_log(public.get_error_info())
 
+    def set_exclude_hash(self, order, exclude_hash):
+        try:
+            path = '{}/data/exclude_hash.json'.format(public.get_panel_path())
+
+            try:
+                data = json.loads(public.readFile(path))
+            except:
+                data = self.get_exclude_hash(public.to_dict_obj({}))
+            if "exclude_hash_let" not in data:
+                data["exclude_hash_let"] = {}
+            data['exclude_hash_let'].update({order: self._hash(certificate=exclude_hash)})
+            public.writeFile(path, json.dumps(data))
+        except:
+            pass
+
+    def get_exclude_hash(self, get):
+        path = '{}/data/exclude_hash.json'.format(public.get_panel_path())
+
+        import panelSSL
+        exclude_data = panelSSL.panelSSL().get_exclude_hash(get)
+        if exclude_data.get('version_let') == '1':
+            return exclude_data
+        if "exclude_hash_let" not in exclude_data:
+            exclude_data["exclude_hash_let"] = {}
+
+        data = self.read_config()
+        try:
+            self.get_apis()
+        except:
+            return exclude_data
+
+        for order in data.get('orders', {}).values():
+            if order['status'] != "valid" or not order.get("certificate_url"):
+                continue
+            try:
+                res = self.acme_request(
+                    order['certificate_url'], "")
+                if res.status_code not in [200, 201]:
+                    continue
+                pem_certificate = res.content
+                if type(pem_certificate) == bytes:
+                    pem_certificate = pem_certificate.decode('utf-8')
+                cert = self.split_ca_data(pem_certificate)
+                exclude_data["exclude_hash_let"].update({order['index']: self._hash(certificate=cert['cert'] + cert['root'])})
+            except:
+                pass
+        exclude_data['version_let'] = '1'
+        public.writeFile(path, json.dumps(exclude_data))
+        return exclude_data
+
+    def _hash(self, cert_filename: str = None, certificate: str = None, ignore_errors: bool = False):
+        if cert_filename is not None and os.path.isfile(cert_filename):
+            certificate = public.readFile(cert_filename)
+
+        if not isinstance(certificate, str) or not certificate.startswith("-----BEGIN"):
+            if ignore_errors:
+                return None
+            raise ValueError("证书格式错误")
+
+        md5_obj = hashlib.md5()
+        md5_obj.update(certificate.encode("utf-8"))
+        return md5_obj.hexdigest()
+
+
     # 通过域名获取网站名称
     def get_site_name_by_domains(self,domains):
         sql = public.M('domain')
         site_sql = public.M('sites')
-        siteName = None
+        siteName, project_type = None, None
         for domain in domains:
             pid = sql.where('name=?',domain).getField('pid')
             if pid:
-                siteName = site_sql.where('id=?',pid).getField('name')
+                site_data = site_sql.where('id=?', pid).field('name,project_type').find()
+                siteName, project_type = site_data["name"], site_data["project_type"]
                 break
-        return siteName
+        return siteName, project_type
 
     # 替换服务器上的同域名同品牌证书
     def sub_all_cert(self, key_file, pem_file):
@@ -811,7 +1317,7 @@ fullchain.pem       粘贴到证书输入框
                 to_cert_init = self.get_cert_init(to_pem_file)
                 # 判断证书品牌是否一致
                 try:
-                    if to_cert_init['issuer'] != cert_init['issuer'] and to_cert_init['issuer'].find("Let's Encrypt") == -1 and to_cert_init['issuer'] != 'R3':
+                    if to_cert_init['issuer'] != cert_init['issuer'] and to_cert_init['issuer'].find("Let's Encrypt") == -1 and to_cert_init.get('issuer_O', '') != "Let's Encrypt":
                         continue
                 except: continue
                 # 判断目标证书的到期时间是否较早
@@ -845,17 +1351,19 @@ fullchain.pem       粘贴到证书输入框
     def check_order_exists(self, pem_file):
         try:
             cert_init = self.get_cert_init(pem_file)
-            if not cert_init: return None
+            if not cert_init:
+                return None
+            if not (cert_init['issuer'].find("Let's Encrypt") != -1 or cert_init['issuer'] in ('R3', 'R10', 'R11') or cert_init.get('issuer_O', '') == "Let's Encrypt"):
+                return None
             for index in self._config['orders'].keys():
                 if not 'save_path' in self._config['orders'][index]:
                     continue
                 for domain in self._config['orders'][index]['domains']:
                     if domain in cert_init['dns']:
                         return index
-            if cert_init['issuer'].find("Let's Encrypt") != -1 or cert_init['issuer'] == 'R3':
-                return pem_file
+            return pem_file
+        except:
             return None
-        except: return None
 
     # 取证书基本信息API
     def get_cert_init_api(self, args):
@@ -866,53 +1374,15 @@ fullchain.pem       粘贴到证书输入框
         cert_init = self.get_cert_init(args.pem_file)
         if not cert_init:
             return public.returnMsg(False, '证书信息获取失败!')
-        cert_init['dnsapi'] = json.loads(public.readFile(self._dnsapi_file))
+        try:
+            cert_init['dnsapi'] = json.loads(public.readFile(self._dnsapi_file))
+        except:
+            cert_init['dnsapi'] = []
         return cert_init
 
     # 获取指定证书基本信息
     def get_cert_init(self, pem_file):
-        if not os.path.exists(pem_file):
-            return None
-        try:
-            result = {}
-            x509 = OpenSSL.crypto.load_certificate(
-                OpenSSL.crypto.FILETYPE_PEM, public.readFile(pem_file))
-            # 取产品名称
-            issuer = x509.get_issuer()
-            result['issuer'] = ''
-            if hasattr(issuer, 'CN'):
-                result['issuer'] = issuer.CN
-            if not result['issuer']:
-                is_key = [b'0', '0']
-                issue_comp = issuer.get_components()
-                if len(issue_comp) == 1:
-                    is_key = [b'CN', 'CN']
-                for iss in issue_comp:
-                    if iss[0] in is_key:
-                        result['issuer'] = iss[1].decode()
-                        break
-            # 取到期时间
-            result['notAfter'] = self.strf_date(
-                bytes.decode(x509.get_notAfter())[:-1])
-            # 取申请时间
-            result['notBefore'] = self.strf_date(
-                bytes.decode(x509.get_notBefore())[:-1])
-            # 取可选名称
-            result['dns'] = []
-            for i in range(x509.get_extension_count()):
-                s_name = x509.get_extension(i)
-                if s_name.get_short_name() in [b'subjectAltName', 'subjectAltName']:
-                    s_dns = str(s_name).split(',')
-                    for d in s_dns:
-                        result['dns'].append(d.split(':')[1])
-            subject = x509.get_subject().get_components()
-            # 取主要认证名称
-            if len(subject) == 1:
-                result['subject'] = subject[0][1].decode()
-            else:
-                result['subject'] = result['dns'][0]
-            return result
-        except: return None
+        return ssl_info.ssl_info().load_ssl_info(pem_file)
 
     # 转换时间
     def strf_date(self, sdate):
@@ -1006,9 +1476,53 @@ fullchain.pem       粘贴到证书输入框
                 index).encode()
         )
         X509Req.set_pubkey(pk)
-        X509Req.set_version(2)
+        try:
+            X509Req.set_version(2)
+        except ValueError as e:  # pyOpenSSL 新版本需要必须设置版本为0
+            X509Req.set_version(0)
         X509Req.sign(pk, self._digest)
         return OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_ASN1, X509Req)
+
+    def create_csr_new(self, index):
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives import serialization
+        # 如果已经生成了 CSR，直接返回
+        if 'csr' in self._config['orders'][index]:
+            return self._config['orders'][index]['csr']
+
+        # 获取域名和备用域名
+        domain_name, domain_alt_names = self.get_alt_names(index)
+
+        # 生成私钥
+        pk = self.create_certificate_key(index).encode()
+        private_key = serialization.load_pem_private_key(pk, password=None)
+
+        # 构建 CSR
+        csr_builder = x509.CertificateSigningRequestBuilder().subject_name(
+            x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, domain_name),
+            ])
+        )
+
+        # 添加 subjectAltName 扩展
+        if domain_alt_names:
+            alt_names = [x509.DNSName(domain_name)] + [x509.DNSName(alt) for alt in domain_alt_names]
+        else:
+            alt_names = [x509.DNSName(domain_name)]
+
+        csr_builder = csr_builder.add_extension(
+            x509.SubjectAlternativeName(alt_names),
+            critical=False
+        )
+
+        # 签署 CSR
+        csr = csr_builder.sign(private_key, hashes.SHA256())
+
+        # 返回 CSR (ASN1 格式)
+        return csr.public_bytes(serialization.Encoding.DER)
 
     # 构造域名验证头和验证值
     def get_keyauthorization(self, token):
@@ -1070,7 +1584,8 @@ fullchain.pem       粘贴到证书输入框
             self._config['orders'] = {}
         renew = False
         if not index:
-            index = public.md5(json.dumps(order_object['identifiers']))
+            # index = public.md5(json.dumps(order_object['identifiers']))
+            index = public.md5(str(uuid.uuid4()))
         else:
             renew = True
             order_object['certificate_url'] = self._config['orders'][index]['certificate_url']
@@ -1153,7 +1668,7 @@ fullchain.pem       粘贴到证书输入框
         )
         headers.update({"Content-Type": "application/jose+json"})
         response = requests.post(
-            url, data=data.encode("utf8"), timeout=self._acme_timeout, headers=headers, verify=self._verify
+            url, data=data.encode("utf8"), timeout=self._acme_timeout, headers=headers, verify=self._verify,s_type=self._request_type
         )
         # 更新随机数
         self.update_replay_nonce(response)
@@ -1161,9 +1676,20 @@ fullchain.pem       粘贴到证书输入框
 
     # 计算signature
     def sign_message(self, message):
-        pk = OpenSSL.crypto.load_privatekey(
-            OpenSSL.crypto.FILETYPE_PEM, self.get_account_key().encode())
-        return OpenSSL.crypto.sign(pk, message.encode("utf8"), self._digest)
+        try:
+            pk = OpenSSL.crypto.load_privatekey(
+                OpenSSL.crypto.FILETYPE_PEM, self.get_account_key().encode())
+            return OpenSSL.crypto.sign(pk, message.encode("utf8"), self._digest)
+        except:
+            return self.sign_message_new(message)
+
+    def sign_message_new(self, message):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        import ssl_info
+        pk = ssl_info.ssl_info().analysis_private_key(self.get_account_key())
+        return pk.sign(message.encode("utf8"), padding.PKCS1v15(), hashes.SHA256())
 
     # 系列化payload
     def stringfy_items(self, payload):
@@ -1187,7 +1713,8 @@ fullchain.pem       粘贴到证书输入框
                 self._apis['newNonce'],
                 timeout=self._acme_timeout,
                 headers=headers,
-                verify=self._verify
+                verify=self._verify,
+                s_type=self._request_type
             )
             self._replay_nonce = response.headers["Replay-Nonce"]
         return self._replay_nonce
@@ -1264,9 +1791,24 @@ fullchain.pem       粘贴到证书输入框
             OpenSSL.crypto.FILETYPE_PEM, key)
         return private_key
 
+    def create_key_new(self, key_type):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,  # 公共指数
+            key_size=self._bits,  # 密钥大小（2048位）
+        )
+        private_key_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        return private_key_pem.decode()
+
     # 写配置文件
     def save_config(self):
-        fp = open(self._conf_file, 'w+')
+        fp = open(self._conf_file_v2, 'w+')
         fcntl.flock(fp, fcntl.LOCK_EX)  # 加锁
         fp.write(json.dumps(self._config))
         fcntl.flock(fp, fcntl.LOCK_UN)  # 解锁
@@ -1275,16 +1817,16 @@ fullchain.pem       粘贴到证书输入框
 
     # 读配置文件
     def read_config(self):
-        if not os.path.exists(self._conf_file):
+        if not os.path.exists(self._conf_file_v2):
             self._config['orders'] = {}
             self._config['account'] = {}
             self._config['apis'] = {}
             self._config['email'] = public.M('config').where('id=?',(1,)).getField('email')
-            if self._config['email'] in ['287962566@qq.com']:
+            if self._config['email'] in [public.en_hexb('4d6a67334f5459794e545932514846784c6d4e7662513d3d')]:
                 self._config['email'] = None
             self.save_config()
             return self._config
-        tmp_config = public.readFile(self._conf_file)
+        tmp_config = public.readFile(self._conf_file_v2)
         if not tmp_config:
             return self._config
         try:
@@ -1294,8 +1836,28 @@ fullchain.pem       粘贴到证书输入框
             return self._config
         return self._config
 
+    def check_config(self, index, key, value) -> bool:
+        tmp_config = public.readFile(self._conf_file_v2)
+        if not tmp_config:
+            return False
+        try:
+            config_data = json.loads(tmp_config)
+        except:
+            return False
+
+        if index not in config_data.get("orders", {}):
+            return False
+
+        if key not in config_data['orders'][index]:
+            return False
+        if config_data['orders'][index][key] == value:
+            return True
+        else:
+            return False
+
     # 申请证书
     def apply_cert(self, domains, auth_type='dns', auth_to='Dns_com|None|None', **args):
+        index = ''
         write_log("", "wb+")
         try:
             self.get_apis()
@@ -1308,6 +1870,10 @@ fullchain.pem       粘贴到证书输入框
                 write_log("|-正在获取验证信息..")
                 self.get_auths(index)
                 if auth_to == 'dns' and len(self._config['orders'][index]['auths']) > 0:
+                    auth_domains = [i["domain"].replace("*.", "") for i in self._config['orders'][index]['auths']]
+                    if len(auth_domains) != len(set(auth_domains)):
+                        self._config['orders'][index]["error"] = True
+                        self._config['orders'][index]["error_msg"] = "检测到解析记录存在冲突，请分别验证以下域名"
                     return self._config['orders'][index]
             write_log("|-正在验证域名..")
             self.auth_domain(index)
@@ -1329,35 +1895,64 @@ fullchain.pem       粘贴到证书输入框
             else:
                 msg = ex
                 write_log(public.get_error_info())
-            return public.returnMsg(False, msg)
+            _res = {"status": False, "msg": msg, "index": index}
+            return _res
 
     # 申请证书 - api
     def apply_cert_api(self, args):
-        if not 'id' in args: return public.returnMsg(False,'网站id不能为空!')
-        # 是否为指定站点
-        if public.M('sites').where('id=? and project_type=?', (args.id, 'Java')).count() or public.M('sites').where('id=? and project_type=?', (args.id, 'Go')).count() or public.M('sites').where('id=? and project_type=?', (args.id, 'Other')).count():
-                project_info = public.M('sites').where('id=?', (args.id,)).getField('project_config')
-                try:
-                    project_info = json.loads(project_info)
-                    if not 'ssl_path' in project_info:
-                        return public.returnMsg(False, '当前Java项目配置文件存在问题,请重新建立')
-                    if not os.path.exists(project_info['ssl_path']):
-                        os.makedirs(project_info['ssl_path'])
-                    path = project_info['ssl_path']
-                    args.auth_to=path
-                    # check_result = self.check_auth_env(args)
-                    # if check_result: return check_result
+        """
+        @name 申请证书
+        @param domains: list 域名列表
+        @param auth_type: str 认证方式
+        @param auth_to: str 认证路径
+        @param auto_wildcard: str 是否自动组合泛域名
+        """
+        if not 'id' in args:
+            return public.returnMsg(False,'网站id不能为空!')
 
-                    if args.auto_wildcard == '1':
-                        self._auto_wildcard = True
-                    return self.apply_cert(json.loads(args.domains), args.auth_type, args.auth_to)
-                except:
-                    return public.returnMsg(False, '当前Java项目配置文件存在问题,请重新建立')
+        if 'auto_wildcard' in args and args.auto_wildcard == '1':
+            self._auto_wildcard = True
+
+        find = public.M('sites').where('id=?', (args.id,)).find()
+        if not find:
+            return public.returnMsg(False, "网站丢失，无法继续申请证书")
+
+        if args.auth_type in ['http', 'tls']:
+            if find["status"] != "1":
+                return public.returnMsg(False, "当前网站未开启不能使用文件验证")
+            if not self.can_use_base_file_check(find["name"], find["project_type"]):
+                webserver: str = public.get_webserver()
+                msg = "当前项目的服务（{}）配置文件被修改不支持文件验证，请选择其他方式或还原配置文件".format(webserver.title())
+                if webserver != 'nginx':
+                    return public.returnMsg(False, msg)
+                # nginx 检测其他两种方案的可行性
+                if not self.can_use_lua_for_site(find["name"], find["project_type"]) and \
+                        not self.can_use_if_for_file_check(find["name"], find["project_type"]):
+
+                    return public.returnMsg(False, msg)
+
+        # 是否为指定站点
+        count = public.M('sites').where(
+            'id=? and project_type in (?,?,?,?)',
+            (args.id, 'Java', 'Go', 'Other', "Python")
+        ).count()
+        if count:
+            try:
+                project_info = json.loads(find['project_config'])
+                if 'ssl_path' not in project_info:
+                    ssl_path = '/www/wwwroot/java_node_ssl'
+                else:
+                    ssl_path = project_info['ssl_path']
+                if not os.path.exists(ssl_path):
+                    os.makedirs(ssl_path)
+
+                args.auth_to = ssl_path
+            except:
+                return public.returnMsg(False, '当前项目配置文件存在问题,请重新建立')
         else:
             if re.match(r"^\d+$", args.auth_to):
                 import panelSite
-                path = public.M('sites').where('id=?', (args.id,)).getField('path')
-                args.auth_to = path + '/' + panelSite.panelSite().GetRunPath(args)
+                args.auth_to = find['path'] + '/' + panelSite.panelSite().GetRunPath(args)
                 args.auth_to = args.auth_to.replace("//", "/")
                 if args.auth_to[-1] == '/':
                     args.auth_to = args.auth_to[:-1]
@@ -1365,25 +1960,39 @@ fullchain.pem       粘贴到证书输入框
                 if not os.path.exists(args.auth_to):
                     return public.returnMsg(False, '无效的站点目录，请检查指定站点是否存在!')
 
+            #检查认证环境
             check_result = self.check_auth_env(args)
-            if check_result: return check_result
+            if check_result:
+                return check_result
 
-            if args.auto_wildcard == '1':
-                self._auto_wildcard = True
-            return self.apply_cert(json.loads(args.domains), args.auth_type, args.auth_to)
+        return self.apply_cert(json.loads(args.domains), args.auth_type, args.auth_to)
 
-    #检查认证环境
+    # 检查认证环境
     def check_auth_env(self,args):
         for domain in json.loads(args.domains):
             if public.checkIp(domain): continue
             if domain.find('*.') != -1 and args.auth_type in ['http','tls']:
                 return public.returnMsg(False, '泛域名不能使用【文件验证】的方式申请证书!')
+
+        data = public.M('sites').where('id=?', (args.id,)).find()
+        if not data:
+            return public.returnMsg(False, "网站丢失，无法继续申请证书")
+        else:
+            args.siteName = data['name']
+            site_type = data["project_type"]
+
+        use_nginx_conf_to_auth = False
+        if args.auth_type in ['http', 'tls'] and public.get_webserver() == "nginx":  # nginx 在lua验证和可重启的
+            if self.can_use_lua_for_site(args.siteName, site_type):
+                use_nginx_conf_to_auth = True
+            else:
+                if self.can_use_if_for_file_check(args.siteName, site_type):
+                    use_nginx_conf_to_auth = True
+
         import panelSite
         s = panelSite.panelSite()
-        if args.auth_type in ['http','tls']:
+        if args.auth_type in ['http', 'tls'] and use_nginx_conf_to_auth is False:
             try:
-                if not 'siteName' in args:
-                    args.siteName = public.M('sites').where('id=?',(args.id,)).getField('name')
                 args.sitename = args.siteName
                 data = s.GetRedirectList(args)
                 # 检查重定向是否开启
@@ -1409,13 +2018,12 @@ fullchain.pem       粘贴到证书输入框
                 if not os.path.exists('plugin/dns/dns_main.py'):
                     return public.returnMsg(False, '请先到软件商店安装【云解析】，并完成域名NS绑定.')
 
-
-
-
         return False
 
     # DNS手动验证
     def apply_dns_auth(self, args):
+        if not hasattr(args, "index") or not args.index:
+            return public.returnMsg(False, "参数信息不完整，没有索引参数【index】")
         return self.apply_cert([], auth_type='dns', auth_to='dns', index=args.index)
 
 
@@ -1423,47 +2031,86 @@ fullchain.pem       粘贴到证书输入框
     def set_crond(self):
         try:
             echo = public.md5(public.md5('renew_lets_ssl_bt'))
-            cron_id = public.M('crontab').where('echo=?',(echo,)).getField('id')
+            find = public.M('crontab').where('echo=?',(echo,)).find()
+            cron_id = find['id'] if find else None
 
             import crontab
+            import random
             args_obj = public.dict_obj()
             if not cron_id:
                 cronPath = public.GetConfigValue('setup_path') + '/cron/' + echo
-                shell = '{} -u /www/server/panel/class/acme_v2.py --renew=1'.format(sys.executable)
+                shell = '{} -u /www/server/panel/class/acme_v2.py --renew_v2=1'.format(sys.executable)
                 public.writeFile(cronPath,shell)
-                args_obj.id = public.M('crontab').add('name,type,where1,where_hour,where_minute,echo,addtime,status,save,backupTo,sType,sName,sBody,urladdress',("续签Let's Encrypt证书",'day','','0','10',echo,time.strftime('%Y-%m-%d %X',time.localtime()),0,'','localhost','toShell','',shell,''))
+                
+                # 使用随机时间
+                hour = random.randint(0, 23)
+                minute = random.randint(1, 59)
+                args_obj.id = public.M('crontab').add('name,type,where1,where_hour,where_minute,echo,addtime,status,save,backupTo,sType,sName,sBody,urladdress',("续签Let's Encrypt证书",'day','',hour,minute,echo,time.strftime('%Y-%m-%d %X',time.localtime()),0,'','localhost','toShell','',shell,''))
                 crontab.crontab().set_cron_status(args_obj)
             else:
+                # 检查任务如果是0点10分执行，改为随机时间
+                if find['where_hour'] == 0 and find['where_minute'] == 10:
+                    print('修改任务时间')
+                    # 使用随机时间
+                    hour = random.randint(0, 23)
+                    minute = random.randint(1, 59)
+                    public.M('crontab').where('id=?',(cron_id,)).save('where_hour,where_minute,status',(hour,minute,0))
+
+                    # 停用任务
+                    args_obj.id = cron_id
+                    crontab.crontab().set_cron_status(args_obj)
+
+                    # 启用任务
+                    public.M('crontab').where('id=?',(cron_id,)).setField('status',1)
+                    crontab.crontab().set_cron_status(args_obj)
+
                 cron_path = public.get_cron_path()
                 if os.path.exists(cron_path):
                     cron_s = public.readFile(cron_path)
                     if cron_s.find(echo) == -1:
-                        public.M('crontab').where('echo=?',(echo,)).setField('status',0)
+                        public.M('crontab').where('id=?',(cron_id,)).setField('status',0)
                         args_obj.id = cron_id
                         crontab.crontab().set_cron_status(args_obj)
         except:pass
 
 
     # 获取当前正在使用此证书的网站目录
-    def get_ssl_used_site(self,save_path):
-        pkey_file =  '{}/privkey.pem'.format(save_path)
-        pkey = public.readFile(pkey_file)
-        if not pkey: return False
+    def get_ssl_used_site(self, index):
+        hash_dic = self.get_exclude_hash(public.dict_obj())
+        if not hash_dic: return False
+        ssl_hash = hash_dic.get("exclude_hash_let", {}).get(index, '')
+        if not ssl_hash: return False
+
         cert_paths = 'vhost/cert'
         import panelSite
         args = public.dict_obj()
         args.siteName = ''
         for c_name in os.listdir(cert_paths):
-            skey_file = '{}/{}/privkey.pem'.format(cert_paths,c_name)
-            skey = public.readFile(skey_file)
+            skey_file = '{}/{}/fullchain.pem'.format(cert_paths,c_name)
+            try:
+                skey = self._hash(cert_filename=skey_file)
+            except:
+                continue
             if not skey: continue
-            if skey == pkey:
+            if skey == ssl_hash:
                 args.siteName = c_name
+                site_info = public.M('sites').where('name=?', c_name).find()
+                if not site_info or isinstance(site_info, str):
+                    return False
+                if site_info["project_type"] not in ("PHP", "proxy"):
+                    if not os.path.isdir(site_info["path"]):
+                        return os.path.dirname(site_info["path"])
+                    else:
+                        return site_info["path"]
+
                 run_path = panelSite.panelSite().GetRunPath(args)
-                if not run_path: continue
+                if not run_path:
+                    continue
                 sitePath = public.M('sites').where('name=?',c_name).getField('path')
-                if not sitePath: continue
+                if not sitePath:
+                    continue
                 to_path = "{}/{}".format(sitePath,run_path)
+                to_path = to_path.replace("//", "/")
                 return to_path
         return False
 
@@ -1506,7 +2153,7 @@ fullchain.pem       粘贴到证书输入框
                 end_time = time.mktime(time.strptime(cert_init['notAfter'],'%Y-%m-%d'))
                 if end_time > new_time: continue # 未到期
                 try:
-                    if not cert_init['issuer'] in ['R3',"Let's Encrypt"] and cert_init['issuer'].find("Let's Encrypt") == -1:
+                    if not cert_init['issuer'] in ['R3',"Let's Encrypt"] and cert_init['issuer'].find("Let's Encrypt") == -1 and cert_init.get('issuer_O', "") != "Let's Encrypt":
                         continue # 非同品牌证书
                 except: continue
 
@@ -1566,6 +2213,10 @@ fullchain.pem       粘贴到证书输入框
             if public.M('sites').where('path=?',auth_to).count() == 1:
                 site_id = public.M('sites').where('path=?',auth_to).getField('id')
                 siteName = public.M('sites').where('path=?',auth_to).getField('name')
+                r_status = public.M('sites').where('path=?',auth_to).getField('status')
+                if r_status != '1':
+                    write_log("|- 该证书使用了【文件验证】方式,但网站【{}】未启动，只能跳过续签。".format(siteName))
+                    return public.returnMsg(False, "该证书使用了【文件验证】方式,但网站【{}】未启动，只能跳过续签。".format(siteName))
                 import panelSite
                 siteObj = panelSite.panelSite()
                 args = public.dict_obj()
@@ -1576,7 +2227,14 @@ fullchain.pem       粘贴到证书输入框
                     if os.path.exists(path): auth_to = path.replace('//','/')
 
             else:
-                siteName = self.get_site_name_by_domains(domains)
+                siteName, _ = self.get_site_name_by_domains(domains)
+
+            isError = public.checkWebConfig()
+            if isError is not True and public.get_webserver() == "nginx":
+                write_log("|- 该证书使用了【文件验证】方式,但目前无法重载nginx服务器配置文件，只能跳过续签。")
+                write_log("|- 配置文件报错信息如下：")
+                write_log(isError)
+
         is_rep = self.close_httptohttps(siteName)
         try:
             index = self.create_order(
@@ -1628,7 +2286,7 @@ fullchain.pem       粘贴到证书输入框
 
 
     # 续签证书
-    def renew_cert(self, index):
+    def renew_cert(self, index, cycle=None):
         write_log("", "wb+")
         try:
             order_index = []
@@ -1636,7 +2294,13 @@ fullchain.pem       粘贴到证书输入框
                 if type(index) != str:
                     index = index.index
                 if not index in self._config['orders']:
+                    write_log("|-指定订单号不存在，无法续签!")
                     raise Exception("指定订单号不存在，无法续签!")
+                if cycle:
+                    s_time = time.time() + (int(cycle) * 86400)
+                    if self._config['orders'][index]['cert_timeout'] > s_time:
+                        write_log("|-过期时间大于{}天，跳过续签!".format(cycle))
+                        return
                 order_index.append(index)
             else:
                 s_time = time.time() + (30 * 86400)
@@ -1648,24 +2312,30 @@ fullchain.pem       粘贴到证书输入框
                         self._config['orders'][i]['cert_timeout'] = self._config['orders'][i]['cert']['cert_timeout']
                     if not 'cert_timeout' in self._config['orders'][i]:
                         self._config['orders'][i]['cert_timeout'] = int(time.time())
-                    if self._config['orders'][i]['cert_timeout'] > s_time or self._config['orders'][i]['auth_to'] == 'dns':
+                    if self._config['orders'][i]['cert_timeout'] > s_time:
                         continue
 
-                    #已删除的网站直接跳过续签
-                    if self._config['orders'][i]['auth_to'].find('|') == -1 and self._config['orders'][i]['auth_to'].find('/') != -1:
-                        if not os.path.exists(self._config['orders'][i]['auth_to']):
-                            auth_to = self.get_ssl_used_site(self._config['orders'][i]['save_path'])
-                            if not auth_to: continue
+                    # 已删除的网站直接跳过续签
+                    # is_file_check = (self._config['orders'][i]['auth_to'].find('|') == -1 or
+                    #                  not self._config['orders'][i]['auth_to'].startswith("dns")
+                    #                 ) and self._config['orders'][i]['auth_to'].find('/') != -1
+                    # if is_file_check:
+                        # if not os.path.exists(self._config['orders'][i]['auth_to']):
+                        # ^^^^^^^^^^——————————这个不能判断网站已被删除的情况下，文件夹未删除时的问题
+                    # _auth_to = self.get_ssl_used_site(self._config['orders'][i]['save_path'])
+                    _auth_to = self.get_ssl_used_site(i)
+                    if not _auth_to:
+                        continue
 
-                            # 域名不存在？
-                            for domain in self._config['orders'][i]['domains']:
-                                if domain.find('*') != -1: break
-                                if not public.M('domain').where("name=?",(domain,)).count() and not public.M('binding').where("domain=?",domain).count():
-                                    auth_to = None
-                                    write_log("|-跳过被删除的域名: {}".format(self._config['orders'][i]['domains']))
-                            if not auth_to: continue
-
-                            self._config['orders'][i]['auth_to'] = auth_to
+                    # 域名不存在？
+                    for domain in self._config['orders'][i]['domains']:
+                        if domain.find('*') != -1:
+                            break
+                        if not public.M('domain').where("name=?",(domain,)).count() and not public.M('binding').where("domain=?",domain).count():
+                            _auth_to = None
+                            write_log("|-跳过被删除的域名: {}".format(self._config['orders'][i]['domains']))
+                    if not _auth_to: continue
+                    self._config['orders'][i]['auth_to'] = _auth_to
 
                     # 是否到了允许重试的时间
                     if 'next_retry_time' in self._config['orders'][i]:
@@ -1694,9 +2364,19 @@ fullchain.pem       粘贴到证书输入框
             cert = None
             for index in order_index:
                 n += 1
-                write_log("|-正在续签第 {} 张，域名: {}..".format(n,self._config['orders'][index]['domains']))
-                write_log("|-正在创建订单..")
-                cert = self.renew_cert_to(self._config['orders'][index]['domains'],self._config['orders'][index]['auth_type'],self._config['orders'][index]['auth_to'],index)
+                domains = _test_domains(self._config['orders'][index]['domains'], self._config['orders'][index]['auth_to'],self._config['orders'][index]['auth_type'])
+                if len(domains) == 0:
+                    write_log("|-第 {} 张证书下的域名全部未使用(这些域名是:[{}])，已跳过。".format(n, ",".join(self._config['orders'][index]['domains'])))
+                    err_msg = "域名全部未使用，已跳过。"
+                    continue
+                else:
+                    self._config['orders'][index]['domains'] = domains
+                    write_log("|-正在续签第 {} 张，域名: {}..".format(n,self._config['orders'][index]['domains']))
+                    write_log("|-正在创建订单..")
+                    cert = self.renew_cert_to(self._config['orders'][index]['domains'],self._config['orders'][index]['auth_type'],self._config['orders'][index]['auth_to'],index)
+                    err_msg = "续签失败!"
+            if not cert:
+                return public.returnMsg(False, err_msg)
             return cert
 
         except Exception as ex:
@@ -1710,12 +2390,387 @@ fullchain.pem       粘贴到证书输入框
                 write_log(public.get_error_info())
             return public.returnMsg(False, msg)
 
+    def renew_cert_v2(self, index, cycle=30):
+        if not cycle:
+            cycle = 30
+        cycle = int(cycle)
+        if index:
+            hash_list = [index]
+        else:
+            # 获取所有网站证书
+            from sslModel import certModel
+            certModel = certModel.main()
+            use_cert_list = certModel.get_cert_to_site(True)
+            hash_list = use_cert_list.keys()
+        s = 0
+        from sslModel import base
+        dns_data = base.sslBase().get_dns_data(None)
+        for ssl_hash in hash_list:
+            s += 1
+            write_log("|-正在续签第 {} 张证书，共 {} 张..".format(s, len(hash_list)))
+            cert_data = public.M('ssl_info').where('hash=?', ssl_hash).find()
+            if not cert_data:
+                write_log("|-【{}】没有找到指定证书信息，无法续签!".format(ssl_hash))
+                continue
+            # 借用ps字段，记录证书续签状态
+            if cert_data['ps'] == "renewed":
+                write_log("|-【{}】证书已续签，无需续签!".format(ssl_hash))
+                continue
+            try:
+                cert_info = json.loads(cert_data['info'])
+            except:
+                write_log(public.get_error_info())
+                write_log("|-【{}】证书信息格式错误，无法续签，请尝试手动续签!".format(ssl_hash))
+                continue
+            if cert_info.get('issuer') not in ("R3", "R8", "R11", "R10", "R5") and cert_info.get('issuer_O') != "Let's Encrypt":
+                write_log("|-【{}】不是Let's Encrypt证书，无法续签!".format(ssl_hash))
+                continue
+            # 计算 30 天后的日期
+            future_date = (datetime.datetime.now().date() + datetime.timedelta(days=cycle)).strftime('%Y-%m-%d')
+            if future_date < cert_info['notAfter']:
+                write_log("|-【{}】到期时间大于{}天，无需续签!".format(ssl_hash, cycle))
+                continue
+            # 判断是否有泛域名
+            wildcard = False
+            if "*" in ",".join(cert_info['dns']):
+                write_log("|-【{}】存在泛域名，只能用dns验证方式续签!".format(ssl_hash))
+                wildcard = True
+            # 判断是否绑定了dns-api
+            auth_domains = []
+            for i in cert_info['dns']:
+                root_domain, _, _ = base.sslBase().extract_zone(i)
+                root_domain_info = public.M('ssl_domains').where("domain=?", root_domain).find()
+                if not root_domain_info or root_domain_info.get("dns_id") not in dns_data.keys():
+                    write_log("|-根域名【{}】未绑定dns-api，跳过域名: {}!".format(root_domain, i))
+                    continue
+                auth_domains.append(i)
+            if not auth_domains:
+                write_log("|-【{}】域名全部未绑定dns-api，无法使用dns验证续签!".format(ssl_hash))
+                dns_auth = False
+                if wildcard:
+                    continue
+            else:
+                dns_auth = True
+            if set(auth_domains) == set(cert_info['dns']):
+                write_log("|-【{}】全部域名已绑定dns-api，正在尝试使用dns验证续签!".format(ssl_hash))
+                self.get_apis()
+                cert = self.renew_cert_to(auth_domains, "dns", "dns-api")
+                if cert.get('status') is False:
+                    continue
+                public.M('ssl_info').where('hash=?', ssl_hash).update({"ps": "renewed"})
+                continue
+            else:
+                http_auth = False
+                write_log("|-【{}】正在检测文件验证是否可用".format(ssl_hash))
+                sites = {}
+                for domain in cert_info['dns']:
+                    domain_info = public.M('domain').where("name=?", domain).find()
+                    if not domain_info:
+                        write_log("|-域名【{}】不存在，跳过!".format(domain))
+                        continue
+                    if not sites.get(domain_info["pid"]):
+                        sites[domain_info["pid"]] = [domain]
+                    else:
+                        sites[domain_info["pid"]].append(domain)
+                if not sites:
+                    write_log("|-【{}】没有找到可用的文件验证站点，请尝试手动续签!".format(ssl_hash))
+                # 暂时不做多网站文件验证
+                if len(sites.keys()) > 1:
+                    write_log("|-【{}】检测到验证域名分散在多个站点，暂时不支持多个站点文件验证!".format(ssl_hash))
+                for site_id, domains in sites.items():
+                    site_info = public.M('sites').where("id=?", site_id).find()
+                    if not site_info:
+                        write_log("|-站点【{}】不存在，跳过!".format(site_id))
+                        break
+                    if set(domains) == set(cert_info['dns']) or len(domains) > len(auth_domains):
+                        http_auth = True
+                        break
+            if http_auth:
+                write_log("|-【{}】正在尝试使用文件验证续签!".format(ssl_hash))
+                self.get_apis()
+                cert = self.renew_cert_to(domains, "http", site_info['path'])
+                if cert.get('status') is False:
+                    continue
+                public.M('ssl_info').where('hash=?', ssl_hash).update({"ps": "renewed"})
+                continue
+            elif dns_auth:
+                write_log("|-【{}】正在尝试使用dns验证续签!".format(ssl_hash))
+                self.get_apis()
+                cert = self.renew_cert_to(auth_domains, "dns", "dns-api")
+                if cert.get('status') is False:
+                    continue
+                public.M('ssl_info').where('hash=?', ssl_hash).update({"ps": "renewed"})
+                continue
+            else:
+                write_log("|-【{}】没有找到可用的验证方式，请尝试手动续签!".format(ssl_hash))
+                continue
+        return
+
+    def get_order_list(self, get):
+        """
+        获取订单列表
+        """
+        self.get_exclude_hash(get)
+        data = self.read_config()
+        if not data.get('orders'):
+            return []
+
+        del_list = []
+        _return = []
+
+        orders = list(data['orders'].values())
+        for i in range(len(orders) - 1, -1, -1):
+            if orders[i]['status'] == "valid" and (not orders[i].get("save_path") or not orders[i].get("cert_timeout")):
+                del_list.append(orders[i]['index'])
+                del orders[i]
+                continue
+            if orders[i]['status'] == "valid":
+                orders[i]['expires'] = orders[i]['cert_timeout']
+            if orders[i]['status'] == "ready":
+                orders[i]['status'] = "pending"
+            try:
+                end_time = int(
+                    (orders[i]['expires'] - datetime.datetime.today().timestamp()) / (60 * 60 * 24)
+                )
+            except Exception as e:
+                end_time = 90
+            orders[i]['endDay'] = end_time
+        try:
+            arg = public.to_dict_obj({"index": ",".join(del_list), "d": "1"})
+            self.delete_order(arg)
+        except:
+            pass
+        return orders
+
+    def get_order_detail(self, get):
+        """
+        订单详情
+        """
+        order_index = get.index
+        orders = self.read_config()
+
+        data = orders["orders"].get(order_index)
+
+        if not data:
+            return public.returnMsg(False, "没有找到此订单信息")
+        if not data.get('auths'):
+            if not data.get('authorizations'):
+                return public.ReturnMsg(False, "订单验证信息丢失，请尝试重新申请!")
+            try:
+                self.get_apis()
+                data['auths'] = []
+                for auth_url in data['authorizations']:
+                    res = self.acme_request(auth_url, "")
+                    if res.status_code not in [200, 201]:
+                        return public.ReturnMsg(False, "订单验证信息丢失，请尝试重新申请!")
+                    s_body = res.json()
+                    identifier_auth = self.get_identifier_auth(order_index, auth_url, s_body)
+                    acme_keyauthorization, auth_value = self.get_keyauthorization(
+                        identifier_auth['token'])
+                    identifier_auth['acme_keyauthorization'] = acme_keyauthorization
+                    identifier_auth['auth_value'] = auth_value
+                    identifier_auth['expires'] = s_body['expires']
+                    identifier_auth['auth_to'] = self._config['orders'][order_index]['auth_to']
+                    identifier_auth['type'] = self._config['orders'][order_index]['auth_type']
+                    data['auths'].append(identifier_auth)
+                self.save_config()
+            except:
+                return public.ReturnMsg(False, "订单验证信息丢失，请尝试重新申请!")
+
+        endtime = ((data.get('expires', 0) or 0) - datetime.datetime.today().timestamp()) / (60 * 60 * 24)
+        if endtime <= 0:
+            return public.ReturnMsg(False, "订单已过期，请重新申请!")
+
+        _return = {"auths": []}
+        if data['auth_type'] == 'dns':
+            auth_domains = [i["domain"].replace("*.", "") for i in data['auths']]
+            if len(auth_domains) != len(set(auth_domains)):
+                _return["error"] = True
+                _return["error_msg"] = "检测到解析记录存在冲突，请分别验证以下域名"
+
+            for auth in data['auths']:
+                domain = auth['domain']
+                domains = auth['domain'].split('.')
+                if domains[0] == '*':
+                    domain = ".".join(domains[1:])
+                _return["auths"].append({
+                    "domain": auth['domain'],
+                    "status": auth.get('status', "pending"),
+                    "data": [{
+                        "domain": "_acme-challenge.{}".format(domain),
+                        "auth_value": auth["auth_value"],
+                        "type": "TXT",
+                        "must": "是"
+                    }, {
+                        "domain": domain,
+                        "auth_value": '0 issue "letsencrypt.org"',
+                        "type": "CAA",
+                        "must": "否"
+                    }]
+                })
+            return _return
+        else:
+            for auth in data['auths']:
+                domain = auth['domain']
+                _return["auths"].append({
+                    "domain": domain,
+                    "data": [{
+                        "domain": auth['domain'],
+                        "file_path": "{}.well-known/acme-challenge/{}".format(auth['auth_to'], auth['token']),
+                        "content": auth['acme_keyauthorization'],
+                        "must": "是"
+                    }]
+                })
+            return _return
+
+    def validate_domain(self, get):
+        order_index = get.index
+
+        data = self.read_config()
+        data = data["orders"].get(order_index)
+
+        if not data:
+            return public.returnMsg(False, "没有找到此订单信息")
+        if not data.get('auths'):
+            return public.ReturnMsg(False, "订单验证信息丢失，请尝试重新申请!")
+        endtime = ((data.get('expires', 0) or 0) - datetime.datetime.today().timestamp()) / (60 * 60 * 24)
+        if endtime <= 0:
+            return public.ReturnMsg(False, "订单已过期，请重新申请!")
+        # for auth in data['auths']:
+        #     self.set_auth_info(auth, order_index)
+        return self.apply_cert([], "dns", "dns", index=order_index)
+
+    def delete_order(self, get):
+        return self._delete_order(get)["finish_list"][0]
+
+    def _delete_order(self, get):
+        from sslModel import certModel
+        certModel = certModel.main()
+        if ('index' not in get or not get.index) and ('ssl_hash' not in get or not get.ssl_hash):
+            return {'status': False, 'msg': "缺少必填参数", 'finish_list': []}
+        # 强制删除已经部署的证书
+        force = False
+        if hasattr(get, 'force'):
+            force = get.force
+        local = True if 'local' not in get else get.local
+        cloud = True if 'cloud' not in get else get.cloud
+
+        path = '{}/data/exclude_hash.json'.format(public.get_panel_path())
+        exclude_data = self.get_exclude_hash(get)
+
+        # 组合删除数据
+        del_data = []
+        if 'index' in get and get.index:
+            index_list = get.index.split(',')
+            for index in index_list:
+                ssl_hash = exclude_data.get("exclude_hash_let", {}).get(index)
+                del_data.append({"index": index, "ssl_hash": ssl_hash})
+        if 'ssl_hash' in get and get.ssl_hash:
+            ssl_hash_list = get.ssl_hash.split(',')
+            for ssl_hash in ssl_hash_list:
+                append_data = {"index": "", "ssl_hash": ssl_hash}
+                for index, value in exclude_data.get("exclude_hash_let", {}).items():
+                    if value == ssl_hash:
+                        append_data["index"] = index
+                        break
+                del_data.append(append_data)
+
+        data = self.read_config()
+        finish_list = []
+        for d in del_data:
+            finish = {"name": "let's Encrypt"}
+            # 删除本地证书
+            if d['ssl_hash']:
+                try:
+                    certModel.remove_cert(ssl_hash=d['ssl_hash'], local=local, cloud=cloud, force=force)
+                    finish["status"] = True
+                    finish["msg"] = "删除成功"
+                except Exception as e:
+                    finish["status"] = False
+                    finish['msg'] = "删除失败:{}".format(str(e))
+                    finish_list.append(finish)
+                    continue
+            # 删除订单
+            if d['index'] and d['index'] in data['orders'] and local:
+                try:
+                    if d['index'] in exclude_data["exclude_hash_let"]:
+                        del exclude_data["exclude_hash_let"][d['index']]
+                    del data['orders'][d['index']]
+                    finish["status"] = True
+                    finish["msg"] = "删除成功"
+                except Exception as e:
+                    finish['status'] = False
+                    finish['msg'] = "删除失败:{}".format(str(e))
+            finish_list.append(finish)
+
+        public.writeFile(path, json.dumps(exclude_data))
+        public.writeFile(self._conf_file_v2, json.dumps(data))
+        if 'd' in get:
+            return data
+        return {'status': True, 'msg': "删除成功", 'finish_list': finish_list}
+
+    def download_cert_to_local(self, get):
+        index = get.index
+
+        orders = self.read_config()
+        order = orders['orders'].get(index)
+        if not order:
+            return public.returnMsg(False, "下载失败，未找到此订单")
+
+        exclude_data = self.get_exclude_hash(get)
+
+        ssl_hash = exclude_data.get("exclude_hash_let", {}).get(index)
+        if not ssl_hash:
+            return public.returnMsg(False, "订单未完成或订单信息有误，下载失败")
+        from sslModel import certModel
+        return certModel.main().download_cert(public.to_dict_obj({"ssl_hash": ssl_hash}))
+
+    def SetCertToSite(self,get):
+        import panelSSL
+        exclude_data = self.get_exclude_hash(get)
+        ssl_hash = exclude_data['exclude_hash_let'].get(get.index)
+        if not ssl_hash:
+            return public.returnMsg(False, "未找到此证书")
+        get.ssl_hash = ssl_hash
+        return panelSSL.panelSSL().SetCertToSite(get)
+
+
+
+def _test_domains(domains, auth_to, auth_type):
+    # 检查站点域名变更情况， 若有删除域名，则在续签时，删除已经不使用的域名，再执行续签任务
+    # 是dns验证的跳过
+    if auth_to.find("|") != -1 or auth_to.startswith("dns#@"):
+        return domains
+    # 是泛域名的跳过
+    for domain in domains:
+        if domain.find("*.") != -1:
+            return domains
+    sql = public.M('domain')
+    site_sql = public.M('sites')
+    for domain in domains:
+        pid = sql.where('name=?', domain).getField('pid')
+        if pid and site_sql.where('id=?',pid).find():
+            site_domains = [i["name"] for i in sql.where('pid=?',(pid,)).field("name").select()]
+            break
+    else:
+        site_id = site_sql.where('path=?', auth_to).getField('id')
+        if bool(site_id) and str(site_id).isdigit():
+            site_domains = [i["name"] for i in sql.where('pid=?',(site_id,)).field("name").select()]
+        else:
+            # 全都查询不到，认为这个站点已经被删除
+            return []
+
+    del_domains = list(set(domains) - set(site_domains))
+    for i in del_domains:
+        domains.remove(i)
+    return domains
 
 
 def echo_err(msg):
     write_log("\033[31m=" * 65)
     write_log("|-错误：{}\033[0m".format(msg))
     exit()
+
 
 # 写日志
 def write_log(log_str, mode="ab+"):
@@ -1729,7 +2784,7 @@ def write_log(log_str, mode="ab+"):
     f.close()
     return True
 
-
+# todo：兼容控制台，目前不兼容
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(usage="必要的参数：--domain 域名列表，多个以逗号隔开!")
@@ -1743,7 +2798,9 @@ if __name__ == "__main__":
                    help="请指定DNSAPI的secret", dest="secret")
     p.add_argument('--index', default=None, help="指定订单索引", dest="index")
     p.add_argument('--renew', default=None, help="续签证书", dest="renew")
+    p.add_argument('--renew_v2', default=None, help="续签证书v2", dest="renew_v2")
     p.add_argument('--revoke', default=None, help="吊销证书", dest="revoke")
+    p.add_argument('--cycle', default=None, help="到期时间小于等于时续签", dest="cycle")
     args = p.parse_args()
     cert = None
     if args.revoke:
@@ -1754,9 +2811,26 @@ if __name__ == "__main__":
         write_log(result)
         exit()
 
-    if args.renew:
+    if args.renew_v2:
+        sys.path.append(public.get_panel_path())
         p = acme_v2()
-        p.renew_cert(args.index)
+        if args.cycle:
+            try:
+                int(args.cycle)
+            except:
+                args.cycle = None
+        p.renew_cert_v2(args.index, args.cycle)
+        exit()
+
+    if args.renew:
+        sys.path.append(public.get_panel_path())
+        p = acme_v2()
+        if args.cycle:
+            try:
+                int(args.cycle)
+            except:
+                args.cycle = None
+        p.renew_cert(args.index, args.cycle)
     else:
         try:
             if not args.index:

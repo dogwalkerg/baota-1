@@ -13,6 +13,7 @@ _tips = [
     "systemctl stop telnet.socket停止telnet服务"
 ]
 _help = ''
+_remind = '此方案会关闭不安全的telnet服务，降低数据泄露的风险。若业务需求telnet，则忽略此风险项。'
 
 
 def check_run():

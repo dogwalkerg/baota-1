@@ -13,6 +13,7 @@ _tips = [
     "在【/www/server/pure-ftpd/etc/pure-ftpd.conf】配置文件中修改NoAnonymous的值为yes",
 ]
 _help = ''
+_remind = '此方案可以增强FTP服务器防护，防止非法入侵服务器。配置后无法使用Anonymous登录FTP服务器。'
 
 
 def check_run():
@@ -21,7 +22,7 @@ def check_run():
         try:
             info_data = public.ReadFile('/www/server/pure-ftpd/etc/pure-ftpd.conf')
             if info_data:
-                if re.search('.*NoAnonymous\s*yes', info_data):
+                if re.search('\n\s*NoAnonymous\s*yes', info_data):
                     return True, '无风险'
                 else:
                     return False, '当前pure-ftpd未禁用匿名登录，在【pure-ftpd.conf】文件中修改/添加NoAnonymous的值为yes'

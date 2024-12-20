@@ -5,57 +5,107 @@
     <div class="container-fluid">
         <div class="pos-box bgw mtb15">
             <div class="tab-list" id="cutMode">
-                <div class="tabs-item" data-type="overview" style="display: none;">概览</div>
+                <div class="tabs-item" data-type="fast_project">快速部署项目</div>
                 <div class="tabs-item" data-type="container">容器</div>
-                <div class="tabs-item" data-type="compose">Compose</div>
-                <div class="tabs-item" data-type="model">Compose模板</div>
+                <div class="tabs-item" data-type="compose">项目</div>
+                <div class="tabs-item" data-type="model">项目模板</div>
                 <div class="tabs-item" data-type="image">镜像</div>
-                <div class="tabs-item" data-type="host" style="display: none;">主机</div>
                 <div class="tabs-item" data-type="network">网络</div>
                 <div class="tabs-item" data-type="volume">存储卷</div>
                 <div class="tabs-item" data-type="registry">仓库</div>
                 <div class="tabs-item" data-type="setup">设置</div>
             </div>
         </div>
-        <div class="info-title-tips">
-            <p><span class="glyphicon glyphicon-alert" style="color: #f39c12; margin-right: 10px;"></span>【使用提醒】此功能为企业版专享功能，当前所有用户可免费使用。前往论坛<a class="btlink" href="https://www.bt.cn/bbs/thread-90656-1-1.html " target="_blank">《获取帮助或反馈建议》</a></p>
+        <div class="dk-container-view bgw mtb15 pd15 tab-view-box">
+            <div class="tab-con" style="padding: 0;overflow: inherit;">
+                <div class="tab-con-block">
+                    <div style="display: flex;justify-content: space-between;padding-bottom: 15px;border-bottom: 2px dashed #F1F1F1;">
+                        <span style="font-size: 14px;color:#666;line-height: 30px;">如果您希望添加其他快速部署项目，请<a class="btlink" onclick="bt.onlineService()">联系客服</a>,或进行<a class="btlink" onclick="docker.openFeedback()">需求反馈</a></span>
+                        <span><button class="btn btn-default btn-sm" onclick="docker.update_project_list()">更新项目列表</button></span>
+                    </div>
+                    <div id="dk_fast_project_box" style="padding-bottom:60px"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_container_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_compose_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_model_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_image_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_network_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_volume_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_registry_table"></div>
+                </div>
+                <div class="tab-con-block">
+                    <div id="dk_setup_form"></div>
+                </div>
+            </div>
+            <div class="mask_layer" style="display: none;"><div class="prompt_description"></div></div>
         </div>
-    <div class="dk-container-view bgw mtb15 pd15 tab-view-box">
-        <div class="tab-con" style="padding: 0;overflow: inherit;">
-            <div class="tab-con-block">
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_container_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_compose_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_model_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_image_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_host_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_network_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_volume_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_registry_table"></div>
-            </div>
-            <div class="tab-con-block">
-                <div id="dk_setup_form"></div>
-            </div>
-        </div>
-        <div class="mask_layer" style="display: none;"><div class="prompt_description"></div></div>
-    </div>
 </div>
 <style>
+    /* 快速部署 */
+    .dk_fast_project_block{
+        display: inline-block;
+        width:260px;
+        height: 316px;
+        border: 1px solid #F0F0F0;
+        padding:34px 30px;
+        margin:60px 0px 0px 60px;
+        border-radius: 8px;
+        box-shadow: 0px 4px 4px rgba(186, 186, 186, 0.25);
+        text-align: center;
+    }
+    .dk_fast_project_block .dk_fp_header .dk_fast_project_icon{
+        height: 63px;
+        text-align: center;
+        margin-bottom: 25px;
+    }
+    .dk_fast_project_block .dk_fp_header svg{
+        height: 100%;
+    }
+    .dk_fast_project_block .dk_fp_header span{
+        text-align: center;
+    }
+    .dk_fast_project_block .dk_fp_header .dk_template_name{
+        font-size: 16px;
+        color: #333;
+    }
+    .dk_fast_project_block .dk_fp_header .dk_template_title{
+        font-size: 14px;
+        color: #666;
+    }
+    .dk_fast_project_block .dk_fp_centent{
+        margin-top: 18px;
+        height: 34px;
+    }
+    .dk_fp_template-introduce{
+        color: #999;
+        text-align: left;
+        word-break: break-all;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+    }
+    .dk_fast_project_block .deployment_project{
+        font-size: 14px;
+        width: 115px;
+        height: 31px;
+        margin-top: 15px;
+    }
+
+    /* 快速部署 end */
     .tab-view-box{
         position: relative;
     }
@@ -261,40 +311,40 @@
             <!-- 编辑器目录 -->
             <div class="ace_catalogue" style="left:0px">
                 <div class="ace_catalogue_title">目录<div class="dir-menu-right"><span class="glyphicon glyphicon-minus" aria-hidden="true"></span></div></div>
-            	<div class="ace_dir_tools">
-            		<div class="upper_level"  title="返回上级目录">
-            			<i class="glyphicon glyphicon-share-alt" aria-hidden="true"></i>
-            			<span>上一级</span>
-            		</div>
-            		<div class="search_file" title="搜索内容">
-            			<i class="glyphicon glyphicon-search" aria-hidden="true"></i>
-            			<span>搜索</span>
-            		</div>
-            		<div class="new_folder" title="新建文件/目录">
-            			<i class="glyphicon glyphicon-plus"  aria-hidden="true"></i>
-            			<span>新建</span>
-            			<ul class="folder_down_up">
-            				<li data-type="2"><i class="folder-icon"></i>新建文件夹</li>
-	                    	<li data-type="3"><i class="text-icon"></i>新建文件</li>
-            			</ul>
-            		</div>
-            		<div class="refresh_dir" title="刷新当前目录">
-            			<span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
-            			<span>刷新</span>
-            		</div>
-            		<span class="ace_editor_main_storey"></span>
-            	</div>
+                <div class="ace_dir_tools">
+                    <div class="upper_level"  title="返回上级目录">
+                        <i class="glyphicon glyphicon-share-alt" aria-hidden="true"></i>
+                        <span>上一级</span>
+                    </div>
+                    <div class="search_file" title="搜索内容">
+                        <i class="glyphicon glyphicon-search" aria-hidden="true"></i>
+                        <span>搜索</span>
+                    </div>
+                    <div class="new_folder" title="新建文件/目录">
+                        <i class="glyphicon glyphicon-plus"  aria-hidden="true"></i>
+                        <span>新建</span>
+                        <ul class="folder_down_up">
+                            <li data-type="2"><i class="folder-icon"></i>新建文件夹</li>
+                            <li data-type="3"><i class="text-icon"></i>新建文件</li>
+                        </ul>
+                    </div>
+                    <div class="refresh_dir" title="刷新当前目录">
+                        <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                        <span>刷新</span>
+                    </div>
+                    <span class="ace_editor_main_storey"></span>
+                </div>
                 <div class="ace_catalogue_list">
                     <ul class="cd-accordion-menu"></ul>
                     <ul class="ace_catalogue_menu">
-                    	<li data-type="0"><i class="glyphicon glyphicon-refresh" aria-hidden="true"></i><span>刷新目录</span></li>
-                    	<li data-type="1"><i class="glyphicon glyphicon-folder-open" aria-hidden="true"></i><span>打开子目录</span></li>
-	                    <li data-type="2"><i class="folder-icon"></i><span>新建文件夹</span></li>
-	                    <li data-type="3"><i class="text-icon"></i><span>新建文件</span></li>
-	                    <li data-type="4"><i class="rename-icon img-icon"></i><span>重命名</span></li>
-	                    <li data-type="5"><i class="down-icon img-icon"></i><span>下载</span></li>
-	                    <li data-type="6"><i class="del-icon img-icon"></i><span>删除</span></li>
-	                </ul>
+                        <li data-type="0"><i class="glyphicon glyphicon-refresh" aria-hidden="true"></i><span>刷新目录</span></li>
+                        <li data-type="1"><i class="glyphicon glyphicon-folder-open" aria-hidden="true"></i><span>打开子目录</span></li>
+                        <li data-type="2"><i class="folder-icon"></i><span>新建文件夹</span></li>
+                        <li data-type="3"><i class="text-icon"></i><span>新建文件</span></li>
+                        <li data-type="4"><i class="rename-icon img-icon"></i><span>重命名</span></li>
+                        <li data-type="5"><i class="down-icon img-icon"></i><span>下载</span></li>
+                        <li data-type="6"><i class="del-icon img-icon"></i><span>删除</span></li>
+                    </ul>
                 </div>
                 <div class="ace_catalogue_drag_icon">
                     <div class="drag_icon_conter"></div>
@@ -348,8 +398,8 @@
                 </div>
                 <div class="menu-item menu-files" style="display: none;">
                     <div class="menu-conter">
-                    	<input type="text" class="menu-input" placeholder="输入语言模式">
-                    	<i class="fa fa-close" aria-hidden="true"></i>
+                        <input type="text" class="menu-input" placeholder="输入语言模式">
+                        <i class="fa fa-close" aria-hidden="true"></i>
                     </div>
                     <div class="menu-title">设置文件语言关联</div>
                     <ul></ul>
@@ -382,21 +432,21 @@
                     <ul></ul>
                 </div>
                 <div class="menu-item menu-setUp"  style="display: none;">
-                	<div class="menu-title">编辑器设置【部分设置需要重新打开编辑生效】</div>
-                	<ul class="editor_menu">
-                		<li data-type="wrap">自动换行</li>
-                		<li data-type="enableLiveAutocompletion">代码自动完成</li>
-                		<li data-type="enableSnippets">启用代码段</li>
-                		<li data-type="showInvisibles">显示隐藏字符</li>
-                		<li data-type="showLineNumbers">显示行号</li>
-                	</ul>
+                    <div class="menu-title">编辑器设置【部分设置需要重新打开编辑生效】</div>
+                    <ul class="editor_menu">
+                        <li data-type="wrap">自动换行</li>
+                        <li data-type="enableLiveAutocompletion">代码自动完成</li>
+                        <li data-type="enableSnippets">启用代码段</li>
+                        <li data-type="showInvisibles">显示隐藏字符</li>
+                        <li data-type="showLineNumbers">显示行号</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 </script>
 <script type="text/template" id="aceShortcutKeys">
-	<div class ="keysUp_left">
+    <div class ="keysUp_left">
         <div class="keysUp-row">
             <div class="keysUp-title">常用快捷键</div>
             <div class="keysUp-content">

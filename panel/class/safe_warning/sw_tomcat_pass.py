@@ -14,6 +14,7 @@ _tips = [
     "在【/usr/local/bttomcat/tomcat/conf/tomcat-users.xml】中修改password弱口令",
 ]
 _help = ''
+_remind = '此方案通过加强tomcat后台登录密码强度，降低被爆破的风险，避免被黑客利用tomcat入侵服务器。'
 
 
 def check_run():

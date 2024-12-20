@@ -24,6 +24,7 @@ _tips = [
     "提示：server_tokens off;"
 ]
 _help = ''
+_remind = '此方案加强了服务器防护，降低网站被入侵的风险。'
 
 def check_run():
     '''

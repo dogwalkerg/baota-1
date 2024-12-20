@@ -163,6 +163,87 @@
   .mask_layer .prompt_description{
     width: 430px;
   }
+
+	 /* 集群管理 */
+	 .redis_mode_table tbody tr td input,
+  .redis_mode_table tbody tr td select{
+    border: 1px solid #DCDFE6;
+    outline: none;
+    height: 24px;
+    padding-left: 6px;
+  }
+  .redis_mode_table tbody tr td:first-child input{
+    width: 68px;
+  }
+  .redis_mode_table tbody tr td:nth-child(2) input{
+    width: 46px;
+  }
+  .redis_mode_table tbody tr td:nth-child(3) input{
+    width: 68px;
+  }
+  .redis_mode_table tbody tr td .unit{
+    display: inline-block;
+    border: 1px solid #ccc;
+    border-left: 0;
+    border-radius: 2px;
+    width: 30px;
+    height: 24px;
+    line-height: 22px;
+    text-align: center;
+    background-color: #f6f6f6;
+    vertical-align: bottom;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+  .cluster_dialog_box .unit{
+    height: 32px;
+    line-height: 31px;
+  }
+  .compose_list_title {
+    line-height: 35px;
+    border-top: 1px solid #F1F1F1;
+  }
+
+  /* 集群管理 end */
+	/* mysql增量备份 */
+	.group .unit{
+		height: 32px;
+		line-height: 31px;
+		margin-right: 10px;
+	}
+	#addDbbackup .sn-alarm--selectBox {
+    display: inline-block;
+    cursor: pointer;
+		position: relative;
+	}
+	#addDbbackup .sn-alarm--channel {
+			border: 1px solid #EFEFEF;
+			border-radius: 2px;
+			color: #999999;
+			width: 140px;
+			display: inline-block;
+			padding: 5px 5px 5px 10px;
+			margin-left: 4px;
+	}
+	#addDbbackup .sn-alram--selectIcon {
+			color: #999;
+			position: absolute;
+			top: 8px;
+			left: 124px;
+	}
+	#addDbbackup .sn-alarm--list {
+			display: none;
+			position: absolute;
+			background: #fff;
+			z-index: 10;
+			transition: all 500ms;
+			top: 30px;
+			left: 4px;
+			box-shadow: 0 1px 5px rgb(0 0 0 / 50%);
+			border-radius: 1px;
+			width: 140px;
+	}
+  /* mysql增量备份 end */
 </style>
 
 {% endblock %}
@@ -171,6 +252,7 @@
 <script type="text/javascript" src="{{g.cdn_url}}/editor/ace.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
 <script type="text/javascript" src="{{g.cdn_url}}/js/bt_upload.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
 <script type="text/javascript" src="{{g.cdn_url}}/js/database.js?date={{g['version']}}&repair={{data['js_random']}}"></script>
+<script type="text/javascript" src="{{g.cdn_url}}/js/soft.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
 <script type="text/javascript">
 	var isSetup = '{{ data.isSetup }}' == 'True';
   bt.set_cookie('backup_path', "{{session['config']['backup_path']}}");

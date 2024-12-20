@@ -15,6 +15,7 @@ _tips = [
     "auth required pam_tally2.so onerr=fail deny=5 unlock_time=300 even_deny_root root_unlock_time=300"
 ]
 _help = ''
+_remind = '此方案可以降低服务器被爆破的风险。但务必要记住登录密码，防止登录失败过多导致账户被锁定5分钟。'
 
 
 def check_run():

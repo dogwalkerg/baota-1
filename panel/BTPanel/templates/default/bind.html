@@ -11,7 +11,10 @@
           <p style="font-size: 18px;margin-top: 38px;">绑定宝塔帐号</p>
           <div class="libLogin pd20">
             <div class="bt-form text-center">
-              <div class="line"><input class="bt-input-text" type="text" name="username" placeholder="手机号" /></div>
+              <div class="line relative" style="margin-bottom:16px">
+								<input class="bt-input-text" type="text" name="username" placeholder="手机号" />
+								<span class="vaildName" style="display:none;position:absolute;bottom:-14px;left:0;color:red">请使用宝塔官网登陆账号进行登录，若未有账号，可进行<a class="btlink" href="https://www.bt.cn/register.html" target="_blank">免费注册</a></span>
+							</div>
               <div class="line"><input class="bt-input-text" type="password" name="password" placeholder="密码" /></div>
               <div class="line verifyCodeView"><input class="bt-input-text" type="text" name="verifyCode" placeholder="验证码" /><div class="pull-right"><span class="getVerifyCode">获取验证码</span></div></div>
               <div class="line" style="margin-top: 15px;"><input class="login-button" value="登录" type="button" /></div>
@@ -55,5 +58,14 @@
       if (tips != -1) layer.close(tips);
     }
   );
+
+	$('.libLogin input[name="username"]').on("input propertychange",function(){
+		// 校验输入是否符合电话号码形式,不符合则显示提示信息
+		if(!bt.check_phone($(this).val())){
+			$('.vaildName').show()
+		}else{
+			$('.vaildName').hide()
+		}
+	})
 </script>
 {% endblock %}

@@ -27,6 +27,7 @@ _tips = [
     "minclass=3",
 ]
 _help = ''
+_remind = '此方案加强服务器登录密码的复杂度，降低被爆破成功的风险。'
 
 
 def check_run():
@@ -34,8 +35,8 @@ def check_run():
         p_file = '/etc/security/pwquality.conf'
         p_body = public.readFile(p_file)
         if not p_body: return True, '无风险'
-        tmp = re.findall("\s*minclass\s+=\s+(.+)", p_body, re.M)
-        if not tmp: return True, '无风险'
+        tmp = re.findall("\n\s*minclass\s+=\s+(.+)", p_body, re.M)
+        if not tmp: return False, '【%s】文件中把minclass设置置为3或者4' % p_file
         minlen = tmp[0].strip()
         if int(minlen) <3:
             return False, '【%s】文件中把minclass设置置为3或者4' % p_file

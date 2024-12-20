@@ -12,6 +12,7 @@ _tips = [
     "使用chmod +t 【文件名】命令修改文件的权限",
 ]
 _help = ''
+_remind = '此方案可以防止系统用户误删服务器下的文件。'
 
 
 def check_run():
@@ -22,15 +23,20 @@ def check_run():
     # result_list存放未配置粘滞位的目录名
     result_list = []
     tmp_path = ['/var/tmp', '/tmp']
-    for t in tmp_path:
-        # 文件不存在则跳过，保险操作。
-        if not os.path.exists(t):
+    for tmp in tmp_path:
+        file_stat = os.stat(tmp)
+        if file_stat.st_mode & 0o1000:
             continue
-        result_str = public.ExecShell('find {} -maxdepth 0 -perm /01000 -type d'.format(t))[0].strip()
-        if not result_str[1]:
-            result_list.append(t)
-    if result_list:
-        result = '、'.join(result_list)
-        return False, '以下目录未设置粘滞位权限：{}'.format(result)
+        else:
+            result_list.append(tmp)
+    if len(result_list) > 0:
+        return False, '以下目录未设置粘滞位权限：{}'.format('、'.join(result_list))
     else:
         return True, '无风险'
+    # result_str = public.ExecShell('find {} -maxdepth 0 ! -perm /01000 -type d'.format(' '.join(tmp_path)))[0].strip()
+    # public.print_log("粘滞位：{}".format(result_str))
+    # if result_str:
+    #     result = '、'.join(result_str.split('\n'))
+    #     return False, '以下目录未设置粘滞位权限：{}'.format(result)
+    # else:
+    #     return True, '无风险'

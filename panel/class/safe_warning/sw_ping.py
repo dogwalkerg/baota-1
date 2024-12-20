@@ -27,6 +27,7 @@ _tips = [
     ]
 
 _help = ''
+_remind = '此方案可以降低服务器真实IP被发现的风险，增强服务器的安全性。'
 
 
 def check_run():

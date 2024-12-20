@@ -15,6 +15,7 @@ _tips = [
     "随后执行命令systemctl restart sshd重启进程",
 ]
 _help = ''
+_remind = '此方案可以增强对SSH通信的保护，避免敏感数据泄露。'
 
 
 def check_run():

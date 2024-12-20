@@ -27,6 +27,7 @@ _tips = [
     "PASS_MIN_DAYS 7   需同时执行命令设置root 密码失效时间   命令如下:  chage --mindays 7 root",
 ]
 _help = ''
+_remind = '此方案是设置SSH登录密码修改后，多少天之内无法再次修改。'
 
 
 def check_run():

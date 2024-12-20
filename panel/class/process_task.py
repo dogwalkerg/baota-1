@@ -21,7 +21,6 @@ import db
 import time
 import struct
 import copy
-import threading
 import public
 from cachelib import SimpleCache
 
@@ -36,13 +35,17 @@ class process_network_total:
     __last_check_time = 0
     __tip_file = 'data/is_net_task.pl'
     __all_tip = 'data/control.conf'
-
+    
     def install_pcap(self):
         '''
             @name 安装pcap模块依赖包
             @author hwliang
             @return void
         '''
+        # 标记只安装一次
+        tip_file= '{}/data/install_pcap.pl'.format(public.get_panel_path())
+        if os.path.exists(tip_file): return
+
         if os.path.exists('/usr/bin/apt'):
             os.system("apt install libpcap-dev -y")
         elif os.path.exists('/usr/bin/dnf'):
@@ -53,12 +56,12 @@ class process_network_total:
                 f.close()
                 if red_body.find('CentOS Linux release 8.') != -1:
                     rpm_file = '/root/libpcap-1.9.1.rpm'
-                    down_url = "wget -O {} https://repo.almalinux.org/almalinux/8/PowerTools/x86_64/os/Packages/libpcap-devel-1.9.1-5.el8.x86_64.rpm --no-check-certificate -T 10".format(
+                    down_url = "wget -O {} https://download.bt.cn/src/libpcap-devel-1.9.1-5.el8.x86_64.rpm --no-check-certificate -T 10".format(
                         rpm_file)
-                    print(down_url)
-                    os.system(down_url)
-                    os.system("rpm -ivh {}".format(rpm_file))
-                    if os.path.exists(rpm_file): os.remove(rpm_file)
+                    if os.path.exists(rpm_file):
+                        os.system(down_url)
+                        os.system("rpm -ivh {}".format(rpm_file))
+                        if os.path.exists(rpm_file): os.remove(rpm_file)
                 else:
                     os.system("dnf install libpcap-devel -y")
             else:
@@ -66,6 +69,8 @@ class process_network_total:
         elif os.path.exists('/usr/bin/yum'):
             os.system("yum install libpcap-devel -y")
         os.system("btpip install pypcap")
+        # 写入标记文件
+        public.writeFile(tip_file, 'True')
 
     def start(self):
         '''
@@ -73,6 +78,8 @@ class process_network_total:
             @author hwliang<2021-09-13>
             @return void
         '''
+        if not os.path.exists(self.__tip_file) or not os.path.exists(self.__all_tip):
+            return
         try:
             import pcap
         except ImportError:
@@ -88,14 +95,14 @@ class process_network_total:
             for p_time, p_data in p:
                 # 检查是否停止
                 if p_time - self.__last_check_time > 10:
-                    if not os.path.exists(
-                            self.__tip_file) or not os.path.exists(
-                                self.__all_tip):
+                    self.__last_check_time = p_time
+                    if not os.path.exists(self.__tip_file) or not os.path.exists(self.__all_tip):
                         break
 
                 # 处理数据包
                 self.handle_packet(p_data)
         except:
+            print(public.get_error_info())
             pass
 
     def handle_packet(self, pcap_data):
@@ -636,7 +643,6 @@ class process_task:
         self.insert_db(process_info_list, stime)
         # import public
         # for pp in sorted(process_info_list,key=lambda x:x['cpu_percent'],reverse=True):
-        #     public.print_log("name: {}, cpu_percent: {}".format(pp['name'], pp['cpu_percent']))
         if total_cpu_precent > 100: total_cpu_precent = 100
         return total_cpu_precent
 
@@ -653,7 +659,7 @@ class process_task:
                 if conf: _day = int(conf)
             except:
                 pass
-        return _day * 86400
+        return time.time() - _day * 86400
 
     def insert_db(self, process_info_list, _time):
         '''
@@ -684,10 +690,18 @@ class process_task:
             })
 
             # 删除过期数据
-            if self.__insert_time and _time - self.__insert_time > 3600:
+            if not self.__insert_time: self.__insert_time = _time
+            if _time - self.__insert_time > 3600:
                 self.__insert_time = _time
                 _sql.table('process_top_list').where(
                     'addtime<?', self.get_expire_time()).delete()
+                
+                # 释放一次磁盘空间
+                system_vacuum_file = "{}/data/system_vacuum.pl".format(public.get_panel_path())
+                if not os.path.exists(system_vacuum_file):
+                    public.writeFile(system_vacuum_file, 'True')
+                    _sql.execute('VACUUM', ())
+
             _sql.close()
 
     def get_top_list(sekf, process_info_list):
@@ -775,6 +789,7 @@ class process_task:
 
 if __name__ == '__main__':
     # net = process_network_total()
+    # net.start()
     # threading.Thread(target = net.start,args=()).start()
 
     p = process_task()

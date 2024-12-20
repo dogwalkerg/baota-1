@@ -67,7 +67,7 @@ class panelLets:
             ret = p12.set_ca_certificates((crypto.load_certificate(crypto.FILETYPE_PEM, ca_pem.encode()),) )
         if friendly_name:
             ret = p12.set_friendlyname(friendly_name.encode())
-        return p12
+        return p12.export()
 
     def extract_zone(self,domain_name):
         domain_name = domain_name.lstrip("*.")
@@ -204,8 +204,12 @@ class panelLets:
         public.writeFile(path + "/account_key.key", certificate['account_key']) #续签KEY
 
         #转为IIS证书
-        p12 = self.dump_pkcs12(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
-        pfx_buffer = p12.export()
+        try:
+            p12 = self.dump_pkcs12(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
+        except:
+            import ssl_info
+            p12 = ssl_info.ssl_info().dump_pkcs12_new(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
+        pfx_buffer = p12
         public.writeFile(path + "/fullchain.pfx",pfx_buffer,'wb+')
 
         return public.returnMsg(True, '[%s]证书续签成功.' % data['siteName'])
@@ -305,8 +309,12 @@ class panelLets:
         public.writeFile(path + "/account_key.key",certificate['account_key']) #续签KEY
 
         #转为IIS证书
-        p12 = self.dump_pkcs12(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
-        pfx_buffer = p12.export()
+        try:
+            p12 = self.dump_pkcs12(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
+        except:
+            import ssl_info
+            p12 = ssl_info.ssl_info().dump_pkcs12_new(certificate['key'], certificate['cert'] + certificate['ca_data'],certificate['ca_data'],data['first_domain'])
+        pfx_buffer = p12
         public.writeFile(path + "/fullchain.pfx",pfx_buffer,'wb+')
         public.writeFile(path + "/README","let")
 

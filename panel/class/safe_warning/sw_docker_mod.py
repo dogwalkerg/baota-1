@@ -14,6 +14,7 @@ _tips = [
     "docker目录chmod /etc/docker 755"
 ]
 _help = ''
+_remind = '此方案加强了对Docker文件的保护，防止入侵者篡改Docker文件。'
 
 
 def check_run():

@@ -1,0 +1,1 @@
+import{c as t,c1 as a,e as s,m as e,bG as o,a5 as r}from"./base-lib.js?v=1734676359";const c=t({name:"BtRate",props:{...a},setup:(t,{attrs:a,slots:c})=>()=>{return s(o,e(a,t),"function"==typeof(p=c)||"[object Object]"===Object.prototype.toString.call(p)&&!r(p)?c:{default:()=>[c]});var p}});export{c as B};

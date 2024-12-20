@@ -6,7 +6,7 @@
 # +-------------------------------------------------------------------
 # | Author: 沐落 <cjx@bt.cn>
 # | Author: lx
-# | 消息通道邮箱模块
+# | 消息通道邮箱模块 
 # +-------------------------------------------------------------------
 
 import os, sys, public, base64, json, re
@@ -18,8 +18,8 @@ import public
 
 class sms_msg:
 
-    _APIURL = 'http://www.bt.cn/api/wmsg';
-    __UPATH = panelPath + '/data/userInfo.json';
+    _APIURL = 'http://www.bt.cn/api/wmsg'
+    __UPATH = panelPath + '/data/userInfo.json'
     conf_path = panelPath + '/data/sms_main.json'
 
         #构造方法

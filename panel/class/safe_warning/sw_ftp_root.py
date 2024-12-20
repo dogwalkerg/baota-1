@@ -13,6 +13,7 @@ _tips = [
     "在【/www/server/pure-ftpd/etc/pure-ftpd.conf】配置文件中修改MinUID的值为100",
 ]
 _help = ''
+_remind = '此方案可以增强对FTP服务器的防护。配置后无法使用root用户登录ftp，谨慎使用。'
 
 
 def check_run():

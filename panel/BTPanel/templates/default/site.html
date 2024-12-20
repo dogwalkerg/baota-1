@@ -79,14 +79,17 @@
         right: 85px;
     }
     .warning_scan_body .safe_state{
-        border: 1px solid #e8e8e8;
+			border: 1px solid #e8e8e8;
         height: 490px;
-        line-height: 489px;
-        text-align: center;
+        display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: center;
         font-size: 20px;
+				position: relative;
     }
     .warning_scan_head .warning_cancel_scan{
-        position: relative;
+				position: relative;
         float: right;
         top: 10px;
         width: 100px;
@@ -230,7 +233,7 @@
     }
     .scanNone .warn_look,
     .scanNone .warn_again_scan{
-        position: relative;
+				position: relative;
         float: right;
         top: 10px;
         width: 80px;
@@ -253,7 +256,7 @@
         background: #20a53a1f;
     }
     .warning_scan_head .warn_repair_scan{
-        position: relative;
+				position: relative;
         float: right;
         top: 10px;
         width: 80px;
@@ -265,6 +268,66 @@
         font-size: 13px;
         text-align: center;
         border: none;
+    }
+		.warning_scan_head .warn_look_scan{
+    position: relative;
+    float: right;
+    top: 10px;
+    width: 80px;
+    height: 35px;
+    line-height: 24px;
+    border-radius: 4px;
+    background-color: rgba(32, 165, 58, 100);
+    color: rgba(255, 255, 255, 100);
+    font-size: 13px;
+    text-align: center;
+    border: none;
+}
+    .warning_scan_head .topBtn{
+        background-color: rgba(32, 165, 58, 100);
+color: rgba(255, 255, 255, 100);
+}
+    .warning_scan_head .topBtn:hover{
+        background-color: #1d9534;
+        color: rgba(255, 255, 255, 100);
+}
+    #wechat-customer span{
+        width: auto;
+    }
+    .alarmTip{
+        width: 40px;
+        height: 26px;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 10px;
+        border-radius: 4px;
+        margin-left: 10px;
+    }
+    .module_details_head:before{
+        display: none;
+    }
+    .module_item .module_head{
+        background: #fff;
+    }
+    .module_item .module_head:hover{
+        background: #f5f7fa;
+    }
+    .warning_scan_view .module_details_item:hover .module_details_head {
+      background: #f5f7fa;
+    }
+
+        .warning_scan_view .module_details_item:hover .module_details_body {
+            background: #f5f7fa;
+        }
+        .warning_scan_head .scanNone {
+padding: 25px 16px 20px 38px;
+				}
+		.warning_scan_body .safe_state .safe_title{
+        position: absolute;
+				top: 289px;
+				left: 179px;
     }
     .warning_scan_body {
         position: relative;
@@ -396,6 +459,159 @@
 		.site_class_type.bt_select_updown {
 			width: 130px;
 		}
+    /* 流量统计样式 */
+    .site_traffic--typeBox{
+        position: absolute;
+        background: #fff;
+        z-index: 99;
+        box-shadow: 0 1px 5px rgba(0, 0, 0, .5)
+    }
+    .site_traffic--typeBox li {
+        line-height: 28px;
+        height: 28px;
+        padding: 0 8px;
+    }
+    .site_traffic--typeBox li:hover{
+        background: #20a53a;
+        color: #fff;
+    }
+    .site_traffic--typeBox li.active {
+        background: #20a53a;
+        color: #fff;
+    }
+    .site_traffic--typeBox::before{
+        content: '';
+        position: absolute;
+        top: -8px;
+        right: 22px;
+        border-top: 4px transparent dashed;
+        border-left: 4px transparent dashed;
+        border-right: 4px transparent dashed;
+        border-bottom: 4px #fff solid;
+    }
+
+    /* 流量统计样式 end */
+		/* 下拉按钮样式 */
+    .btn-default.active, .btn-default:active, .open>.dropdown-toggle.btn-default{
+        outline: none;
+        box-shadow: none;
+        color: #1D9534;
+        background-color: #F1F9F3;
+        border-color: #BCE4C4;
+    }
+    .open>.dropdown-toggle.btn-default:hover{
+        color: #1D9534;
+        background-color: #F1F9F3;
+        border-color: #BCE4C4;
+    }
+    .dropdown-menu>li>a:hover{
+        color: #1D9534;
+        background: #F5F7FA;
+    }
+    .open>.base-btn:hover{
+        border-color: #1D9534;
+    }
+    #confirm{
+        box-shadow:  0 0 0 0;
+    }
+    .open>.dropdown-menu{
+        padding: 5px 0 5px 0;
+    }
+    .open>.dropdown-menu li{
+        cursor: pointer;
+    }
+    .demo_hr_div {
+        border-top: #ccc 1px dashed;
+        padding-top: 10px;
+        margin-top: 10px;
+        display: flex;
+        width: 100%;
+        justify-content: center;
+    }
+    .form-check-lable{
+        cursor: pointer;
+    }
+    .other_disposition{
+        display: inline-flex !important;
+			align-items:center;
+        text-align: center;
+        margin-bottom: 10px;
+		}
+    .select-icon{
+        display: inline-block;
+        height: 12px;
+        width: 12px;
+        cursor: pointer;
+        margin-left: 4px;
+        background-repeat: no-repeat;
+        background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIuMDAwMDAwIiBoZWlnaHQ9IjEyLjAwMDAwMCIgdmlld0JveD0iMCAwIDEyIDEyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KCTxkZXNjPgoJCQlDcmVhdGVkIHdpdGggUGl4c28uCgk8L2Rlc2M+Cgk8ZGVmcy8+Cgk8cGF0aCBpZD0icGF0aCIgZD0iTTEuMTIzMjggMy44MDkzOUw1LjcxNTU4IDguODQzODdDNS44Nzg2MiA5LjAyMzAxIDYuMTY4NDcgOS4wNDQzMSA2LjMzMDM4IDguODYzODlMMTAuODc5MyAzLjc4MzA4QzExLjA0MTIgMy42MDI2NiAxMS4wNCAzLjMxMjAxIDEwLjg3NyAzLjEzMjgxQzEwLjc5NjIgMy4wNDQ2OCAxMC42ODk0IDMgMTAuNTgzOCAzQzEwLjQ3NyAzIDEwLjM2OTQgMy4wNDU5NiAxMC4yODgzIDMuMTM2Nkw2LjAyODgzIDcuODkyODJMMS43MDg2NCAzLjE1NjYyQzEuNjI3ODcgMy4wNjg0OCAxLjUyMjIgMy4wMjM4IDEuNDE1MzkgMy4wMjM4QzEuMzA3NDYgMy4wMjM4IDEuMjAxMDMgMy4wNjk3NiAxLjExOTg4IDMuMTYwNEMwLjk1ODM1MyAzLjMzODMyIDAuOTYwNjE4IDMuNjMwMjUgMS4xMjMyOCAzLjgwOTM5WiIgZmlsbC1ydWxlPSJub256ZXJvIiBmaWxsPSIjMjBBNTNBIi8+Cjwvc3ZnPgo=);
+		}
+    .select-icon-roate{
+        display: inline-block;
+        height: 12px;
+        cursor: pointer;
+        width: 12px;
+        margin-left: 4px;
+        background-repeat: no-repeat;
+        transform: rotate(180deg);
+        background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIuMDAwMDAwIiBoZWlnaHQ9IjEyLjAwMDAwMCIgdmlld0JveD0iMCAwIDEyIDEyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KCTxkZXNjPgoJCQlDcmVhdGVkIHdpdGggUGl4c28uCgk8L2Rlc2M+Cgk8ZGVmcy8+Cgk8cGF0aCBpZD0icGF0aCIgZD0iTTEuMTIzMjggMy44MDkzOUw1LjcxNTU4IDguODQzODdDNS44Nzg2MiA5LjAyMzAxIDYuMTY4NDcgOS4wNDQzMSA2LjMzMDM4IDguODYzODlMMTAuODc5MyAzLjc4MzA4QzExLjA0MTIgMy42MDI2NiAxMS4wNCAzLjMxMjAxIDEwLjg3NyAzLjEzMjgxQzEwLjc5NjIgMy4wNDQ2OCAxMC42ODk0IDMgMTAuNTgzOCAzQzEwLjQ3NyAzIDEwLjM2OTQgMy4wNDU5NiAxMC4yODgzIDMuMTM2Nkw2LjAyODgzIDcuODkyODJMMS43MDg2NCAzLjE1NjYyQzEuNjI3ODcgMy4wNjg0OCAxLjUyMjIgMy4wMjM4IDEuNDE1MzkgMy4wMjM4QzEuMzA3NDYgMy4wMjM4IDEuMjAxMDMgMy4wNjk3NiAxLjExOTg4IDMuMTYwNEMwLjk1ODM1MyAzLjMzODMyIDAuOTYwNjE4IDMuNjMwMjUgMS4xMjMyOCAzLjgwOTM5WiIgZmlsbC1ydWxlPSJub256ZXJvIiBmaWxsPSIjMjBBNTNBIi8+Cjwvc3ZnPgo=);
+		}
+    .box_title{
+        cursor: pointer;
+		}
+    .dropdown-menu>li>a{
+        font-size: 12px;
+        height: 28px;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        color: #666666;
+    }
+    /* 下拉按钮样式end */
+		/* 高级设置样式 */
+		.advance_manu{
+			width:130px;
+			flex-direction: column;
+			align-items:center; 
+			position:absolute;
+			top:30px;
+			left:-71px;
+			z-index:9999;
+			background-color:white;
+			border:1px solid #DCDFD6;
+			border-radius: 4px;
+			padding: 5px 0;
+			box-sizing:content-box;
+			color: #666;
+			display: none;
+			box-shadow: 0px 3px 16px rgba(153, 153, 153, 0.42);
+		}
+		.advance_manu .adv-option:hover{
+			color: #20A53A;
+    	background-color: #F5F7FA;
+		}
+		.adv-tips{
+			position:absolute;
+			bottom:38px;
+			left:-71px;
+			padding: 10px;
+			background-color:white;
+			border:1px solid #DCDFD6;
+			border-radius: 2px;
+			color: #F0AD4E;
+			background-color: #FDF6EC;
+		}
+		.adv-tips:hover{
+			color: #666;
+		}
+    /* 高级设置样式 end */
+    #bt_site_table .site_path {
+        max-width: 240px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+        display: block;
+    }
 </style>
 <!--suppress SpellCheckingInspection, CheckEmptyScriptTag -->
 <div class="main-content pb55">
@@ -409,41 +625,23 @@
             <div class="tabs-item" data-type="python">Python项目</div>
             <div class="tabs-item" data-type="other">其他项目</div>
         </div>
-<!--        <span class="pull-right f12 c6 flex " style="line-height:52px; margin-right:15px;display: flex;align-items: center;">-->
-<!--            <span class="btltd">到期时间：<span style="color: #fc6d26;font-weight: bold;margin-right:5px">2023-07-13</span><a class="btlink" onclick="bt.soft.updata_ltd()">续费</a></span>-->
-<!--        </span>-->
     </div>
     <div class="site_table_view bgw mtb15 pd15 tab-view-box">
-            <!-- <div class="info-title-tips">
-                <p><span class="glyphicon glyphicon-alert"
-                         style="color: #f39c12; margin-right: 10px;"></span>{{data['lan']['PS']}}建站成功后，请在<a
-                        class="btlink"
-                        href="/crontab">[计划任务]</a>页面添加定时备份任务!</p>
-            </div> -->
-            <!-- <div class="tab-nav" id="cutMode">
-                <span class="on" data-type="php">PHP项目</span>
-                <span data-type="nodejs">Node项目</span>
-                <span data-type="java">JAVA项目</span>
-                <span data-type="go">Go项目</span>
-            </div> -->
             <div class="tab-con" style="padding: 0;overflow: inherit;">
                 <div class="tab-con-block">
                     <div id="bt_site_table"></div>
-                    <!-- <div class="mask_layer hide">
-                      <div class="prompt_description web-model"></div>
-                    </div> -->
                 </div>
                 <div class="tab-con-block">
                     <div id="bt_java_table" class="bt_table" v-cloak>
                         <div class="tootls_group tootls_top">
-                            <div class="pull-left">
-                                <bt-button type="success" class="mr5" title="添加Java项目" @click="add_java_project"></bt-button>
-                                <bt-button title="JDK管理"  class="mr5" @click="jdk_manage_view"></bt-button>
-                                <bt-button title="Tomcat管理"  class="mr5" @click="tomcat_manage_view"></bt-button>
-                                <bt-link class="mlr15" title="Java项目教程" href="https://www.bt.cn/bbs/thread-76217-1-1.html" target="_blank"></bt-link>
-                            </div>
+														<div class="pull-left" style="display: flex">
+															<bt-button type="success" class="mr5" title="添加Java项目" @click="add_java_project"></bt-button>
+															<bt-button-select title="JAVA环境管理" @click="jdk_manage_view" @jdk_manage_view="jdk_manage_view" @tomcat_manage_view="tomcat_manage_view">
+															</bt-button-select>
+															<bt-link class="mlr15" title="Java项目教程" href="https://www.bt.cn/bbs/thread-76217-1-1.html" target="_blank"></bt-link>
+                                                            <span class="bt-desired ml10" style="background-size: 16px 16px;background-position-y: center;"><a href="javascript:;" class="btlink ml5 npsFeedback" onclick="bt_tools.nps({name:'网站',type:14})">需求反馈</a></span>
+													 </div>
                             <div class="pull-right">
-                                <!--                                <bt-text class="bt_search" v-model="serachValue" width="230px" placeholder="请输入项目名称" icon="search" @keyup.enter="search_project_info" @icon-event="search_project_info">-->
                                 <div class="bt_search">
                                     <input type="text" class="search_input" v-model="serachValue" placeholder="请输入项目名称或备注"
                                            @keyup.enter="search_project_info"/>
@@ -475,6 +673,8 @@
                                 <template v-if="scope.$row.is_file_ok || typeof scope.$row.is_file_ok === 'undefined'">
                                     <bt-link :title="scope.$row.run ? '运行中' : '未启动'"
                                              :status="scope.$row.run"
+																						 :id="scope.$row.id"
+                                             :name="scope.$row.name"
                                              :icon="scope.$row.run?'play':'pause'"
                                              @click="switch_operation_state(scope.$row)"></bt-link>
                                 </template>
@@ -504,8 +704,11 @@
                                 <template v-else>${ get_memory_info(scope.$row) }</template>
                             </bt-table-column>
                             <bt-table-column title="根目录" min-width="80px" v-slot="scope">
-                                <bt-link :title="scope.$row.path" @click="open_file_path(scope.$row.path)" :tips="scope.$row.path" />
-                            </bt-table-column>
+															<bt-link :title="scope.$row.path" @click="open_file_path(scope.$row.path)" :tips="scope.$row.path" :is-info="true" />
+														</bt-table-column>
+														<bt-table-column title="目录详情" min-width="40px" v-slot="scope">
+																<bt-link :title="scope.$row.path" @click="open_file_path(scope.$row.path)" :tips="scope.$row.path" :is-info="false" />
+														</bt-table-column>
                             <bt-table-column title="备注" min-width="80px" v-slot="scope">
                                 <template v-if="scope.$row.is_file_ok || typeof scope.$row.is_file_ok === 'undefined'">
                                     <bt-text cust-class="table-input" :block="true" :value="scope.$row.ps" width="100%" placeholder="点击编辑内容，按回车或失去焦点自动保存" @blur="editor_project_ps($event, scope.$row)" @keyup="enter_editor_project_ps($event)" />
@@ -532,96 +735,25 @@
                         </bt-table>
 
                         <!-- 添加JAVA对象 -->
-                        <bt-layer title="添加JAVA项目" v-model="addJavaView" :area="['620px', '680px']" @close="close_add_java_project">
-                            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding-bottom: 49px;">
-                                <div style="height: 100%; padding: 30px 30px 20px; overflow: auto;">
-                                    <bt-java-form :config="{form:projectFormInfo,jdkList:jdkList,tomcatList:tomcatList}"></bt-java-form>
-                                </div>
-                            </div>
-                            <div class="bt-form-submit-btn">
-                                <bt-button type="danger" title="关闭" @click.native="addJavaView = false"></bt-button>
-                                <bt-button type="success" title="提交" @click.native="submit_form_info"></bt-button>
-                            </div>
-                        </bt-layer>
+                        <bt-layer title="添加JAVA项目" v-model="addJavaView" :area="['620px', '640px']" @close="close_add_java_project">
+													<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding-bottom: 49px;">
+															<div style="height: 100%; padding: 20px 20px 20px; overflow: auto;">
+																	<bt-java-form :config="{form:projectFormInfo,jdkList:jdkList,tomcatList:tomcatList}"></bt-java-form>
+															</div>
+													</div>
+													<div class="bt-form-submit-btn">
+															<bt-button type="danger" title="关闭" @click.native="addJavaView = false"></bt-button>
+															<bt-button type="success" title="提交" @click.native="submit_form_info"></bt-button>
+													</div>
+											</bt-layer>
 
                         <!-- JAVA管理 -->
-                        <bt-layer title="JDK管理" v-model="jdkManageView" :area="['480px','400px']" @close="jdkPathValue = ''">
-                            <bt-text width="300px" v-model="jdkPathValue" class-name="mr10" placeholder="请输入自定义JDK地址，或选择JDK路径"
-                                     icon="folder-open" @icon-event="select_path('add_load_jdk', 'file')"></bt-text>
-                            <bt-button type="success" title="添加JDK" class-name="mlr15 mr0"
-                                       @click="add_jdk_info"></bt-button>
-                            <div class="divtable mt10">
-                                <table class="table table-hover">
-                                    <thead>
-                                    <tr>
-                                        <th>JDK地址</th>
-                                        <th style="text-align:right;width:80px;">操作</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    <tr v-for="(item,index) in jdkInfo" :key="index">
-                                        <td><span>${item[1]}</span></td>
-                                        <td style="text-align:right;">
-                                            <template v-if="item[0] === '自定义JDK'">
-                                                <bt-link title="删除" @click.native="delete_jdk_info(item,index)"/>
-                                            </template>
-                                            <template v-else>
-                                                <span>不可操作</span>
-                                            </template>
-                                        </td>
-                                    </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </bt-layer>
-
-                        <!-- Tomcat管理 -->
-                        <bt-layer title="Tomcat版本管理"  v-model="tomcatManageView" area="600px">
-                            <div class="box_item" v-for="(item,key) in tomcatInfo">
-                                <div class="box_title">${key}</div>
-                                <template v-if="item.status">
-                                    <div class="block">
-                                        <div class="status">
-                                            <div class="btn_item_block">
-                                                <span>当前状态：<bt-link :title="item.info.status?'运行中':'已停止'"
-                                                                    :status="item.info.status"
-                                                                    :icon="item.info.status?'play':'pause'"
-                                                                    @click="set_tomcat_service(item.version,item.info.status?'stop':'start')"/></span>
-                                            </div>
-                                            <div class="btn_item_block">
-                                                <span>端口：</span>
-                                                <span>${item.info.port}<bt-link title="更改"
-                                                                                @click="open_tomcat_port_view(item.version,item.info.port)"
-                                                                                class="ml5"/></span>
-                                            </div>
-                                            <div class="btn_item_block">
-                                                <span>JDK路径：</span>
-                                                <span>${item.info.jdk_path}</span>
-<!--                                                <bt-link title="更改"-->
-<!--                                                         @click="open_tomcat_jdk_view(item.tomcat_start,item.info.jdk_path)"-->
-<!--                                                         class="ml5"/>-->
-                                            </div>
-                                        </div>
-                                        <bt-button @click="set_tomcat_service(item.version)" title="启动"
-                                                   v-if="!item.info.status"></bt-button>
-                                        <bt-button @click="set_tomcat_service(item.version,'stop')" title="停止"
-                                                   v-if="item.info.status"></bt-button>
-                                        <bt-button @click="set_tomcat_service(item.version,'restart')"
-                                                   title="重载配置"></bt-button>
-                                        <bt-button type="danger"
-                                                   @click="install_tomcat_version(item.version,'uninstall')"
-                                                   title="卸载"></bt-button>
-                                    </div>
-                                </template>
-                                <template v-else>
-                                    <div class="block"><span style="margin-right: 15px">当前版本未安装，点击安装后操作</span>
-                                        <bt-button size="xs" title="点击安装"
-                                                   @click="install_tomcat_version(item.version)"></bt-button>
-                                    </div>
-                                </template>
-                            </div>
-                        </bt-layer>
-
+                        <bt-layer class-name="pd0" title="JAVA环境管理" v-model="javaEnvShow" :area="['680px','500px']" @close="close_java_evn">
+													<bt-tabs v-model="javaEnvName" :data="projectInfo" @change="cut_project_settings_model" :tab-refresh="true">
+															<bt-tabs-pane label="JDK管理" name="JDKConfig" component="bt-java-jdk" :refresh="true" :config="{jdkInfo:jdkInfo}"></bt-tabs-pane>
+															<bt-tabs-pane label="Tomcat管理" name="tomcatconfig" component="bt-java-tomcat" :refresh="true"></bt-tabs-pane>
+													</bt-tabs>
+											</bt-layer>
                         <!-- 修改Tomcat端口 -->
                         <bt-layer :title="'修改Tomcat'+ tomcatVersion + '-端口'" v-model="modifyTomcatPort" area="400px" >
                             <div class="bt-form">
@@ -652,7 +784,7 @@
                         <!-- 设置界面 -->
                         <bt-layer :title="'JAVA项目管理-[ '+ projectInfo.name +' ]，添加时间['+ projectInfo.addtime +']'"
                                   v-model="projectSettings"
-                                  :area="['780px','722px']"
+                                  :area="['780px','780px']"
                                   class-name="pd0"
                                   @close="close_project_settings" >
                             <bt-tabs v-model="project_settings_model" :data="projectInfo" @change="cut_project_settings_model" :tab-refresh="true">
@@ -670,6 +802,7 @@
                                 <bt-tabs-pane label="SSL" name="ssl"></bt-tabs-pane>
                                 <bt-tabs-pane label="服务状态" name="serviceStatus" component="bt-site-service-status" :refresh="true"></bt-tabs-pane>
                                 <bt-tabs-pane label="负载状态" name="loadState"></bt-tabs-pane>
+																<bt-tabs-pane label="性能监控" name="performanceMonitor" v-if="projectInfo.project_config.java_type == 'springboot'"></bt-tabs-pane>
                                 <bt-tabs-pane label="项目日志" name="projectLog" component="bt-site-logs" :refresh="true"></bt-tabs-pane>
                                 <bt-tabs-pane label="网站日志" name="siteLog"></bt-tabs-pane>
                                 <bt-tabs-pane class="mask_module" :public="defalutTabView">
@@ -713,6 +846,7 @@
 </script>
 <script type="text/javascript" src="{{g.cdn_url}}/laydate/laydate.js?version={{g['version']}}"></script>
 <script type="text/javascript" src="{{g.cdn_url}}/js/site.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
+<script type="text/javascript" src="{{g.cdn_url}}/js/soft.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
 <script type="text/javascript" src="{{g.cdn_url}}/editor/ace.js?version={{g['version']}}&repair={{data['js_random']}}"></script>
 <script type="text/javascript">
     {% if not data['isSetup'] %}

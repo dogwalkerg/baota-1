@@ -75,6 +75,7 @@
 
 <body>
 <div id="compatibility">
+    <!-- ieVersion： -->
     <h4 class="title">您正在使用的浏览器版本过低，无法正常访问面板，推荐使用以下浏览器访问面板</h4>
     <span class="vice-title">常用浏览器 : Chrome、Edge、Firefox、国产浏览器（<em style="font-style: normal;font-weight: 600;">极速模式</em>）</span>
     <div class="item_list">
@@ -102,3 +103,70 @@
 </div>
 </body>
 </html>
+
+<script type="text/javascript">
+    var ieVersion = (function () {
+        var userAgent = navigator.userAgent,
+            isLessIE11 = userAgent.indexOf('compatible') > -1 && userAgent.indexOf('MSIE') > -1,
+            isEdge = userAgent.indexOf('Edge') > -1 && !isLessIE11,
+            isIE11 = userAgent.indexOf('Trident') > -1 && userAgent.indexOf('rv:11.0') > -1
+        if (isLessIE11) {
+            var IEReg = new RegExp('MSIE (\\d+\\.\\d+);')
+            IEReg.test(userAgent)
+            var IEVersionNum = parseFloat(RegExp['$1'])
+            if ([7, 8, 9, 10].indexOf(IEVersionNum) > -1) {
+                return IEVersionNum
+            } else {
+                return 6
+            }
+        } else if (isEdge) {
+            return 'edge'
+        } else if (isIE11) {
+            return 11
+        } else {
+            return -1
+        }
+    })()
+
+    // 支持Firefox\Chrome\Safari浏览器判断
+    var browserVersion = function (type, version) {
+        var userAgent = navigator.userAgent
+        if (type === 'Safari') type = 'Version'
+        if (userAgent.indexOf(type) > -1) {
+            var reg = new RegExp(type + '/(\\d+\\.\\d+)')
+            reg.test(userAgent)
+            var versionNum = parseFloat(RegExp['$1'])
+            return version > versionNum
+        } else {
+            return false
+        }
+    }
+
+    var config = {
+        isIE:ieVersion != -1 && ieVersion <= 11 && ieVersion != 'edge',
+        isLower:browserVersion('Chrome', 60) || browserVersion('Safari', 11) || browserVersion('Firefox', 50)
+    }
+
+
+    function setTitle(){
+        var title = '',content = ''
+        if(config.isIE){
+            title = '您当前使用的为低版本IE浏览器，无法正常访问面板，请选择其他浏览器进行访问'
+            content = '常用浏览器推荐下载：Chrome、Edge、Firefox、国产浏览器'
+            document.querySelector('.title').innerHTML = title
+            document.querySelector('.vice-title').innerHTML = content
+        }
+        if(config.isLower){
+            title = '您正在使用的浏览器版本过低，无法正常访问面板，请升级浏览器后进行访问'
+            content = '请升级您的浏览器版本或安装以下浏览器最新版本'
+            document.querySelector('.title').innerHTML = title
+            document.querySelector('.vice-title').innerHTML = content
+        }
+    }
+    
+    setTitle()
+    
+
+
+
+</script>

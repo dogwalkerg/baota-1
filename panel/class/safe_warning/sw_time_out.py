@@ -15,6 +15,7 @@ _tips = [
     "执行命令source /etc/profile使配置生效",
 ]
 _help = ''
+_remind = '此方案会使服务器命令行超过一定时间未操作自动关闭，可以加强服务器安全性。'
 
 
 def check_run():

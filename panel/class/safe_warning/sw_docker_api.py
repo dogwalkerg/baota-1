@@ -23,9 +23,11 @@ _level = 3  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2022-8-10'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_docker_api.pl")
 _tips = [
-    "应开启认证来鉴权或关闭Dokcer Api"
+    "在安全-系统防火墙将2375端口的来源设置为指定IP或域名",
+    "若不为业务需要，建议关闭该api"
 ]
 _help = ''
+_remind = '此方案可以修复Docker的未授权访问漏洞，防止攻击者利用Docker入侵服务器。需要对API访问进行限制，确保不会影响原有的网站业务运行。'
 
 
 #

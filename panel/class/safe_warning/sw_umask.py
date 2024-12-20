@@ -27,6 +27,8 @@ _tips = [
     "操作如下：修改 umask 为027",
 ]
 _help = ''
+_remind = '此方案可以加强用户权限的控制，避免用户权限过高。'
+
 
 def check_run():
       # 判断是否存在/etc/profile文件

@@ -27,7 +27,7 @@ _tips = [
     "minlen=9",
     ]
 _help = ''
-
+_remind = '此方案会强制登录密码的最低长度，降低服务器被爆破的风险。'
 
 
 def check_run():

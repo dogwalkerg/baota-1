@@ -29,53 +29,53 @@ class safe:
         {'msg':'一句话木马','level':'危险','code':'(preg\_replace\s*\((.*)\(base64\_decode\(\$)'}
         ]
 
-    ruleFile = '/www/server/panel/data/ruleList.conf';
-    if not os.path.exists(ruleFile): public.writeFile(ruleFile,json.dumps(rulelist));
-    rulelist = json.loads(public.readFile(ruleFile));
+    ruleFile = '/www/server/panel/data/ruleList.conf'
+    if not os.path.exists(ruleFile): public.writeFile(ruleFile,json.dumps(rulelist))
+    rulelist = json.loads(public.readFile(ruleFile))
 
-    result = {};
+    result = {}
     result['data'] = []
     result['phpini'] = []
-    result['userini'] = result['sshd'] = result['scan'] = True;
+    result['userini'] = result['sshd'] = result['scan'] = True
     result['outime'] = result['count'] = result['error'] = 0
 
     def scan(self,path):
-        start = time.time();
+        start = time.time()
         ce = ['.jsp','.asp','.html','.htm','.php','.tpl','.xml']
         for root,dirs,files in os.walk(path):
             for filespath in files:
                 if not os.path.splitext(filespath)[1] in ce: continue;
                 if os.path.getsize(os.path.join(root,filespath)) < 262144:
-                    filename = os.path.join(root,filespath);
-                    self.threadto(filename);
-        end = time.time();
+                    filename = os.path.join(root,filespath)
+                    self.threadto(filename)
+        end = time.time()
         self.result['outime'] = int(end - start)
 
     def threadto(self,filename):
-        print 'scanning ' + filename,
+        print('scanning ' + filename)
         file= open(filename)
         filestr = file.read()
         char=chardet.detect(filestr)
         try:
             filestr = filestr.decode(char['encoding'])
         except:
-            return;
+            return
         file.close()
         for rule in self.rulelist:
             tmps = re.compile(rule['code']).findall(filestr)
             if tmps:
                 tmp = {}
-                tmp['msg'] = rule['msg'];
-                tmp['level'] = rule['level'];
-                tmp['filename'] = filename;
+                tmp['msg'] = rule['msg']
+                tmp['level'] = rule['level']
+                tmp['filename'] = filename
                 tmp['code'] = str(tmps[0][0:200])
                 tmp['etime'] = time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(os.path.getmtime(filename)))
-                self.result['data'].append(tmp);
+                self.result['data'].append(tmp)
                 self.result['error'] += 1
                 break
-        print '  done'
+        print('  done')
         self.result['count'] += 1
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
         del(filestr)
 
     def md5sum(self,md5_file):
@@ -87,30 +87,30 @@ class safe:
 
 
     def checkUserINI(self,path):
-        self.result['userini'] =  os.path.exists(path+'/.user.ini');
-        if not self.result['userini']: self.result['error'] += 1;
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
+        self.result['userini'] =  os.path.exists(path+'/.user.ini')
+        if not self.result['userini']: self.result['error'] += 1
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
 
     def checkPHPINI(self):
-        setupPath = '/www/server';
+        setupPath = '/www/server'
         phps = public.get_php_versions()
         rep = "disable_functions\s*=\s*(.+)\n"
         defs = ['passthru','exec','system','chroot','chgrp','chown','shell_exec','popen','ini_alter','ini_restore','dl','openlog','syslog','readlink','symlink','popepassthru']
         data = []
         for phpv in phps:
-            phpini = setupPath + '/php/'+phpv+'/etc/php.ini';
+            phpini = setupPath + '/php/'+phpv+'/etc/php.ini'
             if not os.path.exists(phpini): continue;
-            conf = public.readFile(phpini);
-            tmp = re.search(rep,conf).groups();
-            disables = tmp[0].split(',');
+            conf = public.readFile(phpini)
+            tmp = re.search(rep,conf).groups()
+            disables = tmp[0].split(',')
             for defstr in defs:
                 if defstr in disables: continue;
                 tmp = {}
-                tmp['function'] = defstr;
-                tmp['version'] = phpv;
-                self.result['phpini'].append(tmp);
-        self.result['error'] += len(self.result['phpini']);
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
+                tmp['function'] = defstr
+                tmp['version'] = phpv
+                self.result['phpini'].append(tmp)
+        self.result['error'] += len(self.result['phpini'])
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
 
 
 
@@ -121,30 +121,30 @@ class safe:
         if self.md5sum('/etc/issue') == '6c9222ee501323045d85545853ebea55':
             if self.md5sum('/usr/sbin/sshd') != '4bbf2b12d6b7f234fa01b23dc9822838': self.result['sshd'] = False
         self.result['sshd'] = True
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
 
 
 
     def suspect(self,path):
-        self.result['path'] = path;
-        self.checkSSH();
-        self.checkPHPINI();
-        self.checkUserINI(path);
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
-        self.scan(path);
+        self.result['path'] = path
+        self.checkSSH()
+        self.checkPHPINI()
+        self.checkUserINI(path)
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
+        self.scan(path)
         self.result['scan'] = False
-        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result));
-        return self.result;
+        public.writeFile(self.result['path'] + '/scan.pl',json.dumps(self.result))
+        return self.result
 
 if __name__=='__main__':
 
     if len(sys.argv)!=2:
         print('参数错误')
-        exit();
+        exit()
     if os.path.lexists(sys.argv[1]) == False:
         print("目录不存在")
-        exit();
+        exit()
     if len(sys.argv) ==2:
-        safe().suspect(sys.argv[1]);
+        safe().suspect(sys.argv[1])
     else:
         exit()
