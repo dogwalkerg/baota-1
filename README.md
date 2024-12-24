@@ -18,7 +18,8 @@
 
 
 # 下载离线升级包(也可以手动下载上传到服务器/root目下)：
-- ```bash
+- 宝塔linux面板离线升级(降级)指定版本
+  ```bash
    wget -O LinuxPanel.zip http://download.bt.cn/install/update/LinuxPanel-7.9.0.zip
   ```
 - 解压文件：
