@@ -26,12 +26,12 @@
 - ```bash
   unzip LinuxPanel.zip
   ```
-  - 执行面板自带的升级脚本
-    ```bash
-      cd panel && bash update.sh
-    ```
-  - 删除升级或降级包：
-    ```bash
-    cd .. && rm -f LinuxPanel.zip && rm -rf panel
-    ```
+- 执行面板自带的升级脚本
+  ```bash
+   cd panel && bash update.sh
+  ```
+- 删除升级或降级包：
+ ```bash
+  cd .. && rm -f LinuxPanel.zip && rm -rf panel
+ ```
   
