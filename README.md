@@ -31,7 +31,7 @@
    cd panel && bash update.sh
   ```
 - 删除升级或降级包：
- ```bash
+  ```bash
   cd .. && rm -f LinuxPanel.zip && rm -rf panel
- ```
+  ```
   
