@@ -15,3 +15,22 @@
 1. 查看 `class/jobs.py` 代码逐行历史：https://github.com/wei/baota/blame/release/panel/class/jobs.py
 
 [![](http://screenshotter.git.ci/screenshot?url=https://baota-releases.now.sh&viewport=750,500)](https://baota-releases.now.sh)
+
+
+# 下载离线升级包(也可以手动下载上传到服务器/root目下)：
+- ```bash
+   wget -O LinuxPanel.zip http://download.bt.cn/install/update/LinuxPanel-7.9.0.zip
+  ```
+- 解压文件：
+- ```bash
+  unzip LinuxPanel.zip
+  ```
+  - 执行面板自带的升级脚本
+    ```bash
+      cd panel && bash update.sh
+    ```
+  - 删除升级或降级包：
+    ```bash
+    cd .. && rm -f LinuxPanel.zip && rm -rf panel
+    ```
+  
