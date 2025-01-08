@@ -30,14 +30,25 @@ class main(sslBase):
 
         root_domain, _, sub_domain = self.extract_zone(domain_name)
         data = {}
+        params = {}
+        if "limit" in get:
+            params["per_page"] = get.limit
+        if "p" in get:
+            params["page"] = get.p
+        if "search" in get:
+            params["search"] = get.search
+
         try:
             zone_dic = self.get_zoneid_dic(get)
             zone_id = zone_dic[root_domain]
             url = urljoin(self.CLOUDFLARE_API_BASE_URL, "zones/{}/dns_records".format(zone_id))
-            response = requests.get(url, headers=self.headers, timeout=self.HTTP_TIMEOUT).json()
+            response = requests.get(url, headers=self.headers, timeout=self.HTTP_TIMEOUT, params=params).json()
             data = {
                 "info": {
-                    'record_total': response['result_info']['total_count']
+                    'record_total': response['result_info']['total_count'],
+                    "count": response['result_info']['count'],
+                    "page": response['result_info']['page'],
+                    "per_page": response['result_info']['per_page'],
                 },
                 "list": [
                     {

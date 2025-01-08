@@ -16,7 +16,7 @@ import socket
 
 import requests.packages.urllib3.util.connection as urllib3_cn
 from requests.packages import urllib3
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 from .util import write_push_log, get_test_msg
 
@@ -54,8 +54,6 @@ class DingDingMsg:
 
         if at_info:
             msg = msg + '\n\n>' + at_info
-        
-        
 
         headers = {'Content-Type': 'application/json'}
         data = {

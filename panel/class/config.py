@@ -49,6 +49,7 @@ class config:
         "memuAssl": "/ssl",
         "memuAwp": "/wp",
         "memuAmail": "/mail",
+        "memuAvhost": "/vhost",
         "memuAxterm": "/xterm",
         "memuAcrontab": "/crontab",
         "memuAsoft": "/soft",
@@ -1552,6 +1553,7 @@ class config:
                 filename = '/usr/local/lsws/lsphp' + get.version + '/etc/php.ini'
         phpini = public.readFile(filename)
         rep = r'session.save_handler\s*=\s*([0-9A-Za-z_& ~]+)(\s*;?|\r?\n)'
+        save_handler = re.search(rep, phpini)
         try:
             save_handler = re.search(rep, phpini)
             if save_handler:
@@ -2372,16 +2374,16 @@ class config:
                 # 将显示菜单保存
             if 'memuA' not in show_menu_data:
                 show_menu_data.append('memuA')
-            # # 新增菜单保存到文件
-            # path = '/www/server/panel/config/{}.pl'
-            # menu_list = ["memuAssl", "memuAwp"]
-            # for menu in menu_list:
-            #     if not os.path.exists(path.format(menu)):
-            #         # if menu == "memuAmail" and not os.path.exists('/www/server/panel/plugin/mail_sys'):
-            #         #     continue
-            #         public.writeFile(path.format(menu), '')
-            #         if menu not in show_menu_data:
-            #             show_menu_data.append(menu)
+            # 新增菜单保存到文件
+            path = '/www/server/panel/config/{}.pl'
+            menu_list = ["memuAvhost"]
+            for menu in menu_list:
+                if not os.path.exists(path.format(menu)):
+                    # if menu == "memuAmail" and not os.path.exists('/www/server/panel/plugin/mail_sys'):
+                    #     continue
+                    public.writeFile(path.format(menu), '')
+                    if menu not in show_menu_data:
+                        show_menu_data.append(menu)
 
             public.WriteFile(show_menu_file, json.dumps(show_menu_data))
             default_site_menu = ['php', 'java', 'node', 'go', 'python', 'net', 'nginx', 'html',"other"]
@@ -2424,6 +2426,7 @@ class config:
                             return menus
                         else:
                             for i in result:
+                                __menu_dict = {m['id']: m['href'] for m in menu_data}
                                 if self.__menu_dict[i['id']] in data['menu'] or i['id'] == 'dologin':
                                     i['show'] = True
                                 else:

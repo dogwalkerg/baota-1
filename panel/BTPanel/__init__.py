@@ -426,13 +426,17 @@ def error_403(e):
 @app.errorhandler(Exception)
 def error_500(e):
     if request.method not in ['GET', 'POST']: return Response(status=500)
-    if not session.get('login', None):
-        g.auth_error = True
-        return public.error_not_login()
     ss = '''404 Not Found: The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.
 
 During handling of the above exception, another exception occurred:'''
     error_info = public.get_error_info().strip().split(ss)[-1].strip()
+    if not session.get('login', None):
+        is_panel_error = False
+        if error_info.find("Traceback (most recent call last):") != -1 and os.path.exists("/www/server/panel/data/debug.pl"):
+            is_panel_error = True
+        g.auth_error = True
+        if not is_panel_error:
+            return public.error_not_login()
 
     nn = 'During handling of the above exception, another exception occurred:'
     if error_info.find(nn) != -1 and error_info.find('public.error_conn_cloud') != -1:

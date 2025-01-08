@@ -15,9 +15,9 @@
 
 import os,sys,re,public
 
-_title = '2222222'
+_title = '检测是否禁用Ping'
 _version = 1.0                              # 版本
-_ps = "222222222(禁Ping)"              # 描述
+_ps = "检测是否禁用Ping"              # 描述
 _level = 0                                  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
 _date = '2020-08-05'                        # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_ping_in.pl")

@@ -49,7 +49,8 @@ def update_mod_push_msg():
         except:
             weixin_data = None
 
-        if isinstance(weixin_data, dict) and "weixin_url" in weixin_data:
+        if isinstance(weixin_data, dict) and "weixin_url" in weixin_data and \
+                not sc.key_exists("weixin", "url", weixin_data["weixin_url"]):
             sc.config.append({
                 "id": sc.nwe_id(),
                 "used": True,
@@ -74,17 +75,18 @@ def update_mod_push_msg():
 
         if isinstance(stmp_data, dict):
             if 'qq_mail' in stmp_data or 'qq_stmp_pwd' in stmp_data or 'hosts' in stmp_data:
-                sc.config.append({
-                    "id": sc.nwe_id(),
-                    "used": True,
-                    "sender_type": "mail",
-                    "data": {
-                        "send": stmp_data,
-                        "title": "邮箱",
-                        "receive": [] if not mail_list_data else mail_list_data,
-                    },
-                    "original": True
-                })
+                if not sc.key_exists("mail", "send", stmp_data):
+                    sc.config.append({
+                        "id": sc.nwe_id(),
+                        "used": True,
+                        "sender_type": "mail",
+                        "data": {
+                            "send": stmp_data,
+                            "title": "邮箱",
+                            "receive": [] if not mail_list_data else mail_list_data,
+                        },
+                        "original": True
+                    })
 
     # webhook
     webhook_file = panel_data_path + "/hooks_msg.json"
@@ -96,13 +98,14 @@ def update_mod_push_msg():
 
         if isinstance(webhook_data, list):
             for i in webhook_data:
-                i["title"] = i["name"]
-                sc.config.append({
-                    "id": sc.nwe_id(),
-                    "used": True,
-                    "sender_type": "webhook",
-                    "data": i,
-                })
+                if not sc.key_exists("webhook", "url", i.get("url", None)):
+                    i["title"] = i["name"]
+                    sc.config.append({
+                        "id": sc.nwe_id(),
+                        "used": True,
+                        "sender_type": "webhook",
+                        "data": i,
+                    })
 
     # feishu
     if os.path.exists(panel_data_path + "/feishu.json"):
@@ -112,16 +115,17 @@ def update_mod_push_msg():
             feishu_data = None
 
         if isinstance(feishu_data, dict) and "feishu_url" in feishu_data:
-            sc.config.append({
-                "id": sc.nwe_id(),
-                "used": True,
-                "sender_type": "feishu",
-                "data": {
-                    "url": feishu_data["feishu_url"],
-                    "title": "飞书" if "title" not in feishu_data else feishu_data["title"]
-                },
-                "original": True
-            })
+            if not sc.key_exists("feishu", "url", feishu_data["feishu_url"]):
+                sc.config.append({
+                    "id": sc.nwe_id(),
+                    "used": True,
+                    "sender_type": "feishu",
+                    "data": {
+                        "url": feishu_data["feishu_url"],
+                        "title": "飞书" if "title" not in feishu_data else feishu_data["title"]
+                    },
+                    "original": True
+                })
 
     # dingding
     if os.path.exists(panel_data_path + "/dingding.json"):
@@ -131,16 +135,17 @@ def update_mod_push_msg():
             dingding_data = None
 
         if isinstance(dingding_data, dict) and "dingding_url" in dingding_data:
-            sc.config.append({
-                "id": sc.nwe_id(),
-                "used": True,
-                "sender_type": "dingding",
-                "data": {
-                    "url": dingding_data["dingding_url"],
-                    "title": "钉钉" if "title" not in dingding_data else dingding_data["title"]
-                },
-                "original": True
-            })
+            if not sc.key_exists("dingding", "url", dingding_data["dingding_url"]):
+                sc.config.append({
+                    "id": sc.nwe_id(),
+                    "used": True,
+                    "sender_type": "dingding",
+                    "data": {
+                        "url": dingding_data["dingding_url"],
+                        "title": "钉钉" if "title" not in dingding_data else dingding_data["title"]
+                    },
+                    "original": True
+                })
 
     sc.save_config()
     write_file(PUSH_DATA_PATH + "/update_sender.pl", "")

@@ -385,10 +385,37 @@ class projectBase(LimitNet, Redirect):
             type_id = int(get.type_id.strip())
         except (AttributeError, ValueError, TypeError):
             return public.returnMsg(False, "参数错误")
+
         p_type = self._project_mod_type()
+
+        project_type_map = {
+            "go": "Go",
+            "java": "Java",
+            "net": "net",
+            "nodejs": "Node",
+            "other": "Other",
+            "python": "Python",
+            "proxy": "proxy",
+            "html": "html",
+        }
+        if p_type not in project_type_map:
+            return public.returnMsg(False, "参数错误")
+
         flag = _ProjectSiteType().remove(p_type, type_id)
         if not flag:
             return public.returnMsg(False, "删除错误")
+
+        p_t = project_type_map[p_type]
+        query_str = 'project_type=? AND type_id=?'
+        projects = public.M('sites').where(query_str, (p_t, type_id)).field("id").select()
+        if not projects:
+            return public.returnMsg(True, "删除成功")
+
+        project_ids = [i["id"] for i in projects]
+
+        update_str = 'project_type=? AND id in ({})'.format(",".join(["?"] * len(project_ids)))
+        public.M('sites').where(update_str, (p_t, *project_ids)).update({"type_id": 0})
+
         return public.returnMsg(True, "删除成功")
 
     def find_project_site_type(self, type_id: int):

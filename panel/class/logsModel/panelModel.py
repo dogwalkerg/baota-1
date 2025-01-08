@@ -594,13 +594,10 @@ class main(logsBase):
             # 获取数据
             filepath = "/www/server/panel/config/ssh_intrusion.json"
             is_today = False
-            is_yesterday = False
 
             today_time = datetime.date.today()
             yesterday_time = today_time - datetime.timedelta(days=1)
 
-            if public.cache_get("yesterday_data"):
-                value_list[1] = public.cache.get("yesterday_data")
             if os.path.exists(filepath):
                 try:
                     filedata = json.loads(public.readFile(filepath))
@@ -623,7 +620,6 @@ class main(logsBase):
                 args.model_index = "safe"  # 模块名
                 args.count = 100
                 args.select = select
-                if args.select == "ALL" and page == 10: return value_list
 
                 ssh_list = PluginLoader.module_run("syslog", "get_ssh_list", args)
                 if not isinstance(ssh_list, list) or len(ssh_list) == 0:
@@ -633,14 +629,11 @@ class main(logsBase):
                     if str(data["time"]).startswith(str(today_time)):
                         if is_today: continue
                         value_list[0] += 1
-                    elif str(data["time"]).startswith(str(yesterday_time)) and not is_yesterday:
+                    elif str(data["time"]).startswith(str(yesterday_time)):
                         value_list[1] += 1
-                        is_yesterday = True
                     else:
                         return value_list
                 page += 1
-            if not is_yesterday:
-                public.cache_set("yesterday_data", value_list[1], 86400)
             return value_list
         except:
             return [0, 0]

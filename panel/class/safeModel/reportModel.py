@@ -7,7 +7,7 @@
 # Author: lwh <2023-08-01>
 # -------------------------------------------------------------------
 
-# 面板安全风险一键修复
+# 首页安全风险，展示检测结果
 # ------------------------------
 import json
 import os
@@ -47,7 +47,7 @@ class main(safeBase):
 
     def get_report(self, get):
         '''
-        获取html报告数据
+            将检测数据，填充到html，并展示检测报告数据
         '''
         public.set_module_logs("report", "get_report")
         self.cve_list = []
@@ -231,7 +231,8 @@ class main(safeBase):
             focus_high_list.append(
                 {
                     "num": str(num),
-                    "name": "高危风险\n\n"+str(hwl["msg"]),
+                    "name": str(hwl["msg"]),
+                    "level": "高危",
                     "ps": str(hwl["ps"]),
                     "tips": '\n'.join(hwl["tips"]),
                     "auto": self.is_autofix1(hwl["m_name"])
@@ -244,7 +245,8 @@ class main(safeBase):
             focus_mid_list.append(
                 {
                     "num": num,
-                    "name": "中危风险\n\n"+mwl["msg"],
+                    "name": mwl["msg"],
+                    "level": "中危",
                     "ps": mwl["ps"],
                     "tips": '\n'.join(mwl["tips"]),
                     "auto": self.is_autofix1(mwl["m_name"])
@@ -256,15 +258,18 @@ class main(safeBase):
         for cl in self.cve_list:
             tmp_cve = {
                     "num": num,
-                    "name": "高危漏洞\n\n"+cl["m_name"],
+                    "name": cl["m_name"],
+                    "level": "高危",
                     "ps": cl["ps"],
                     "tips": '\n'.join(cl["tips"]),
                     "auto": "支持"
                 }
             if cl["level"] == 2:
-                tmp_cve["name"] = "中危漏洞\n\n"+cl["m_name"]
+                tmp_cve["name"] = cl["m_name"]
+                tmp_cve["level"] = "中危"
             elif cl["level"] == 1:
-                tmp_cve["name"] = "低危漏洞\n\n"+cl["m_name"]
+                tmp_cve["name"] = cl["m_name"]
+                tmp_cve["level"] = "低危"
             focus_cve_list.append(tmp_cve)
             num += 1
         fifth["focus_cve_list"] = focus_cve_list
@@ -275,7 +280,8 @@ class main(safeBase):
             low_warn_list.append(
                 {
                     "num": str(num),
-                    "name": "低危风险\n\n"+str(lwl["msg"]),
+                    "name": str(lwl["msg"]),
+                    "level": "低危",
                     "ps": str(lwl["ps"]),
                     "tips": '\n'.join(lwl["tips"]),
                     "auto": self.is_autofix1(lwl["m_name"])
@@ -289,7 +295,8 @@ class main(safeBase):
                 ignore_list.append(
                     {
                         "num": num,
-                        "name": "忽略项\n\n"+ig["msg"],
+                        "name": ig["msg"],
+                        "level": "忽略项",
                         "ps": ig["ps"],
                         "tips": '\n'.join(ig["tips"]),
                         "auto": self.is_autofix(ig)
@@ -299,7 +306,8 @@ class main(safeBase):
                 ignore_list.append(
                     {
                         "num": num,
-                        "name": "忽略项\n\n"+ig["cve_id"],
+                        "name": ig["cve_id"],
+                        "level": "忽略项",
                         "ps": ig["vuln_name"],
                         "tips": "将【{}】版本升级至{}或更高版本。".format('、'.join(ig["soft_name"]), ig["vuln_version"]),
                         "auto": self.is_autofix(ig)

@@ -9,7 +9,7 @@
 import psutil, time, os, public, re, sys,json
 
 try:
-    from BTPanel import session, cache
+    from BTPanel import session, cache, request
 except:
     pass
 
@@ -398,15 +398,52 @@ class system:
         for s in cpu_times: cpu_time += s
         return cpu_time
 
+    def bytes_to_human_readable(self, bytes_num, precision=2):
+        """
+        将bytes_num转成GB
+        :param bytes_num: 字节数
+        :return: 格式化后的字符串 xxx mb
+        """
+        suffixs = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+        suffix = ""
+        for i, suf in enumerate(suffixs):
+            if bytes_num < 1024:
+                suffix = suf
+                break
+            bytes_num /= 1024
+
+        params = {
+            'value': bytes_num,
+            'precision': precision,
+            'suffix': suffix
+        }
+        return "{value:.{precision}f}{suffix}".format(**params)
+
     def GetMemInfo(self, get=None):
         # 取内存信息
         skey = 'memInfo'
         memInfo = cache.get(skey)
         if memInfo: return memInfo
         mem = psutil.virtual_memory()
-        memInfo = {'memTotal': int(mem.total / 1024 / 1024), 'memFree': int(mem.free / 1024 / 1024), 'memBuffers': int(mem.buffers / 1024 / 1024), 'memCached': int(mem.cached / 1024 / 1024),
-                   'memAvailable': int(mem.available / 1024 / 1024), 'memShared': int(mem.shared / 1024 / 1024)}
+        memInfo = {
+            'memTotal': int(mem.total / 1024 / 1024),
+            'memFree': int(mem.free / 1024 / 1024),
+            'memBuffers': int(mem.buffers / 1024 / 1024),
+            'memCached': int(mem.cached / 1024 / 1024),
+            'memAvailable': int(mem.available / 1024 / 1024),
+            'memShared': int(mem.shared / 1024 / 1024)
+        }
         memInfo['memRealUsed'] = memInfo['memTotal'] - memInfo['memFree'] - memInfo['memBuffers'] - memInfo['memCached']
+        memNewTotal = self.bytes_to_human_readable(mem.total, 0)
+        memNewRealUsed = self.bytes_to_human_readable((memInfo['memTotal'] - memInfo['memFree'] - memInfo['memBuffers'] - memInfo['memCached']) * 1024 * 1024, 1)
+        if memNewTotal[-2:] == memNewRealUsed[-2:]:
+            memNewRealUsed = memNewRealUsed[:-2]
+            if memNewRealUsed.endswith("0"):
+                memNewRealUsed = memNewRealUsed[:-2]
+
+        memInfo['memNewRealUsed'] = memNewRealUsed
+        memInfo['memNewTotal'] = memNewTotal
         cache.set(skey, memInfo, 60)
         return memInfo
 
@@ -460,21 +497,29 @@ class system:
         try:
             diskIo = psutil.disk_partitions(True)
             diskInfo = []
+            processed_devices = set()
             processed_mountpoints = set() 
+            
             cuts = ['/mnt/cdrom', '/boot', '/boot/efi', '/dev', '/dev/shm', '/run/lock', '/run', '/run/shm', '/run/user','/dev/zram']
             coutine_keys = ['docker','volume','overlay','/snap','/run/user','/dev/']
             coutine_types = ['ext2','ext3', 'ext4', 'xfs','btrfs','fat32','nfs','cifs','smb','iscsi']
 
             for disk in diskIo:
-                if disk.mountpoint in processed_mountpoints: continue
                 if disk.mountpoint in cuts: continue
                 if disk.mountpoint.startswith('/proc'): continue
+                if disk.device in processed_devices:
+                    continue
+                if disk.mountpoint in processed_mountpoints:
+                    continue
                 # 根据文件系统类型过滤
-                if (disk.fstype.lower() not in coutine_types and 'fuse' not in disk.fstype.lower()) or disk.fstype.lower()=='fusectl': continue
+                #if (disk.fstype.lower() not in coutine_types and 'fuse' not in disk.fstype.lower()) or disk.fstype.lower()=='fusectl': continue
+                if disk.fstype.lower() not in coutine_types and disk.mountpoint != "/":
+                    if (disk.fstype.lower() not in coutine_types and 'fuse' not in disk.fstype.lower()) or disk.fstype.lower() == 'fusectl': continue
 
                 # 根据关键字过滤
                 is_continue = False
                 for key in coutine_keys:
+                    if key == "overlay" and disk.mountpoint == "/": continue
                     if key in disk.mountpoint:
                         is_continue = True
                         break
@@ -501,7 +546,15 @@ class system:
                     inodes_pre = 0
                 tmp = {}
                 tmp['path'] = disk.mountpoint.replace('/usr/local/lighthouse/softwares/btpanel', '/www')
-                tmp['size'] = [ public.to_size(disk_total), public.to_size(disk_usage), public.to_size(disk_free), "{:.2f}%".format(disk_pre),public.to_size(root_used)]
+                disk_total = self.to_size(disk_total)
+                disk_usage = self.to_size(disk_usage)
+                new_disk_usage = disk_usage
+                if disk_total[-2:] == disk_usage[-2:]:
+                    new_disk_usage = disk_usage[:-2]
+                    if new_disk_usage.endswith("0"):
+                        new_disk_usage = new_disk_usage[:-2]
+
+                tmp['size'] = [disk_total, disk_usage, self.to_size(disk_free), "{:.2f}%".format(disk_pre), self.to_size(root_used), new_disk_usage.strip()]
                 tmp['filesystem'] = disk.device
                 tmp['type'] = disk.fstype
                 tmp['inodes'] = [statvfs.f_files,inodes_used,statvfs.f_ffree,"{:.2f} %".format(inodes_pre)]
@@ -514,7 +567,9 @@ class system:
                         tmp['d_size'] = 'None'
                 else:
                     tmp['d_size'] = 'None'
+                
                 diskInfo.append(tmp)
+                processed_devices.add(disk.device)
                 processed_mountpoints.add(disk.mountpoint)
                 
             if disk_info_dict:
@@ -870,6 +925,21 @@ class system:
             filename = public.get_panel_path() + "/server/" + name
             if os.path.exists(filename): return True
         return False
+
+    # 字节单位转换
+    def to_size(self, size, sub=False):
+        if not size: return '0.00 b'
+        size = float(size)
+        d = ('b', 'KB', 'MB', 'GB', 'TB')
+        s = d[0]
+        for b in d:
+            if sub:
+                if size < 1024: return ("%.0f" % size)
+
+            if size < 1024: return ("%.0f" % size) + ' ' + b
+            size = size / 1024
+            s = b
+        return ("%.0f" % size) + ' ' + b
 
     def GetNetWorkOld(self):
         # 取网络流量信息
@@ -1268,35 +1338,112 @@ class system:
         """
         @name 更新面板(稳定版 lts)
         """
+        get.check = get.get("check", True)
+        import psutil, ajax
         disk = psutil.disk_usage(public.get_panel_path())
         if disk.free < 50 * 1024 * 1024:
             return public.returnMsg(True, '磁盘空间不足 [50 MB]，无法继续操作.')
 
-        res = public.httpGet('https://www.bt.cn/api/panel/get_panel_version?')
-        if not res:
+        import json
+        if int(session['config']['status']) == 0:
+            public.HttpGet(
+                public.GetConfigValue('home') +
+                '/Api/SetupCount?type=Linux')
+            public.M('config').where("id=?", ('1',)).setField('status', 1)
+
+        # 取回远程版本信 息
+        if 'updateInfo' in session and hasattr(get, 'check') == False:
+            updateInfo = session['updateInfo']
+        else:
+            logs = public.get_debug_log()
+            ajax_obj = ajax.ajax()
+            mem = psutil.virtual_memory()
+            import panelPlugin
+            mplugin = panelPlugin.panelPlugin()
+
+            mplugin.ROWS = 10000
+            data = public.get_user_info()
+            data['ds'] = ''  # self.get_other_info()
+            data['sites'] = str(public.M('sites').count())
+            data['ftps'] = str(public.M('ftps').count())
+            data['databases'] = str(public.M('databases').count())
+            data['system'] = self.GetSystemVersion() + '|' + str(mem.total / 1024 / 1024) + 'MB|' + str(public.getCpuType()) + '*' + str(psutil.cpu_count()) + '|' + str(public.get_webserver()) + '|' + session['version']
+            data['system'] += '||' + ajax_obj.GetInstalleds(mplugin.getPluginList(None))
+            data['logs'] = logs
+            data['client'] = request.headers.get('User-Agent')
+            data['oem'] = ''
+            data['intrusion'] = 0
+            data['uid'] = ajax_obj.get_uid()
+            # msg = public.getMsg('PANEL_UPDATE_MSG');
+            data['o'] = public.get_oem_name()
+            sUrl = public.GetConfigValue('home') + '/api/panel/get_panel_version_v2'
+            try:
+                updateInfo = json.loads(public.httpPost(sUrl, data))
+                public.print_log(updateInfo)
+            except:
+                return public.returnMsg(False, "CONNECT_ERR")
+
+            if not updateInfo:
+                return public.returnMsg(False, "CONNECT_ERR")
+
+            session['updateInfo'] = updateInfo
+
+        # 输出忽略的版本
+        updateInfo['ignore'] = []
+        no_path = '{}/data/no_update.pl'.format(public.get_panel_path())
+        if os.path.exists(no_path):
+            try:
+                updateInfo['ignore'] = json.loads(public.readFile(no_path))
+            except:
+                pass
+
+        if not updateInfo:
             return public.returnMsg(False, '无法连接【宝塔官网】，请检查网络原因.')
 
         if not 'force' in get:
-            data = {'local':{},'cloud':{}}
+            data = {'local': {}, 'cloud': {}}
             data['local']['version'] = '{}'.format(public.version())
             update_time = public.readFile("{}/config/update_time.pl".format(public.get_panel_path()))
             if not update_time:
                 update_time = os.path.getmtime('{}/class/common.py'.format(public.get_panel_path()))
 
             data['local']['update_time'] = int(update_time)
-            data['cloud'] = json.loads(res)
+            data['local']['uptime'] = time.strftime('%Y/%m/%d', time.localtime(data['local']['update_time']))
+            data['cloud'] = updateInfo
 
+# 2024/12/24 09:30
+# data['upgrade'] = 0 不需要更新面板，已经是最新的正式版
+# data['upgrade'] = 1 显示小红点，建议更新到推荐的正式版
+# data['upgrade'] = 2 不显示小红点，可以更新到最新的正式版
+# 例子：
+# 例如当前版本是9.2.0，官方推荐安装的正式版版本是9.3.0，那么upgrade=1，此时显示更新小红点，建议更新到9.3.0，不会显示9.4.0的更新提示
+# 例如当前版本是9.3.0，官方最新发布的正式版版本是9.4.0，那么upgrade=2，此时不显示更新小红点，不会显示9.4.0的更新提示，但是点击更新按钮可以获取到9.4.0的更新提示，点击即可更新
+# 例如当前版本已经是9.4.0，官方最新发布的正式版版本是9.4.0，那么upgrade=0，此时不显示更新小红点，点击更新按钮也不会有更新提示，显示当前为最新版正式版
             data['upgrade'] = 0
             try:
-                if int(data['cloud']['update_time']) > int(data['local']['update_time']):
+                cloud_version_list = data['cloud']['OfficialVersion']['version'].split('.')
+                latest_cloud_version_list = data['cloud']['OfficialVersionLatest']['version'].split('.') if "OfficialVersionLatest" in data['cloud'] and data['cloud']['OfficialVersionLatest'] else cloud_version_list
+                local_version_list = data['local']['version'].split('.')
+                if data['cloud']['OfficialVersion']['version'] == data['local']['version']:
+                    data['upgrade'] = 0
+                elif int(cloud_version_list[0]) > int(local_version_list[0]) or int(cloud_version_list[1]) > int(local_version_list[1]) or int(cloud_version_list[2]) > int(local_version_list[2]):
                     data['upgrade'] = 1
+
+                if data['upgrade'] == 0:
+                    if int(latest_cloud_version_list[0]) > int(local_version_list[0]) or int(latest_cloud_version_list[1]) > int(local_version_list[1]) or int(latest_cloud_version_list[2]) > int(local_version_list[2]):
+                        data['upgrade'] = 2
             except:
-                    data['upgrade'] = 1
+                public.debug_log()
+                data['upgrade'] = 1
 
             return data
         else:
+            get.version = get.get("version", None)
+            if get.version is None:
+                return public.returnMsg(False, '版本号不能为空')
+
             logPath = '/tmp/upgrade_panel.log'
-            shell = 'nohup {} -u {}/script/upgrade_panel.py repair_panel &>{} &'.format(public.get_python_bin(),public.get_panel_path(),logPath)
+            shell = 'nohup {} -u {}/script/upgrade_panel.py repair_panel {} &>{} &'.format(public.get_python_bin(), public.get_panel_path(), get.version, logPath)
             public.ExecShell(shell)
 
             return public.returnMsg(True, '面板更新任务已启动，请稍后查看修复结果')

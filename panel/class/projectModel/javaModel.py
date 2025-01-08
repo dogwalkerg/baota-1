@@ -5342,7 +5342,7 @@ echo $! > {pid_file}
         # 仅使用在项目停止告警中
         project_info = public.M('sites').where('project_type=? AND id=?', ('Java', project_id)).find()
         if not project_info:
-            return None, project_info["name"]
+            return None, ""
 
         project_info["project_config"] = json.loads(project_info["project_config"])
         if project_info['project_config']['java_type'] == 'springboot':
@@ -5414,3 +5414,42 @@ echo $! > {pid_file}
 
         else:
             return public.returnMsg(False, "设置失败！")
+
+    @staticmethod
+    def get_system_user_list(get):
+        """
+        默认只返回uid>= 1000 的用户 和 root
+        get中包含 sys_user 返回 uid>= 100 的用户 和 root
+        get中包含 all_user 返回所有的用户
+        """
+        is_springboot = get.get("springboot/d", 0)
+        sys_user = False
+        all_user = False
+        if get is not None:
+            if hasattr(get, "sys_user"):
+                sys_user = True
+            if hasattr(get, "all_user"):
+                all_user = True
+
+        user_set = set()
+        with open('/etc/passwd') as fp:
+            for line in fp.readlines():
+                if "nologin" in line and is_springboot:
+                    continue
+                tmp = line.split(':')
+                user_name = tmp[0]
+                uid = int(tmp[2])
+                if uid == 0:
+                    user_set.add(user_name)
+                    continue
+                if uid >= 1000:
+                    user_set.add(user_name)
+                    continue
+                if uid >= 100 and sys_user:
+                    user_set.add(user_name)
+                    continue
+                if all_user:
+                    user_set.add(user_name)
+                    continue
+
+        return list(user_set)

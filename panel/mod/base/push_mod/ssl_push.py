@@ -209,7 +209,7 @@ class CertEndTimeTask(BaseTask):
 
         if "all" in exclude_ids:
             exclude_ids.remove("all")
-        data = get_cert_list(to_dict_obj({}))['data']
+        data = get_cert_list(to_dict_obj({"status_id": 1}))['data']
         if task_data["project"] == "all":
             for cert in data:
                 if cert["ssl_id"] in exclude_ids:
@@ -218,7 +218,7 @@ class CertEndTimeTask(BaseTask):
                     continue
                 if not cert.get("endDay") and cert.get("endDay") != 0:
                     continue
-                if cert["endDay"] <= task_data["cycle"]:
+                if 0 < cert["endDay"] <= task_data["cycle"]:
                     self.cert_list.append(cert)
         else:
             for cert in data:
@@ -226,7 +226,7 @@ class CertEndTimeTask(BaseTask):
                     continue
                 if not cert.get("endDay") and cert.get("endDay") != 0:
                     continue
-                if cert["endDay"] <= task_data["cycle"]:
+                if 0 < cert["endDay"] <= task_data["cycle"]:
                     self.cert_list.append(cert)
         self.title = self.get_title(task_data)
         if len(self.cert_list) == 0:
@@ -254,7 +254,7 @@ class CertEndTimeTask(BaseTask):
         from .util import get_cert_list, to_dict_obj
         if task_data["project"] == "all":
             return "所有证书到期提醒"
-        data = get_cert_list(to_dict_obj({}))['data']
+        data = get_cert_list(to_dict_obj({"status_id": 1}))['data']
         for cert in data:
             if cert["ssl_id"] == task_data["project"]:
                 return "证书[{} | {}]到期提醒".format(cert["title"],",".join(cert.get("domainName", []) or "无"))
@@ -285,7 +285,7 @@ class CertEndTimeTask(BaseTask):
 
         items = [
             {"title": "{} | {}".format(i["title"],",".join(i.get("domainName", []) or "无")), "value": i["ssl_id"]}
-            for i in get_cert_list(to_dict_obj({}))['data']
+            for i in get_cert_list(to_dict_obj({"status_id": 1}))['data']
             if i.get("endDay")
         ]
 

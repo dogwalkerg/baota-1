@@ -1108,7 +1108,7 @@ class panelSSL:
             for Info in ssl_list:
                 set_result={}
                 set_result['status']=True
-                get.certName =set_result['certName']= Info['certName']
+                get.certName =set_result['certName']= Info.get('certName')
                 get.siteName =set_result['siteName']= str(Info['siteName'])  # 站点名称必定为字符串
                 get.isBatch=True
                 if "ssl_hash" in Info:
@@ -1424,6 +1424,9 @@ class panelSSL:
         elif service == 'aliyun':
             client = 2
             login = 1
+            if os.path.exists('/home/admin') and not os.path.exists('/root/.swas/machine-info'):
+                client = 0
+                login = 0
         else:
             client = 0
             login = 0
@@ -1512,6 +1515,10 @@ class panelSSL:
             'serverid': serverid,
         }
 
+        o_code = public.readFile('data/o.pl')
+        if not o_code: o_code = ''
+        data['o'] = o_code.strip()
+
         try:
             result = self.request_post(self.__APIURL3 + "/tencent_cloud_auth/no_secret_login", data)
             public.print_log(result)
@@ -1553,6 +1560,11 @@ class panelSSL:
         data['code'] = get.code
         data['state'] = get.state
         data['os'] = 'Linux'
+
+        o_code = public.readFile('data/o.pl')
+        if not o_code: o_code = ''
+        data['o'] = o_code.strip()
+
         pdata = {}
         pdata['data'] = self.De_Code(data)
         try:
@@ -1586,7 +1598,6 @@ class panelSSL:
         # 判断授权文件是否存在
         if not os.path.exists('/root/.swas/machine-info'):
             return self.AliyunAccountLoginV3(get)
-            # return public.returnMsg(False, '授权文件不存在，请检查您的授权文件或联系阿里云客服!')
         # 读取授权文件
         try:
             json_data = json.loads(public.readFile('/root/.swas/machine-info'))
@@ -1595,6 +1606,11 @@ class panelSSL:
         # 登录
         serverid = panelAuth().get_serverid()
         json_data['serverid'] = serverid
+
+        o_code = public.readFile('data/o.pl')
+        if not o_code: o_code = ''
+        json_data['o'] = o_code.strip()
+
         try:
             result = self.request_post(self.__APIURL3 + "/aliyun_auth/bt_panel_auth", json_data)
             public.print_log(result)
@@ -1642,6 +1658,11 @@ class panelSSL:
             "identity": json.dumps(document),
             "signature": signature
         }
+
+        o_code = public.readFile('data/o.pl')
+        if not o_code: o_code = ''
+        json_data['o'] = o_code.strip()
+
         try:
             result = self.request_post(self.__API + "/v2/aliyun_auth/bt_panel_auth_v2", json_data)
             if not result['success']:
@@ -1704,7 +1725,7 @@ class panelSSL:
 
         o_code = public.readFile('data/o.pl')
         if not o_code: o_code = ''
-        data['o'] = o_code
+        data['o'] = o_code.strip()
 
         pdata = {}
         pdata['data'] = self.De_Code(data)
@@ -1924,8 +1945,8 @@ class panelSSL:
 
             if "local" in get and get.local.strip() in ("1", 1, True, "true"):
                 local = True
-            if "force" in get and get.force.strip() in ("1", 1, True, "true"):
-                force = True
+            # if "force" in get and get.force.strip() in ("1", 1, True, "true"):
+            #     force = True
 
         except (ValueError, AttributeError, KeyError):
             return public.ReturnMsg(False, "参数错误")

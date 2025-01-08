@@ -1183,6 +1183,8 @@ class panelPlugin:
             if get.sName.find('php-') != -1:
                 get.sName = get.sName.split('-')[0]
             if get.sName in ['redis']: get.version = ''
+            if get.sName in ['nginx']: 
+                get.version = ''
             execstr = "cd /www/server/panel/install && /bin/bash install_soft.sh " + get.type + " uninstall " + get.sName.lower(
             ) + " " + get.version.replace('.', '')
             public.ExecShell(execstr)
@@ -1401,8 +1403,6 @@ class panelPlugin:
             @param get
             @return dict
         '''
-        public.run_thread(self.is_verify_unbinding, args=(get,))
-
         get.exists(["cid"])
         session['is_flush_soft_list'] = 1
         if not public.get_improvement():
@@ -2307,8 +2307,6 @@ class panelPlugin:
 
     # 获取指定软件信息
     def get_soft_find(self, get=None):
-
-        public.run_thread(self.is_verify_unbinding, args=(get,))
         # return public.returnMsg(False, '您无操作此插件的权限，请联系管理员添加此插件的权限！')
         if hasattr(get, 'sName'):
             uid = session.get('uid')
@@ -2511,7 +2509,7 @@ class panelPlugin:
                         if status: return status
                     except:
                         return False
-
+            
             try:
                 for proc in psutil.process_iter():
                     if proc.name() == "mysqld":

@@ -1,11 +1,11 @@
 @font-face {
   font-family: "svgtofont";
-  src: url('svgtofont.eot?t=1733303921882'); /* IE9*/
-  src: url('svgtofont.eot?t=1733303921882#iefix') format('embedded-opentype'), /* IE6-IE8 */
-  url("svgtofont.woff2?t=1733303921882") format("woff2"),
-  url("svgtofont.woff?t=1733303921882") format("woff"),
-  url('svgtofont.ttf?t=1733303921882') format('truetype'), /* chrome, firefox, opera, Safari, Android, iOS 4.2+*/
-  url('svgtofont.svg?t=1733303921882#svgtofont') format('svg'); /* iOS 4.1- */
+  src: url('svgtofont.eot?t=1733977298234'); /* IE9*/
+  src: url('svgtofont.eot?t=1733977298234#iefix') format('embedded-opentype'), /* IE6-IE8 */
+  url("svgtofont.woff2?t=1733977298234") format("woff2"),
+  url("svgtofont.woff?t=1733977298234") format("woff"),
+  url('svgtofont.ttf?t=1733977298234') format('truetype'), /* chrome, firefox, opera, Safari, Android, iOS 4.2+*/
+  url('svgtofont.svg?t=1733977298234#svgtofont') format('svg'); /* iOS 4.1- */
 }
 
 [class^="svgtofont-"], [class*=" svgtofont-"] {
@@ -126,77 +126,79 @@
 .svgtofont-icon-centos:before { content: "\ea6c"; }
 .svgtofont-icon-copy:before { content: "\ea6d"; }
 .svgtofont-icon-customer-service:before { content: "\ea6e"; }
-.svgtofont-icon-debian:before { content: "\ea6f"; }
-.svgtofont-icon-drag:before { content: "\ea70"; }
-.svgtofont-icon-dynamic-kill:before { content: "\ea71"; }
-.svgtofont-icon-eye-close:before { content: "\ea72"; }
-.svgtofont-icon-fedora:before { content: "\ea73"; }
-.svgtofont-icon-file-lock:before { content: "\ea74"; }
-.svgtofont-icon-file-unlock:before { content: "\ea75"; }
-.svgtofont-icon-file_mode:before { content: "\ea76"; }
-.svgtofont-icon-ftp-log:before { content: "\ea77"; }
-.svgtofont-icon-history:before { content: "\ea78"; }
-.svgtofont-icon-linux:before { content: "\ea79"; }
-.svgtofont-icon-log:before { content: "\ea7a"; }
-.svgtofont-icon-login-address:before { content: "\ea7b"; }
-.svgtofont-icon-login-time:before { content: "\ea7c"; }
-.svgtofont-icon-ltd:before { content: "\ea7d"; }
-.svgtofont-icon-max-black:before { content: "\ea7e"; }
-.svgtofont-icon-memo-active:before { content: "\ea7f"; }
-.svgtofont-icon-minmax-black:before { content: "\ea80"; }
-.svgtofont-icon-new-file-lock:before { content: "\ea81"; }
-.svgtofont-icon-new-file-unlock:before { content: "\ea82"; }
-.svgtofont-icon-other:before { content: "\ea83"; }
-.svgtofont-icon-pro:before { content: "\ea84"; }
-.svgtofont-icon-proc:before { content: "\ea85"; }
-.svgtofont-icon-refresh:before { content: "\ea86"; }
-.svgtofont-icon-refresh2:before { content: "\ea87"; }
-.svgtofont-icon-rootkit:before { content: "\ea88"; }
-.svgtofont-icon-safaty-detect:before { content: "\ea89"; }
-.svgtofont-icon-safe-report:before { content: "\ea8a"; }
-.svgtofont-icon-scan:before { content: "\ea8b"; }
-.svgtofont-icon-shell-file:before { content: "\ea8c"; }
-.svgtofont-icon-sshd_service:before { content: "\ea8d"; }
-.svgtofont-icon-start:before { content: "\ea8e"; }
-.svgtofont-icon-stop:before { content: "\ea8f"; }
-.svgtofont-icon-term:before { content: "\ea90"; }
-.svgtofont-icon-top:before { content: "\ea91"; }
-.svgtofont-icon-transferpay-default:before { content: "\ea92"; }
-.svgtofont-icon-ubuntu:before { content: "\ea93"; }
-.svgtofont-icon-user:before { content: "\ea94"; }
-.svgtofont-icon-website_permissions:before { content: "\ea95"; }
-.svgtofont-icon-wechatpay-ltd:before { content: "\ea96"; }
-.svgtofont-icon-windows:before { content: "\ea97"; }
-.svgtofont-layer-close:before { content: "\ea98"; }
-.svgtofont-left-config:before { content: "\ea99"; }
-.svgtofont-left-control:before { content: "\ea9a"; }
-.svgtofont-left-crontab:before { content: "\ea9b"; }
-.svgtofont-left-database:before { content: "\ea9c"; }
-.svgtofont-left-docker:before { content: "\ea9d"; }
-.svgtofont-left-exit:before { content: "\ea9e"; }
-.svgtofont-left-files:before { content: "\ea9f"; }
-.svgtofont-left-firewall:before { content: "\eaa0"; }
-.svgtofont-left-ftp:before { content: "\eaa1"; }
-.svgtofont-left-home:before { content: "\eaa2"; }
-.svgtofont-left-logs:before { content: "\eaa3"; }
-.svgtofont-left-mail:before { content: "\eaa4"; }
-.svgtofont-left-site:before { content: "\eaa5"; }
-.svgtofont-left-soft:before { content: "\eaa6"; }
-.svgtofont-left-ssl:before { content: "\eaa7"; }
-.svgtofont-left-total:before { content: "\eaa8"; }
-.svgtofont-left-vhost:before { content: "\eaa9"; }
-.svgtofont-left-waf:before { content: "\eaaa"; }
-.svgtofont-left-wp:before { content: "\eaab"; }
-.svgtofont-left-xterm:before { content: "\eaac"; }
-.svgtofont-loading:before { content: "\eaad"; }
-.svgtofont-lower-select:before { content: "\eaae"; }
-.svgtofont-menu-setting:before { content: "\eaaf"; }
-.svgtofont-scanning-danger:before { content: "\eab0"; }
-.svgtofont-scanning-scan:before { content: "\eab1"; }
-.svgtofont-scanning-success:before { content: "\eab2"; }
-.svgtofont-scroll-bar-down:before { content: "\eab3"; }
-.svgtofont-scroll-bar-up:before { content: "\eab4"; }
-.svgtofont-shrink-menu:before { content: "\eab5"; }
-.svgtofont-tamper-pro:before { content: "\eab6"; }
-.svgtofont-wechat-pay:before { content: "\eab7"; }
+.svgtofont-icon-dask:before { content: "\ea6f"; }
+.svgtofont-icon-day:before { content: "\ea70"; }
+.svgtofont-icon-debian:before { content: "\ea71"; }
+.svgtofont-icon-drag:before { content: "\ea72"; }
+.svgtofont-icon-dynamic-kill:before { content: "\ea73"; }
+.svgtofont-icon-eye-close:before { content: "\ea74"; }
+.svgtofont-icon-fedora:before { content: "\ea75"; }
+.svgtofont-icon-file-lock:before { content: "\ea76"; }
+.svgtofont-icon-file-unlock:before { content: "\ea77"; }
+.svgtofont-icon-file_mode:before { content: "\ea78"; }
+.svgtofont-icon-ftp-log:before { content: "\ea79"; }
+.svgtofont-icon-history:before { content: "\ea7a"; }
+.svgtofont-icon-linux:before { content: "\ea7b"; }
+.svgtofont-icon-log:before { content: "\ea7c"; }
+.svgtofont-icon-login-address:before { content: "\ea7d"; }
+.svgtofont-icon-login-time:before { content: "\ea7e"; }
+.svgtofont-icon-ltd:before { content: "\ea7f"; }
+.svgtofont-icon-max-black:before { content: "\ea80"; }
+.svgtofont-icon-memo-active:before { content: "\ea81"; }
+.svgtofont-icon-minmax-black:before { content: "\ea82"; }
+.svgtofont-icon-new-file-lock:before { content: "\ea83"; }
+.svgtofont-icon-new-file-unlock:before { content: "\ea84"; }
+.svgtofont-icon-other:before { content: "\ea85"; }
+.svgtofont-icon-pro:before { content: "\ea86"; }
+.svgtofont-icon-proc:before { content: "\ea87"; }
+.svgtofont-icon-refresh:before { content: "\ea88"; }
+.svgtofont-icon-refresh2:before { content: "\ea89"; }
+.svgtofont-icon-rootkit:before { content: "\ea8a"; }
+.svgtofont-icon-safaty-detect:before { content: "\ea8b"; }
+.svgtofont-icon-safe-report:before { content: "\ea8c"; }
+.svgtofont-icon-scan:before { content: "\ea8d"; }
+.svgtofont-icon-shell-file:before { content: "\ea8e"; }
+.svgtofont-icon-sshd_service:before { content: "\ea8f"; }
+.svgtofont-icon-start:before { content: "\ea90"; }
+.svgtofont-icon-stop:before { content: "\ea91"; }
+.svgtofont-icon-term:before { content: "\ea92"; }
+.svgtofont-icon-top:before { content: "\ea93"; }
+.svgtofont-icon-transferpay-default:before { content: "\ea94"; }
+.svgtofont-icon-ubuntu:before { content: "\ea95"; }
+.svgtofont-icon-user:before { content: "\ea96"; }
+.svgtofont-icon-website_permissions:before { content: "\ea97"; }
+.svgtofont-icon-wechatpay-ltd:before { content: "\ea98"; }
+.svgtofont-icon-windows:before { content: "\ea99"; }
+.svgtofont-layer-close:before { content: "\ea9a"; }
+.svgtofont-left-config:before { content: "\ea9b"; }
+.svgtofont-left-control:before { content: "\ea9c"; }
+.svgtofont-left-crontab:before { content: "\ea9d"; }
+.svgtofont-left-database:before { content: "\ea9e"; }
+.svgtofont-left-docker:before { content: "\ea9f"; }
+.svgtofont-left-exit:before { content: "\eaa0"; }
+.svgtofont-left-files:before { content: "\eaa1"; }
+.svgtofont-left-firewall:before { content: "\eaa2"; }
+.svgtofont-left-ftp:before { content: "\eaa3"; }
+.svgtofont-left-home:before { content: "\eaa4"; }
+.svgtofont-left-logs:before { content: "\eaa5"; }
+.svgtofont-left-mail:before { content: "\eaa6"; }
+.svgtofont-left-site:before { content: "\eaa7"; }
+.svgtofont-left-soft:before { content: "\eaa8"; }
+.svgtofont-left-ssl:before { content: "\eaa9"; }
+.svgtofont-left-total:before { content: "\eaaa"; }
+.svgtofont-left-vhost:before { content: "\eaab"; }
+.svgtofont-left-waf:before { content: "\eaac"; }
+.svgtofont-left-wp:before { content: "\eaad"; }
+.svgtofont-left-xterm:before { content: "\eaae"; }
+.svgtofont-loading:before { content: "\eaaf"; }
+.svgtofont-lower-select:before { content: "\eab0"; }
+.svgtofont-menu-setting:before { content: "\eab1"; }
+.svgtofont-scanning-danger:before { content: "\eab2"; }
+.svgtofont-scanning-scan:before { content: "\eab3"; }
+.svgtofont-scanning-success:before { content: "\eab4"; }
+.svgtofont-scroll-bar-down:before { content: "\eab5"; }
+.svgtofont-scroll-bar-up:before { content: "\eab6"; }
+.svgtofont-shrink-menu:before { content: "\eab7"; }
+.svgtofont-tamper-pro:before { content: "\eab8"; }
+.svgtofont-wechat-pay:before { content: "\eab9"; }
 

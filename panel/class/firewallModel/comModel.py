@@ -254,7 +254,18 @@ class main(Base):
         from BTPanel import cache
         data = cache.get(cache_key)
         if data:
+            new_list = []
             sort_data = data
+            for j in range(len(sort_data)):
+                if get.query != "":
+                    if get.query in sort_data[j]['Port'] or get.query in sort_data[j]['brief'] or get.query in \
+                            sort_data[j]['Address']:
+                        new_list.append(sort_data[j])
+                elif get.chain != "ALL" and sort_data[j]['Chain'] == get.chain:
+                    new_list.append(sort_data[j])
+
+            if len(new_list) > 0 or get.query != "" or get.chain != "ALL":
+                sort_data = sorted(new_list, key=lambda x: x['addtime'], reverse=True)
         else:
             new_list = []
             for j in range(len(list_port)):
@@ -306,7 +317,8 @@ class main(Base):
             else:
                 sort_data = sorted(list_port, key=lambda x: x['addtime'], reverse=True)
 
-            cache.set(cache_key, sort_data, 86400)
+            if get.query == "":
+                cache.set(cache_key, sort_data, 86400)
 
         return self.return_page(sort_data, get)
 
@@ -321,7 +333,17 @@ class main(Base):
         from BTPanel import cache
         data = cache.get(cache_key)
         if data:
+            new_list = []
             sort_data = data
+            for j in range(len(sort_data)):
+                if get.query != "":
+                    if get.query in sort_data[j]['Address'] or get.query in sort_data[j]['brief']:
+                        new_list.append(sort_data[j])
+                elif get.chain != "ALL" and sort_data[j]['Chain'] == get.chain:
+                    new_list.append(sort_data[j])
+
+            if len(new_list) > 0 or get.query != "" or get.chain != "ALL":
+                sort_data = public.return_area(sorted(new_list, key=lambda x: x['addtime'], reverse=True), "Address")
         else:
             new_list = []
             for j in range(len(list_ip)):
@@ -353,7 +375,8 @@ class main(Base):
             else:
                 sort_data = public.return_area(sorted(list_ip, key=lambda x: x['addtime'], reverse=True), "Address")
 
-            cache.set(cache_key, sort_data, 86400)
+            if get.query == "":
+                cache.set(cache_key, sort_data, 86400)
 
         return self.return_page(sort_data, get)
 
@@ -369,7 +392,17 @@ class main(Base):
         from BTPanel import cache
         data = cache.get(cache_key)
         if data:
+            new_list = []
             sort_data = data
+            for j in range(len(sort_data)):
+                if get.query != "":
+                    if get.query in sort_data[j]['S_Address'] or get.query in sort_data[j]['S_Port'] or get.query in \
+                            sort_data[j]['T_Address'] or get.query in sort_data[j]['T_Port'] or get.query in \
+                            sort_data[j]['brief']:
+                        new_list.append(sort_data[j])
+
+            if len(new_list) > 0 or get.query != "":
+                sort_data = sorted(new_list, key=lambda x: x['addtime'], reverse=True)
         else:
             new_list = []
             for j in range(len(list_forward)):
@@ -398,7 +431,8 @@ class main(Base):
             else:
                 sort_data = sorted(list_forward, key=lambda x: x['addtime'], reverse=True)
 
-            cache.set(cache_key, sort_data, 86400)
+            if get.query == "":
+                cache.set(cache_key, sort_data, 86400)
 
         return self.return_page(sort_data, get)
 
@@ -678,14 +712,6 @@ class main(Base):
         if get.port == "":
             return public.returnMsg(False, '目标端口不能为空')
 
-        cache_key = "firewall_info"
-        from BTPanel import cache
-        data = cache.get(cache_key)
-        if data: cache.delete(cache_key)
-        cache_key = "port_rules_list"
-        data = cache.get(cache_key)
-        if data: cache.delete(cache_key)
-
         if get.address != "all" and "," in get.address:
             import copy
             args = copy.deepcopy(get)
@@ -711,6 +737,14 @@ class main(Base):
 
         if self._isFirewalld and get.reload == "1":
             self.firewall.reload()
+
+        cache_key = "firewall_info"
+        from BTPanel import cache
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
+        cache_key = "port_rules_list"
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
 
         public.WriteLog("系统防火墙", "设置端口规则：{}".format(get.port))
         return public.returnMsg(True, '设置成功')
@@ -909,6 +943,7 @@ class main(Base):
         if not self.get_firewall_status():
             return public.returnMsg(False, '请先启动防火墙后再设置规则！')
 
+        public.set_module_logs('设置域名端口规则', 'set_domain_port_rule', 1)
         get.operation = get.get('operation/s', 'add')
         get.protocol = get.get('protocol/s', 'tcp')
         get.domain = get.get('domain/s', '')
@@ -1381,6 +1416,8 @@ class main(Base):
         if get.address == "":
             return public.returnMsg(False, '目标ip不能为空')
 
+        option_result = self.ip_rule_option(get)
+
         cache_key = "firewall_info"
         from BTPanel import cache
         data = cache.get(cache_key)
@@ -1389,6 +1426,13 @@ class main(Base):
         data = cache.get(cache_key)
         if data: cache.delete(cache_key)
 
+        return option_result
+
+    # 2024/12/21 15:53 开始设置ip规则
+    def ip_rule_option(self, get):
+        '''
+            @name 开始设置ip规则
+        '''
         # 2024/3/25 下午 8:23 处理多个ip的情况,例如出现每行一个ip
         if get.address != "all" and "\n" in get.address:
             return self.set_nline_ip_rule(get)
@@ -1726,14 +1770,6 @@ class main(Base):
         if get.T_Port == "":
             return public.returnMsg(False, '目标端口不能为空')
 
-        cache_key = "firewall_info"
-        from BTPanel import cache
-        data = cache.get(cache_key)
-        if data: cache.delete(cache_key)
-        cache_key = "port_forward_list"
-        data = cache.get(cache_key)
-        if data: cache.delete(cache_key)
-
         # 2024/3/25 下午 5:49 前置检测
         if get.operation == "add":
             check_ip_forward = self.firewall.check_ip_forward()
@@ -1785,6 +1821,14 @@ class main(Base):
             # 2024/3/25 下午 5:50 如果设置成功才重载防火墙
             if result['status'] and self._isFirewalld and get.reload == "1":
                 self.firewall.reload()
+
+        cache_key = "firewall_info"
+        from BTPanel import cache
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
+        cache_key = "port_forward_list"
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
 
         return result
 

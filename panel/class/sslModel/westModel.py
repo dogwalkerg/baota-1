@@ -54,6 +54,8 @@ class main(sslBase):
             "limit": limit,
             "pageno": p,
         }
+        if "search" in get:
+            body["host"] = get["search"]
         try:
             flag, res = self._request(get.dns_id, body)
 

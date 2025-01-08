@@ -88,6 +88,13 @@ class main(sslBase):
             "domain": rootdomain,
         }
 
+        if "limit" in get:
+            body["length"] = get.limit
+        if "p" in get:
+            body["offset"] = ((int(get.p) - 1) * int(get.limit))
+        if "search" in get:
+            body["keyword"] = get.search
+
         try:
             list_dns_response = requests.post(url, data=body, timeout=self.HTTP_TIMEOUT).json()
         except:

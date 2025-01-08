@@ -37,26 +37,13 @@ class PushSystem:
             }
         return self._sender_type_class[sender_type]
 
-   
-    def get_sms_sender_id() -> Union[str, None]:
-        import sys
-        os.environ['BT_TASK'] = '1'
-        sys.path.insert(0, "/www/server/panel/class/")
-        import json 
-        import public
-        try:
-            file_path = "{}/data/mod_push_data/sender.json".format(public.get_panel_path())
-            data = json.loads(public.readFile(file_path))
-            for sender in data:
-                if sender.get("sender_type") == "sms":
-                    return sender.get("id")
-        except Exception as e:
-            print(e)
+    def get_sms_sender_id(self) -> Optional[str]:
+        for sender in self.sd_cfg.config:
+            if sender["type"] == "sms" and sender["status"]:
+                return sender["id"]
         return None
 
-
-    @staticmethod
-    def can_run_task_list() -> Tuple[List[dict], Dict[int, dict]]:
+    def can_run_task_list(self) -> Tuple[List[dict], Dict[int, dict]]:
         import datetime
         result = []
         result_template = {}
@@ -67,11 +54,8 @@ class PushSystem:
             task_template_ids.add(task['template_id'])
             # 间隔检测时间未到跳过
             if "interval" in task["task_data"] and isinstance(task["task_data"]["interval"], int):
-                if "type" in task["task_data"] and task["task_data"]['type']=="site_ssl":
-                    try:
-                        sms_id = PushSystem.get_sms_sender_id()  # 改为使用类名来调用静态方法
-                    except Exception as e:
-                        print(e)  
+                if "type" in task["task_data"] and task["task_data"]['type'] == "site_ssl":
+                    sms_id = self.get_sms_sender_id()  # 改为使用类名来调用静态方法
                     if sms_id and sms_id in task['sender']:
                         # 获取当前时间
                         current_time = datetime.datetime.now()

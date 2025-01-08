@@ -61,7 +61,7 @@ def split_log(siteName, num, log_cut_path):
     logs = sorted(glob.glob(log_path + '/' + siteName + "_access_*"))
     old_logs = sorted(glob.glob(logsPath + '/' + siteName + "*log_*.log"))
     count = len(logs)
-    remove_num = count - num
+    remove_num = count +1 - num
     # print('|-当前日志数量: {}, 删除：{}'.format(count,remove_num))
     old_list = old_logs[:remove_num]
     for i in old_list:

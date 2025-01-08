@@ -420,8 +420,12 @@ disown $!''' % (self.return_python())
 
         if username == "root":
             cmd_result, cmd_err = public.ExecShell("echo root:%s|chpasswd" % password)
+            if cmd_err:
+                cmd_result, cmd_err = public.ExecShell("usermod -p $(openssl passwd -1 \"%s\") root" % password)
         else:
             cmd_result, cmd_err = public.ExecShell("echo %s:%s|chpasswd" % (username, password))
+            if cmd_err:
+                cmd_result, cmd_err = public.ExecShell("usermod -p $(openssl passwd -1 \"%s\") %s" % (password, username))
 
         if cmd_err: return public.returnMsg(False, "设置失败")
         public.WriteLog("SSH管理", "【安全】-【SSH管理】-【设置%s密码】" % username)
@@ -1238,9 +1242,14 @@ disown $!''' % (self.return_python())
         sshd_conf = [i["data"] for i in other_conf]
         sshd_conf.insert(0, conf_data)
         test_re = re.compile(r"^\s*PermitRootLogin\s*(?P<target>[\w\-]+)", re.M)
+        is_break = False
         for cf in sshd_conf:
             for tmp_res in test_re.finditer(cf):
                 login_type = tmp_res.group("target")
+                is_break = True
+                break
+
+            if is_break: break
 
         if login_type == 'yes':
             can_login = 'yes'
@@ -1260,12 +1269,17 @@ disown $!''' % (self.return_python())
         start_index = None
         end_index = None
         test_re = re.compile(r"^\s*PermitRootLogin\s*(?P<target>[\w\-]+)", re.M)
+        is_break = False
         for cf in sshd_conf:
             for tmp_res in test_re.finditer(cf["data"]):
                 last_load_file = cf["path"]
                 last_load_data = cf["data"]
                 start_index = tmp_res.start()
                 end_index = tmp_res.end()
+                is_break = True
+                break
+
+            if is_break: break
 
         if last_load_file is None or last_load_data is None:
             conf_data = conf_data + '\nPermitRootLogin {}'.format(p_type)

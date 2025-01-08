@@ -1284,11 +1284,10 @@
       <div class="stl_01" style="top:10.3863em; left:4.61em;"><span class="stl_19 stl_08 stl_23">1</span></div>
       <div class="stl_01" style="top:12.4763em; left:4.72em;"><span class="stl_19 stl_08 stl_23">1</span></div>
       <div class="stl_01" style="top:14.5763em; left:4.61em;"><span class="stl_19 stl_08 stl_23">1</span></div>
-      <div class="stl_01" style="top:16.7363em; left:45.01em;"><span class="stl_25 stl_08 stl_23" style="word-spacing:0.6173em;">- 7 &nbsp;</span></div>
+      <div class="stl_01" style="top:16.7363em; left:46.54em;"><span class="stl_25 stl_08 stl_23" style="word-spacing:0.6173em;">7</span></div>
       <div class="stl_01" style="top:18.8363em; left:5.19em;"><span class="stl_19 stl_08 stl_23">2</span></div>
       <div class="stl_01" style="top:18.8363em; left:46.49em;"><span class="stl_25 stl_08 stl_23">7</span></div>
-      <div class="stl_01" style="top:20.9363em; left:46.4em;"><span class="stl_25 stl_08 stl_23">8</span></div>
-      <div class="stl_01" style="top:20.9363em; left:41.59em;"><span class="stl_25 stl_08 stl_23">-</span></div>
+      <div class="stl_01" style="top:20.9363em; left:46.49em;"><span class="stl_25 stl_08 stl_23">8</span></div>
     </div>
   </div>
 </div>
@@ -1467,7 +1466,9 @@
             <tr>
               <th style="width: 3em;">序号</th>
               <th style="width: 9em;">风险名称</th>
-              <th>风险描述</th>
+              <th style="width: 9em;">风险描述</th>
+              <th style="width: 3em;">级别</th>
+              <th>修复建议</th>
               <th style="width: 5em;height: 2em;">一键修复</th>
             </tr>
             </thead>
@@ -1499,7 +1500,9 @@
             <tr>
               <th style="width: 3em;">序号</th>
               <th style="width: 9em;">风险名称</th>
-              <th>风险描述</th>
+              <th style="width: 9em;">风险描述</th>
+              <th style="width: 3em;">级别</th>
+              <th>修复建议</th>
               <th style="width: 5em;height: 2em;">一键修复</th>
             </tr>
             </thead>
@@ -1649,10 +1652,9 @@
           <tr>\
             <td style="width: 3em;">'+v.num+'</td>\
             <td style="width: 9em">'+v.name+'</td>\
-            <td style="text-align: left">\
-              <div>'+v.ps+'</div>\
-              <div><span style="font-weight: 900">修复建议：</span><span>'+v.tips+'</span></div>\
-            </td>\
+            <td style="width: 9em">'+v.ps+'</td>\
+            <td style="width: 3em">'+v.level+'</td>\
+            <td style="text-align: left">'+v.tips+'</td>\
             <td style="width:5.01em;height: 2em;">'+v.auto+'</td>\
           </tr>'
         })

@@ -764,3 +764,36 @@ fi
         except (ipaddress.AddressValueError, ValueError) as e:
             # 解析失败，不是合法的IPv6子网
             return False
+
+    # 2024/12/16 17:49 获取系统信息
+    def get_system_info(self, get):
+        '''
+            @name 获取系统信息
+        '''
+        from btdockerModel.dockerSock.system import dockerSystem
+        import psutil
+        system_info = dockerSystem().get_system_info()
+
+        if not system_info:
+            try:
+                if os.path.exists("/etc/redhat-release"):
+                    OperatingSystem = public.readFile("/etc/redhat-release").strip()
+                elif os.path.exists("/etc/issue"):
+                    OperatingSystem = public.readFile("/etc/issue").strip()
+                else:
+                    OperatingSystem = public.ExecShell(". /etc/os-release && echo $VERSION")[0].strip()
+            except:
+                OperatingSystem = "Linux系统,无法正确获取版本号!"
+
+            system_info = {
+                "Name": public.ExecShell("hostname")[0].strip(),
+                "OperatingSystem": OperatingSystem,
+                "Architecture": public.ExecShell("uname -m")[0].strip(),
+                "KernelVersion": public.ExecShell("uname -r")[0].strip(),
+                "NCPU": public.ExecShell("nproc")[0].strip(),
+                "MemTotal": psutil.virtual_memory().total,
+                "ServerVersion": "",
+                "DockerRootDir": "",
+            }
+
+        return public.returnResult(True, data=system_info)

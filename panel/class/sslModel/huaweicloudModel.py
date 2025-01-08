@@ -213,7 +213,7 @@ class main(sslBase):
                 "description": remark,
             })
 
-            res = self.sign_to_response(get.dns_id, "POST", "/v2/zones/{}/recordsets".format(zone_id), body=body)
+            res = self.sign_to_response(get.dns_id, "POST", "/v2.1/zones/{}/recordsets".format(zone_id), body=body)
             if res.status_code != 202:
                 return public.returnMsg(False, self.get_error(res.text))
 
@@ -229,7 +229,7 @@ class main(sslBase):
         zone_dic = self.get_zoneid_dict(get.dns_id)
         zone_id = zone_dic[root_domain]
         try:
-            res = self.sign_to_response(get.dns_id, "DELETE", "/v2/zones/{}/recordsets/{}".format(zone_id, RecordId))
+            res = self.sign_to_response(get.dns_id, "DELETE", "/v2.1/zones/{}/recordsets/{}".format(zone_id, RecordId))
             if res.status_code != 202:
                 return public.returnMsg(False, self.get_error(res.text))
             return public.returnMsg(True, '删除成功')
@@ -254,26 +254,47 @@ class main(sslBase):
         data = {}
         try:
             zone_dic = self.get_zoneid_dict(get.dns_id)
+            zone_id = zone_dic[root_domain]
+
             limit = 100
             offset = 0
-            zone_id = zone_dic[root_domain]
-            res = self.sign_to_response(get.dns_id, "GET",
-                                "/v2/zones/{}/recordsets?limit={}&offset={}".format(zone_id, limit, offset))
+            if "limit" in get:
+                limit = int(get.limit)
+            if "p" in get:
+                offset = ((int(get.p) - 1) * int(get.limit))
+            url = "/v2.1/zones/{}/recordsets?limit={}&offset={}".format(zone_id, limit, offset)
+            if "search" in get:
+                name = get.search
+                url = url + "&name={}".format(name)
+
+            res = self.sign_to_response(get.dns_id, "GET", url)
             if res.status_code != 200:
                 return {}
             response = res.json()
+
+            line_type_dict = {
+                "default_view": "全网默认",
+                "Dianxin": "电信",
+                "Liantong": "联通",
+                "Yidong": "移动",
+                "Jiaoyuwang": "教育网",
+                "Tietong": "铁通",
+                "Pengboshi": "鹏博士",
+                "CN": "中国大陆",
+                "Abroad": "全球",
+            }
 
             data["list"] = [
                 {
                     "RecordId": i["id"],
                     "name": i["name"][:-1],
                     "value": '\r\n'.join(i["records"]) if i["type"] != "TXT" else '\r\n'.join([j.replace('"', '') for j in i["records"]]),
-                    "line": "默认",
+                    "line": line_type_dict.get(i["line"], "其它"),
                     "ttl": i["ttl"],
                     "type": i["type"],
                     "status": "启用"if i["status"] == "ACTIVE" else "暂停" if i["status"] == "DISABLE" else i["status"],
                     "mx": "",
-                    "updated_on": i["update_at"],
+                    "updated_on": i.get("update_at", ""),
                     "remark": i.get("description") or "",
                 }
                 for i in response["recordsets"]
@@ -309,7 +330,7 @@ class main(sslBase):
                 "description": remark,
             })
 
-            res = self.sign_to_response(get.dns_id, "PUT", "/v2/zones/{}/recordsets/{}".format(zone_id, RecordId), body=body)
+            res = self.sign_to_response(get.dns_id, "PUT", "/v2.1/zones/{}/recordsets/{}".format(zone_id, RecordId), body=body)
             if res.status_code != 202:
                 return public.returnMsg(False, self.get_error(res.text))
 

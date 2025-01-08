@@ -396,6 +396,7 @@ class main(dockerBase):
         @param get:
         @return:
         """
+        public.set_module_logs('编辑容器', 'upgrade_container_{}'.format(getattr(get, "id", "edit")), 1)
         try:
             if "id" not in get:
                 return public.returnMsg(False, "容器ID异常，请刷新页面后重试！")

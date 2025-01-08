@@ -73,6 +73,10 @@ class main(panelBase):
                                     {
                                         "name": "反向代理",
                                         "source": "proxy"
+                                    },
+                                    {
+                                        "name": "docker网站",
+                                        "source": "docker/dockersite"
                                     }
                                 ]
                             }
@@ -430,25 +434,6 @@ class main(panelBase):
                 ]
             },
             {
-                "id": 2,
-                "template": "base",
-                "title": "FTP",
-                "name": "ftps",
-                "status": True,
-                "repetition": False,
-                "type": "base",
-                "source": {
-                    "click": "href",
-                    "href": "/ftp"
-                },
-                "params": [
-                    {
-                        "name": "FTP",
-                        "source": "all"
-                    }
-                ]
-            },
-            {
                 "id": 3,
                 "template": "base",
                 "title": "数据库",
@@ -507,11 +492,56 @@ class main(panelBase):
             }
         ]
         if not os.path.isfile(self._OVERVIEW_SETTING):
+            # site_name = self._default_monitor()
+            # monitor = {
+            #     "id": 6,
+            #     "template": "browse",
+            #     "title": "监控报表",
+            #     "name": "monitor",
+            #     "status": True,
+            #     "repetition": True,
+            #     "type": "plugin",
+            #     "action": {
+            #         "click": "href",
+            #         "href": "/monitor"
+            #     },
+            #     "params": [
+            #         {
+            #             "name": site_name,
+            #             "source": site_name
+            #         }, {
+            #             "name": "浏览量",
+            #             "source": "pv"
+            #         }
+            #     ]
+            # }
+            # overview_setting.append(monitor)
+
             public.writeFile(self._OVERVIEW_SETTING, json.dumps(overview_setting))
         # else:
         #     temp_overview_setting = json.loads(public.readFile(self._OVERVIEW_SETTING))
         #     if temp_overview_setting != overview_setting:
         #         public.writeFile(self._OVERVIEW_SETTING, json.dumps(overview_setting))
+
+    # 获取监控报表默认数据
+    def _default_monitor(self):
+        sites = public.M("sites").field("name").select()
+        site_name = sites[0]["name"]
+        try:
+            json_data = public.readFile(os.path.join(public.get_setup_path(), "monitor/config/config.json"))
+            data_save_path = json_data["data_save_path"]
+            if not os.path.exists(data_save_path): return site_name
+        except:
+            return site_name
+        file_max = 0
+        for site in sites:
+            path = os.path.join(data_save_path, site["name"], "request_total.db")
+            if not os.path.exists(path): continue
+            file_size = os.path.getsize(path)
+            if file_size >= file_max:
+                file_max = file_size
+                site_name = site["name"]
+        return site_name
 
     # 获取首页概览
     def GetTemplateOverview(self, get):
@@ -571,6 +601,10 @@ class main(panelBase):
             overview["value"] = []
             params_list = overview.get("params")
             if not params_list or len(params_list) == 0 or not params_list[0]: continue
+            if overview.get("name") == "sites":
+                overview["source"]["href"] = "/site"
+                if params_list[0].get("name") == "docker网站":
+                    overview["source"]["href"] = ""
 
             if overview.get("type") == "plugin":  # 插件
                 from panelPlugin import panelPlugin
@@ -648,6 +682,30 @@ class main(panelBase):
         public.writeFile(self._OVERVIEW_SETTING, json.dumps(overview_setting))
         return {"status": True, "msg": "修改成功！", "data": overview_setting}
 
+    # 2024/12/25 17:30 拖动排序位置
+    def SortOverview(self, get):
+        get.overview = get.get("overview", None)
+        if get.overview is None:
+            return public.returnMsg(False, "缺少参数! overview")
+
+        get.overview = json.loads(get.overview)
+
+        try:
+            overview_setting = public.readFile(self._OVERVIEW_SETTING)
+            overview_setting = json.loads(overview_setting)
+        except:
+            return public.returnMsg(False, "获取数据失败！")
+
+        new_overview_setting = []
+        for ov in get.overview:
+            for over in overview_setting:
+                if over["id"] == ov:
+                    new_overview_setting.append(over)
+                    break
+
+        public.writeFile(self._OVERVIEW_SETTING, json.dumps(new_overview_setting))
+        return {"status": True, "msg": "修改成功！", "data": new_overview_setting}
+
     # 删除首页概览
     def DelOverview(self, get):
         if not hasattr(get, "overview_id"):
@@ -693,13 +751,15 @@ class main(panelBase):
                 where = ""
                 if params["source"] != "all":
                     where = "LOWER(project_type)=LOWER('{}')".format(params["source"])
-                value_list[0] = public.M("sites").where(where, ()).count()
+                value_list[0] = public.M("sites").where(where, ()).count() + public.M("docker_sites").count()
+                docker_site_start_num = public.M("docker_sites").where("status=1", ()).count()
+                docker_site_stop_num = public.M("docker_sites").where("status=0", ()).count()
                 if where:
-                    start_num = public.M("sites").where(where + " and status='1'", ()).count()
-                    stop_num = public.M("sites").where(where + " and status='0'", ()).count()
+                    start_num = public.M("sites").where(where + " and status='1'", ()).count() + docker_site_start_num
+                    stop_num = public.M("sites").where(where + " and status='0'", ()).count() + docker_site_stop_num
                 else:
-                    start_num = public.M("sites").where("status='1'", ()).count()
-                    stop_num = public.M("sites").where("status='0'", ()).count()
+                    start_num = public.M("sites").where("status='1'", ()).count() + docker_site_start_num
+                    stop_num = public.M("sites").where("status='0'", ()).count() + docker_site_stop_num
                 value_list.append(start_num)
                 value_list.append(stop_num)
             else:

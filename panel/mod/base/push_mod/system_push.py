@@ -6,14 +6,14 @@ import threading
 import time
 from datetime import datetime, timedelta
 from importlib import import_module
-from typing import Tuple, Union, Optional, List
+from typing import Tuple, Union, Optional, List, Dict
 
 import psutil
 
 from .send_tool import WxAccountMsg
 from .base_task import BaseTask
 from .mods import PUSH_DATA_PATH
-from .util import read_file, write_file, get_config_value
+from .util import read_file, write_file, get_config_value, ExecShell
 
 
 from .system import WAIT_TASK_LIST
@@ -32,6 +32,75 @@ def _get_panel_name() -> str:
     if data == "":
         data = "宝塔面板"
     return data
+
+
+class _NextThing:
+    SERVICES = (
+        ("nginx", "nginx"),
+        ("httpd", "apache"),
+        ("mysqld", "mysql"),
+        ("redis", "redis"),
+        ("memcached", "memcached"),
+    )
+
+    @staticmethod
+    def execute_next_data(next_data: List[str]):
+        """
+        执行后置操作，例如重启服务。
+        :param next_data: 包含需要执行的服务列表，例如 ["nginx", "mysql"]
+        :return: 执行结果信息
+        """
+        res = []
+        for service_name in next_data:
+            if service_name.startswith("php"):
+                base_path = "/www/server/php"
+                if not os.path.exists(base_path):
+                    return None
+                for p in os.listdir(base_path):
+                    if p != service_name.replace("php", ""):
+                        continue
+                    init_file = os.path.join("/etc/init.d", "php-fpm-{}".format(p))
+                    if not os.path.isfile(init_file):
+                        continue
+                    ExecShell("{} start".format(init_file))
+                    res.append(1)
+
+            elif service_name == 'mysql':
+                init_file = os.path.join("/etc/init.d", "mysqld")
+                ExecShell("{} start".format(init_file))
+                res.append(1)
+            elif service_name == 'apache':
+                init_file = os.path.join("/etc/init.d", "httpd")
+                ExecShell("{} start".format(init_file))
+                res.append(1)
+            else:
+                # 通用服务重启
+                init_file = os.path.join("/etc/init.d", service_name)
+                ExecShell("{} start".format(init_file))
+                res.append(1)
+        if len(res) == len(next_data):
+            return ", 重启任务已执行"
+        return ", 重启任务执行失败"
+
+    @classmethod
+    def get_available_services(cls) -> List[Dict]:
+        res_list = []
+        for service_file, service_name in cls.SERVICES:
+            if os.path.exists('/etc/init.d/{}'.format(service_file)):
+                res_list.append({
+                    "title": "重启{}服务".format(service_name),
+                    "value": service_name
+                })
+
+        php_path = "/www/server/php"
+        if os.path.exists(php_path):
+            for k in os.listdir(php_path):
+                if k.isnumeric():
+                    res_list.append({
+                        "title": "重启php" + k,
+                        "value": "php" + k
+                    })
+        return res_list
 
 
 class PanelSysDiskTask(BaseTask):
@@ -146,7 +215,7 @@ class PanelSysDiskTask(BaseTask):
         return msg
 
 
-class PanelSysCPUTask(BaseTask):
+class PanelSysCPUTask(BaseTask, _NextThing):
 
     def __init__(self):
         super().__init__()
@@ -155,6 +224,7 @@ class PanelSysCPUTask(BaseTask):
         self.title = "首页CPU告警"
 
         self.cpu_count = 0
+        self.next_thing_msg = ""
 
         self._tip_file = "{}/system_cpu.tip".format(PUSH_DATA_PATH)
         self._tip_data: Optional[List[Tuple[float, float]]] = None
@@ -177,6 +247,12 @@ class PanelSysCPUTask(BaseTask):
             return "时间参数错误"
         if not (isinstance(task_data['count'], int) and task_data['count'] >= 1):
             return "阈值参数错误，至少为1%"
+        available_services = self.get_available_services()
+        valid_services = {service["value"] for service in available_services}
+        if "next_data" in task_data:
+            for service in task_data["next_data"]:
+                if service not in valid_services:
+                    return "所选择的服务 {} 不存在".format(service)
         task_data['interval'] = 60
         return task_data
 
@@ -212,17 +288,27 @@ class PanelSysCPUTask(BaseTask):
         else:
             self.cache_list.clear()
         self.cpu_count = round(avg_data, 2)
+        # 检查是否有后置操作
+        next_msg = ""
+        if "next_data" in task_data and task_data["next_data"]:
+            next_msg = self.execute_next_data(task_data["next_data"])
+            self.next_thing_msg = next_msg.lstrip(", ") + ",详情请登录面板"
+
         s_list = [
             ">通知类型：CPU高占用告警",
-            ">告警内容：最近{}分钟内机器CPU平均占用率为{}%，高于告警值{}%".format(
-                task_data["cycle"], round(avg_data, 2), task_data["count"]),
+            ">告警内容：最近{}分钟内机器CPU平均占用率为{}%，高于告警值{}%{}".format(
+                task_data["cycle"], round(avg_data, 2), task_data["count"], next_msg),
         ]
 
         return {
             "msg_list": s_list,
         }
 
-    def filter_template(self, template: dict) -> Optional[dict]:
+    def filter_template(self, template):
+        available_services = self.get_available_services()
+        for field in template["field"]:
+            if field["attr"] == "next_data":
+                field["items"] = available_services
         return template
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
@@ -235,11 +321,11 @@ class PanelSysCPUTask(BaseTask):
         msg = WxAccountMsg.new_msg()
         msg.thing_type = "宝塔首页cpu告警"
         msg.msg = "主机CPU占用超过：{}%".format(self.cpu_count)
-        msg.next_msg = "请登录面板，查看主机情况"
+        msg.next_msg = "请登录面板，查看主机情况" if not self.next_thing_msg else self.next_thing_msg
         return msg
 
 
-class PanelSysLoadTask(BaseTask):
+class PanelSysLoadTask(BaseTask, _NextThing):
 
     def __init__(self):
         super().__init__()
@@ -247,9 +333,17 @@ class PanelSysLoadTask(BaseTask):
         self.template_name = "首页负载告警"
         self.title = "首页负载告警"
 
+        self.next_thing_msg = ""
         self.avg_data = 0
 
     def check_task_data(self, task_data: dict) -> Union[dict, str]:
+        available_services = self.get_available_services()
+        valid_services = {service["value"] for service in available_services}
+        if "next_data" in task_data:
+            for service in task_data["next_data"]:
+                if service not in valid_services:
+                    return "所选择的服务 {} 不存在".format(service)
+
         if not (isinstance(task_data['cycle'], int) and task_data['cycle'] >= 1):
             return "时间参数错误"
         if not (isinstance(task_data['count'], int) and task_data['count'] >= 1):
@@ -281,15 +375,26 @@ class PanelSysLoadTask(BaseTask):
 
         self.avg_data = avg_data
 
+        # 检查是否有后置操作
+        next_msg = ""
+        if "next_data" in task_data and task_data["next_data"]:
+            next_msg = self.execute_next_data(task_data["next_data"])
+            self.next_thing_msg = next_msg.lstrip(", ") + ",详情请登录面板"
+
         return {
             "msg_list": [
                 ">通知类型：负载超标告警",
-                ">告警内容：最近{}分钟内机器平均负载率为{}%，高于{}%告警值".format(
-                    task_data["cycle"], round(avg_data, 2), task_data["count"]),
+                ">告警内容：最近{}分钟内机器平均负载率为{}%，高于{}%告警值{}".format(
+                    task_data["cycle"], round(avg_data, 2), task_data["count"], next_msg
+                ),
             ]
         }
 
-    def filter_template(self, template: dict) -> Optional[dict]:
+    def filter_template(self, template):
+        available_services = self.get_available_services()
+        for field in template["field"]:
+            if field["attr"] == "next_data":
+                field["items"] = available_services
         return template
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
@@ -302,11 +407,11 @@ class PanelSysLoadTask(BaseTask):
         msg = WxAccountMsg.new_msg()
         msg.thing_type = "宝塔首页负载告警"
         msg.msg = "主机负载超过：{}%".format(round(self.avg_data, 2))
-        msg.next_msg = "请登录面板，查看主机情况"
+        msg.next_msg = "请登录面板，查看主机情况" if not self.next_thing_msg else self.next_thing_msg
         return msg
 
 
-class PanelSysMEMTask(BaseTask):
+class PanelSysMEMTask(BaseTask, _NextThing):
 
     def __init__(self):
         super().__init__()
@@ -315,6 +420,7 @@ class PanelSysMEMTask(BaseTask):
         self.title = "首页内存告警"
 
         self.wx_data = 0
+        self.next_thing_msg = ""
 
         self._tip_file = "{}/system_mem.tip".format(PUSH_DATA_PATH)
         self._tip_data: Optional[List[Tuple[float, float]]] = None
@@ -335,6 +441,12 @@ class PanelSysMEMTask(BaseTask):
     def check_task_data(self, task_data: dict) -> Union[dict, str]:
         if not (isinstance(task_data['cycle'], int) and task_data['cycle'] >= 1):
             return "次数参数错误"
+        available_services = self.get_available_services()
+        valid_services = {service["value"] for service in available_services}
+        if "next_data" in task_data:
+            for service in task_data["next_data"]:
+                if service not in valid_services:
+                    return "所选择的服务 {} 不存在".format(service)
         if not (isinstance(task_data['count'], int) and task_data['count'] >= 1):
             return "阈值参数错误，至少为1%"
         task_data['interval'] = task_data['cycle'] * 60
@@ -364,16 +476,27 @@ class PanelSysMEMTask(BaseTask):
         else:
             self.cache_list.clear()
             self.save_cache_list()
+
         self.wx_data = round(avg_data * 100, 2)
+        # 检查是否有后置操作
+        next_msg = ""
+        if "next_data" in task_data and task_data["next_data"]:
+            next_msg = self.execute_next_data(task_data["next_data"])
+            self.next_thing_msg = next_msg.lstrip(", ") + ",详情请登录面板"
+
         return {
             'msg_list': [
                 ">通知类型：内存高占用告警",
-                ">告警内容：最近{}分钟内机器内存平均占用率为{}%，高于告警值{}%".format(
-                    task_data["cycle"], round(avg_data * 100, 2), task_data["count"]),
+                ">告警内容：最近{}分钟内机器内存平均占用率为{}%，高于告警值{}%{}".format(
+                    task_data["cycle"], round(avg_data * 100, 2), task_data["count"], next_msg),
             ]
         }
 
-    def filter_template(self, template: dict) -> Optional[dict]:
+    def filter_template(self, template):
+        available_services = self.get_available_services()
+        for field in template["field"]:
+            if field["attr"] == "next_data":
+                field["items"] = available_services
         return template
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
@@ -386,7 +509,7 @@ class PanelSysMEMTask(BaseTask):
         msg = WxAccountMsg.new_msg()
         msg.thing_type = "宝塔首页内存告警"
         msg.msg = "主机内存占用超过：{}%".format(self.wx_data)
-        msg.next_msg = "请登录面板，查看主机情况"
+        msg.next_msg = "请登录面板，查看主机情况" if not self.next_thing_msg else self.next_thing_msg
         return msg
 
 
@@ -399,18 +522,21 @@ class ViewMsgFormat(object):
             )
         ),
         "21": (
-            lambda x: "<span>{}分钟内平均CUP占用超过{}%触发</span>".format(
-                x.get("cycle"), x.get("count")
+            lambda x: "<span>{}分钟内平均CUP占用超过{}%触发{}</span>".format(
+                x.get("cycle"), x.get("count"),
+                "" if not x.get("next_data", None) else "，随后重启【{}】服务".format(",".join(x["next_data"]))
             )
         ),
         "22": (
-            lambda x: "<span>{}分钟内平均负载超过{}%触发</span>".format(
-                x.get("cycle"), x.get("count")
+            lambda x: "<span>{}分钟内平均负载超过{}%触发{}</span>".format(
+                x.get("cycle"), x.get("count"),
+                "" if not x.get("next_data", None) else "，随后重启【{}】服务".format(",".join(x["next_data"]))
             )
         ),
         "23": (
-            lambda x: "<span>{}分钟内内存使用率超过{}%触发</span>".format(
-                x.get("cycle"), x.get("count")
+            lambda x: "<span>{}分钟内内存使用率超过{}%触发{}</span>".format(
+                x.get("cycle"), x.get("count"),
+                "" if not x.get("next_data", None) else "，随后重启【{}】服务".format(",".join(x["next_data"]))
             )
         )
     }

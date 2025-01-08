@@ -906,6 +906,8 @@ if ( $well_known != "" ) {
 
     # 验证域名
     def auth_domain(self, index):
+        self._config['orders'][index]['auth_tag'] = True
+        self.save_config()
         if index not in self._config['orders']:
             raise Exception('指定订单不存在!')
 
@@ -1961,9 +1963,10 @@ fullchain.pem       粘贴到证书输入框
                     return public.returnMsg(False, '无效的站点目录，请检查指定站点是否存在!')
 
             #检查认证环境
-            check_result = self.check_auth_env(args)
-            if check_result:
-                return check_result
+            if args.auth_type in ['http', 'tls']:
+                check_result = self.check_auth_env(args)
+                if check_result:
+                    return check_result
 
         return self.apply_cert(json.loads(args.domains), args.auth_type, args.auth_to)
 
@@ -2276,29 +2279,56 @@ fullchain.pem       粘贴到证书输入框
                     self._config['orders'][index]['retry_count'] += 1
                     # 保存证书配置
                     self.save_config()
-            msg = str(e).split('>>>>')[0]
+            e = str(e)
+            if e.find(">>>>") != -1:
+                msg = e.split(">>>>")[0]
+                err = json.loads(e.split(">>>>")[1])
+            else:
+                msg = e
+                err = {}
             write_log("|-" + msg)
-            return public.returnMsg(False, msg)
+            return {"status": False, "msg": msg, "err": err}
         finally:
             if is_rep: self.rep_httptohttps(siteName)
         write_log("-" * 70)
         return cert
 
+    def set_auto_renew_status(self, index, status, error_msg=''):
+        """
+        @name 设置自动续签状态
+        @param index:
+        @param status:
+        @param error_msg:
+        @return:
+        """
+        path = "{}/config/letsencrypt_auto_renew.json".format(public.get_panel_path())
+        try:
+            data = json.loads(public.readFile(path))
+            data[index] = {"status": status, "error_msg": error_msg}
+        except:
+            data = {index: {"status": status, "error_msg": error_msg}}
+        public.writeFile(path, json.dumps(data))
+
 
     # 续签证书
     def renew_cert(self, index, cycle=None):
         write_log("", "wb+")
+        set_status = False
+        index_info = None
         try:
             order_index = []
             if index:
+                set_status = True
                 if type(index) != str:
                     index = index.index
                 if not index in self._config['orders']:
                     write_log("|-指定订单号不存在，无法续签!")
+                    self.set_auto_renew_status(index, -1, "指定订单号不存在，无法续签!")
                     raise Exception("指定订单号不存在，无法续签!")
                 if cycle:
                     s_time = time.time() + (int(cycle) * 86400)
                     if self._config['orders'][index]['cert_timeout'] > s_time:
+                        self.set_auto_renew_status(index, 0, "|-过期时间大于{}天，跳过续签!".format(cycle))
                         write_log("|-过期时间大于{}天，跳过续签!".format(cycle))
                         return
                 order_index.append(index)
@@ -2368,8 +2398,11 @@ fullchain.pem       粘贴到证书输入框
                 if len(domains) == 0:
                     write_log("|-第 {} 张证书下的域名全部未使用(这些域名是:[{}])，已跳过。".format(n, ",".join(self._config['orders'][index]['domains'])))
                     err_msg = "域名全部未使用，已跳过。"
+                    if set_status:
+                        self.set_auto_renew_status(index, -1, err_msg)
                     continue
                 else:
+                    index_info = self._config['orders'][index]
                     self._config['orders'][index]['domains'] = domains
                     write_log("|-正在续签第 {} 张，域名: {}..".format(n,self._config['orders'][index]['domains']))
                     write_log("|-正在创建订单..")
@@ -2377,6 +2410,12 @@ fullchain.pem       粘贴到证书输入框
                     err_msg = "续签失败!"
             if not cert:
                 return public.returnMsg(False, err_msg)
+            if cert.get('status') is False and set_status:
+                self.set_auto_renew_status(index, -1, cert.get('msg'))
+                self._config['orders'][index] = index_info
+                self.save_config()
+            if (cert.get('status') is None or cert.get('status') is True) and set_status:
+                self.set_auto_renew_status(index, 1, "续签成功!")
             return cert
 
         except Exception as ex:
@@ -2388,6 +2427,11 @@ fullchain.pem       粘贴到证书输入框
             else:
                 msg = ex
                 write_log(public.get_error_info())
+            if set_status:
+                self.set_auto_renew_status(index, -1, msg)
+            if index_info:
+                self._config['orders'][index] = index_info
+                self.save_config()
             return public.returnMsg(False, msg)
 
     def renew_cert_v2(self, index, cycle=30):

@@ -2583,6 +2583,7 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
             return public.returnMsg(False, 'FILE_SAVE_ERR' + str(ex))
 
     def update_cors_config(self, get):
+        public.set_module_logs('跨域访问CORS配置', 'update_cors_config', 1)
         try:
             # 获取原来的文件内容
             original_content = self.GetFileBody(get)['data']

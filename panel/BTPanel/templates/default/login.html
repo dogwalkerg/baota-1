@@ -1,8 +1,8 @@
-<!doctype html><html lang="cn"><head><meta charset="utf-8"><meta content="IE=edge"><meta name="referer" content="never"><meta name="renderer" content="webkit"><title>{{g.title}}</title><link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon"><link rel="stylesheet" crossorigin href="/static/css/login.min.css?v=1734676359"><script>window.vite_public_title = '{{g.title}}' // 网站标题
+<!doctype html><html lang="cn"><head><meta charset="utf-8"><meta content="IE=edge"><meta name="referer" content="never"><meta name="renderer" content="webkit"><title>{{g.title}}</title><link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon"><link rel="stylesheet" crossorigin href="/static/css/login.min.css?v=1736403705"><script>window.vite_public_title = '{{g.title}}' // 网站标题
 			window.vite_public_login_token = '{{data['last_login_token']}}' // 登录token
 			window.vite_public_encryption = '{{session['rsa_public_key']}}' // rsa加密公钥
 			window.vite_public_login_check = '{{session['code']}}' === 'True' // 是否登录检查
-			window.vite_public_hosts_list = JSON.parse('{{data.hosts|safe}}') // cdn主机列表
+			window.vite_public_hosts_list = JSON.parse('{{data.hosts|safe}}'.replace(/"/g, '"')) // cdn主机列表
 			;(function () {
 				// 浏览器兼容性检测
 				function browserCompatible() {
@@ -73,6 +73,35 @@
 					window.history.pushState('forward', null, '') //在IE中必须得有这两行
 					window.history.forward(1)
 				}
+
+				// 主题切换的方法
+				function useDark(config) {
+					let theme = localStorage.getItem(config.storageKey) // 从本地存储中获取主题
+					function isDarkMode() {
+						const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+						return darkModeQuery.matches
+					}
+					if (theme && theme.includes('auto') && isDarkMode) theme = isDarkMode ? config.valueDark : config.valueLight // 自动模式下，根据系统主题切换
+					document.querySelector(config.selector).setAttribute('class', theme) // 设置主题，使用setAttribute方法
+
+					// 设置主题，使用innerHTML方法
+					function setThemeDom(el) {
+						const divHtml = '<div class="cut-theme"><i class="svgtofont-icon-dark"></i></div>'
+						const divView = document.createElement('div')
+						divView.classList.add('theme-view') // 创建一个div元素
+						divView.innerHTML = divHtml // 设置div元素的innerHTML属性
+						console.log(divView)
+						document.getElementsByTagName('body')[0]?.append(divView) // 将div元素添加到body元素中
+					}
+					setThemeDom('body')
+				}
+
 				browserCompatible()
 				blockHist()
-			})()</script><script type="module" crossorigin src="/static/js/login.js?v=1734676359"></script><link rel="stylesheet" crossorigin href="/static/css/style.css?v=1734676359"><script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script><script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script></head><body><script src="/static/js/qrcode.min.js?v=1734676359"></script><script src="/static/js/jsencrypt.min.js?v=1734676359"></script><script src="/static/js/md5.js?v=1734676359"></script><div id="app"></div><script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script><script nomodule crossorigin id="vite-legacy-polyfill" src="/static/js/polyfills-legacy.js?v=1734676359"></script><script nomodule crossorigin id="vite-legacy-entry" data-src="/static/js/login-legacy.js?v=1734676359">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script><script src="/static/js/load-file.min.js?v=1734676359"></script></head></html>
+				useDark({
+					selector: 'html',
+					storageKey: 'PANEL-THEME',
+					valueDark: 'dark',
+					valueLight: 'light',
+				})
+			})()</script><script type="module" crossorigin src="/static/js/login.js?v=1736403705"></script><link rel="stylesheet" crossorigin href="/static/css/style.css?v=1736403705"><script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script><script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script></head><body><script src="/static/js/qrcode.min.js?v=1736403705"></script><script src="/static/js/jsencrypt.min.js?v=1736403705"></script><script src="/static/js/md5.js?v=1736403705"></script><div id="app"></div><script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script><script nomodule crossorigin id="vite-legacy-polyfill" src="/static/js/polyfills-legacy.js?v=1736403705"></script><script nomodule crossorigin id="vite-legacy-entry" data-src="/static/js/login-legacy.js?v=1736403705">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script><script src="/static/js/load-file.min.js?v=1736403705"></script></head></html>

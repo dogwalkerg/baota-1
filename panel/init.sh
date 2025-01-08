@@ -43,7 +43,6 @@ panel_init(){
                     sed -i "s@^#!.*@#!$pythonV@" $panel_path/BT-Task &> /dev/null
             fi
         fi
-
         chmod 700 $panel_path/BT-Panel &> /dev/null
         chmod 700 $panel_path/BT-Task &> /dev/null
         log_file=$panel_path/logs/error.log
@@ -195,7 +194,7 @@ panel_port_check()
 
 		  if [ "$pn" = "superviso" ];then
 				pkill -9 superviso
-				sleep 0.2
+				sleep 0.2a
 				supervisord -c /etc/supervisor/supervisord.conf
 		  fi
 
@@ -236,15 +235,6 @@ panel_port_check()
 	fi
 }
 
-
-stop_webserver()
-{
-        webserver_ctl=$panel_path/script/webserver-ctl.sh
-        if [ -f $webserver_ctl ];then
-                bash $webserver_ctl stop &> /dev/null
-        fi
-}
-
 panel_stop()
 {
         echo -e "Stopping Bt-Tasks...\c";
@@ -267,9 +257,6 @@ panel_stop()
         if [ -f $pidfile ];then
                 rm -f $pidfile &> /dev/null
         fi
-
-        stop_webserver
-
         echo -e "	\033[32mdone\033[0m"
 }
 
@@ -300,50 +287,68 @@ panel_reload()
 	fi
 	get_panel_pids
         if [ "$isStart" != '' ];then
-                get_panel_pids
-                for p in ${arr[@]}
-                do
-                        kill -9 $p
-                done
-                        rm -f $pidfile
-                        echo -e "Reload Bt-Panel.\c";
-                        nohup $panel_path/BT-Panel >> $log_file 2>&1 &
-                        isStart=""
-                        n=0
-                        while [[ "$isStart" == "" ]];
-                        do
-                                echo -e ".\c"
-                                sleep 0.5
-                                get_panel_pids
-                                let n+=1
-                                if [ $n -gt 8 ];then
-                                        break;
-                                fi
-                        done
-                if [ "$isStart" == '' ];then
-                        panel_port_check
-                        echo -e "\033[31mfailed\033[0m"
-                        echo '------------------------------------------------------'
-                        tail -n 20 $log_file
-                        echo '------------------------------------------------------'
-                        echo -e "\033[31mError: BT-Panel service startup failed.\033[0m"
-                        return;
-                fi
 
-                stop_webserver
-                echo -e "	\033[32mdone\033[0m"
-        else
-                echo -e "\033[31mBt-Panel not running\033[0m"
-                panel_start
+	    get_panel_pids
+	for p in ${arr[@]}
+        do
+                kill -9 $p
+        done
+		rm -f $pidfile
+		echo -e "Reload Bt-Panel.\c";
+                nohup $panel_path/BT-Panel >> $log_file 2>&1 &
+		isStart=""
+		n=0
+		while [[ "$isStart" == "" ]];
+		do
+			echo -e ".\c"
+			sleep 0.5
+			get_panel_pids
+			let n+=1
+			if [ $n -gt 8 ];then
+				break;
+			fi
+		done
+        if [ "$isStart" == '' ];then
+                panel_port_check
+                echo -e "\033[31mfailed\033[0m"
+                echo '------------------------------------------------------'
+                tail -n 20 $log_file
+                echo '------------------------------------------------------'
+                echo -e "\033[31mError: BT-Panel service startup failed.\033[0m"
+                return;
         fi
+        echo -e "	\033[32mdone\033[0m"
+    else
+        echo -e "\033[31mBt-Panel not running\033[0m"
+        panel_start
+    fi
 }
 
 install_used()
 {
+        if [ -f $panel_path/random_path.pl ];then
+                random_path=$(cat /dev/urandom | head -n 16 | md5sum | head -c 6)
+                echo "/${random_path}" > $panel_path/data/admin_path.pl
+                random_user=$(cat /dev/urandom | head -n 16 | md5sum | head -c 8)
+                re_user=$($pythonV $panel_path/tools.py reusername $random_user)
+                rm -f $panel_path/random_path.pl
+        fi
+
         if [ -f $panel_path/aliyun.pl ];then
+                random_user=$(cat /dev/urandom | head -n 16 | md5sum | head -c 8)
+                re_user=$($pythonV $panel_path/tools.py reusername $random_user)
                 password=$(cat /dev/urandom | head -n 16 | md5sum | head -c 12)
                 username=$($pythonV $panel_path/tools.py panel $password)
                 echo "$password" > $panel_path/default.pl
+                if [ -f "/www/server/panel/data/o.pl" ];then
+                        IDC_CODE=$(cat /www/server/panel/data/o.pl)
+                else
+                        IDC_CODE=""
+                fi
+                if [ -f "/www/server/panel/script/download_ip.sh" ];then
+                     echo "bash /www/server/panel/script/download_ip.sh > /dev/null 2>&1" |at now + 5 minutes
+                fi
+                echo "curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/SetupCount?type=Linux\&o=$IDC_CODE > /dev/null 2>&1" |at now + 5 minutes
                 rm -f $panel_path/aliyun.pl
                 chattr +i $panel_path/default.pl
         fi
@@ -367,6 +372,8 @@ install_used()
 
 }
 
+
+
 error_logs()
 {
 	tail -n 100 $log_file
@@ -382,6 +389,9 @@ case "$1" in
                 panel_stop
                 ;;
         'restart')
+                if [ -f "/www/server/panel/script/reload_check.py" ];then
+                        btpython /www/server/panel/script/reload_check.py
+                fi
                 panel_stop
 		sleep 1
                 panel_start
@@ -409,11 +419,18 @@ case "$1" in
                 	auth_path=$(cat $panel_path/data/admin_path.pl)
                 fi
                 if [ "$address" = "" ];then
-                	address=$(curl -sS --connect-timeout 10 -m 20 https://www.bt.cn/Api/getIpAddress)
+                	address=$(curl -sS --connect-timeout 4 -m 5 https://api.bt.cn/Api/getIpAddress)
+                        if [ -z "${address}" ];then
+                                address=$(curl -sS --connect-timeout 4 -m 5 https://www.bt.cn/Api/getIpAddress)
+                                if [ -z "${address}" ];then
+                                        address=$(curl -sS --connect-timeout 4 -m 5 https://www.aapanel.com/api/common/getClientIP)
+                                fi
+                        fi
                         IPV6_REGEX="^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$"
                         if [[ $address =~ $IPV6_REGEX ]]; then
                                 address=$(echo "[$address]")
                         fi
+
                 fi
                 pool=http
                 if [ -f $panel_path/data/ssl.pl ];then
@@ -421,6 +438,10 @@ case "$1" in
                 fi
                 if [ "$auth_path" == "/" ];then
                         auth_path=/login
+                fi
+                panel_site_address=""
+                if [ -f /www/server/panel/data/panel_site_address.pl ];then
+			              panel_site_address=$(cat /www/server/panel/data/panel_site_address.pl)
                 fi
                 LOCAL_IP=$(ip addr | grep -E -o '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -E -v "^127\.|^255\.|^0\." | head -n 1)
                 echo -e "=================================================================="
@@ -432,15 +453,15 @@ case "$1" in
                 fi
                 echo  "外网面板地址: $pool://${address}:${port}${auth_path}"
                 echo  "内网面板地址: $pool://${LOCAL_IP}:${port}${auth_path}"
-                if [ -f /www/server/panel/data/panel_site_address.pl ];then
-			echo  "面板面端口地址:" $(cat /www/server/panel/data/panel_site_address.pl)
+                if [ "$panel_site_address" != "" ];then
+                    echo  "面板免端口地址: ${panel_site_address}"
                 fi
                 echo -e `$pythonV $panel_path/tools.py username`
                 echo -e "password: $password"
                 echo -e "\033[33mWarning:\033[0m"
                 echo -e "\033[33mIf you cannot access the panel, \033[0m"
                 echo -e "\033[33mrelease the following port (8888|888|80|443|20|21) in the security group\033[0m"
-                echo -e "\033[33m注意：初始密码仅在首次登录面板前能正确获取，其它时间请通过 bt 5 命令修改密码 \033[0m"
+                echo -e "\033[33m注意：初始密码仅在首次登录面板前能正确获取，其它时间请通过 bt 5 命令修改密码\033[0m"
                 echo -e "=================================================================="
                 ;;
         *)

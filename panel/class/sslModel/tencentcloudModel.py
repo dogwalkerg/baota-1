@@ -134,9 +134,16 @@ class main(sslBase):
     def get_dns_record(self, get):
 
         domain_name, _, sub_domain = self.extract_zone(get.domain_name)
-        params = json.dumps({
+        params = {
             "Domain": domain_name,
-        })
+        }
+        if "limit" in get:
+            params["Limit"] = int(get.limit)
+        if "p" in get:
+            params["Offset"] = ((int(get.p) - 1) * int(get.limit))
+        if "search" in get:
+            params["Keyword"] = get.search
+        params = json.dumps(params)
 
         data = {}
         try:
@@ -152,7 +159,7 @@ class main(sslBase):
             #     data['list'] = json_data['RecordList']
             if 'RecordCountInfo' in json_data:
                 data['info'] = {
-                    "record_total": json_data['RecordCountInfo']['SubdomainCount']
+                    "record_total": json_data['RecordCountInfo']['ListCount']
                 }
             data["list"] = [
                 {

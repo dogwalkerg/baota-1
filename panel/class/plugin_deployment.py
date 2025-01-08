@@ -473,7 +473,7 @@ class plugin_deployment:
                     phpiniConf = public.readFile(phpini)
                     phpiniConf = phpiniConf.replace('proc_open,proc_get_status,', '')
                     public.writeFile(phpini,phpiniConf)
-                    public.ExecShell('nohup cd '+path+' && '+execPHP+' /usr/bin/composer install -vvv &>> {} 2>&1 &'.format("/dev/null"))
+                    public.ExecShell('nohup cd '+path+' && '+execPHP+' /usr/bin/composer install -vvv > /tmp/composer.log 2>&1 &')
 
         if get.dname == "CatchAdmin":
             # 前后端分离处理替换配置文件
@@ -870,6 +870,9 @@ class plugin_deployment:
                 i_ndex_html = path + '/index.html'
                 if os.path.exists(i_ndex_html): os.remove(i_ndex_html)
                 if not self.copy_to(p_tmp,path): public.ExecShell(("\cp -arf " + p_tmp + '/. ' + path + '/').replace('//','/'))
+            except json.decoder.JSONDecodeError as e:
+                error_message = "ERROR：解析auto_install.json文件错误\n【{}】: {}".format(filename, str(e))
+                self.WriteLogs(error_message)
             except: pass
         public.ExecShell("rm -rf " + self.__tmp + '/*')
         self.WriteLogs('解压【{}】成功...'.format(filename))

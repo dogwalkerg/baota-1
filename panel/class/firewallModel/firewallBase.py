@@ -27,21 +27,19 @@ class Base(object):
         self._isUfw = False
         self._isFirewalld = False
         self._isIptables = False
-        if (not os.path.exists('/etc/redhat-release') and not os.path.exists('/etc/yum.cnf') and
-                not os.path.exists('/etc/dnf/dnf.conf') or os.path.exists('/usr/bin/apt-get')):
-            self._isUfw = True
-            from firewallModel.app.ufw import Ufw
-            self.firewall = Ufw()
-        elif os.path.exists('/usr/sbin/firewalld') or os.path.exists('/etc/redhat-release'):
+        if os.path.exists('/usr/sbin/firewalld') or os.path.exists('/etc/redhat-release') or os.path.exists('/etc/yum.cnf') or os.path.exists('/etc/dnf/dnf.conf'):
             self._isFirewalld = True
             from firewallModel.app.firewalld import Firewalld
             self.firewall = Firewalld()
+        elif os.path.exists('/usr/bin/apt-get'):
+            self._isUfw = True
+            from firewallModel.app.ufw import Ufw
+            self.firewall = Ufw()
         elif not self._isUfw and not self._isFirewalld:
             self._isIptables = True
             from firewallModel.app.iptables import Iptables
             self.firewall = Iptables()
-        _months = {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06', 'Jul': '07',
-                   'Aug': '08', 'Sep': '09', 'Sept': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}
+        _months = {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08', 'Sep': '09', 'Sept': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}
 
     # 2024/3/14 上午 11:27 获取防火墙运行状态
     def get_firewall_status(self) -> bool:

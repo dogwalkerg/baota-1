@@ -392,7 +392,7 @@ class main(crontabBase):
                 python_bin = public.get_python_bin()
                 result = public.ExecShell('{} -u {}{}'.format(python_bin,tmp_file,script_args))
             res = result[0].strip()
-            if result[1] and "warn" not in result[1]:
+            if result[1]:
                 self.add_task_log(script_id,0,0,0,result[0],result[1],script_start_time,int(time.time()))
                 return public.returnMsg(False,'脚本运行错误，请检查脚本代码是否有误: \n{}'.format(result[0] + "\n" +  result[1].split('.tmp:')[-1]))
         except Exception as ex:

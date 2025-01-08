@@ -115,20 +115,27 @@ mysqld_safe --skip-grant-tables&
 echo '正在修改密码...';
 echo 'The set password...';
 sleep 6
-m_version=$(cat /www/server/mysql/version.pl|grep -E "(5.1.|5.5.|5.6.|10.0.|10.1.)")
-m2_version=$(cat /www/server/mysql/version.pl|grep -E "(10.5.|10.4.|10.6.|10.7.|10.11.|11.3.)")
-m9_version=$(cat /www/server/mysql/version.pl|grep -E "(9.0|9.1)")
-if [ "$m_version" != "" ];then
-    mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${pwd}') WHERE user='root'";
-elif [ "$m2_version" != "" ];then
-    mysql -uroot -e "FLUSH PRIVILEGES;alter user 'root'@'localhost' identified by '${pwd}';alter user 'root'@'127.0.0.1' identified by '${pwd}';FLUSH PRIVILEGES;";
+
+m_version=$(cat /www/server/mysql/version.pl)
+if echo "$m_version" | grep -E "(5\.1\.|5\.5\.|5\.6\.|10\.0\.|10\.1\.)" >/dev/null; then
+    mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${pwd}') WHERE user='root';"
+elif echo "$m_version" | grep -E "(10\.4\.|10\.5\.|10\.6\.|10\.7\.|10\.11\.|11\.3\.|11\.4\.)" >/dev/null; then
+    mysql -uroot -e "
+    FLUSH PRIVILEGES;
+    ALTER USER 'root'@'localhost' IDENTIFIED BY '${pwd}';
+    ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${pwd}';
+    FLUSH PRIVILEGES;
+    "
+elif echo "$m_version" | grep -E "(5\.7\.|8\.[0-9]+\..*|9\.[0-9]+\..*)" >/dev/null; then 
+    mysql -uroot -e "
+    FLUSH PRIVILEGES;
+    update mysql.user set authentication_string='' where user='root' and (host='127.0.0.1' or host='localhost');
+    ALTER USER 'root'@'localhost' IDENTIFIED BY '${pwd}';
+    ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${pwd}';
+    FLUSH PRIVILEGES;
+    "
 else
-    m_version=$(cat /www/server/mysql/version.pl|grep -E "(5\.7\.|8\.[0-9]+\..*)")
-    if [ "$m_version" != "" ] || [ "${m9_version}" ];then
-        mysql -uroot -e "FLUSH PRIVILEGES;update mysql.user set authentication_string='' where user='root' and (host='127.0.0.1' or host='localhost');alter user 'root'@'localhost' identified by '${pwd}';alter user 'root'@'127.0.0.1' identified by '${pwd}';FLUSH PRIVILEGES;";
-    else
-        mysql -uroot -e "update mysql.user set authentication_string=password('${pwd}') where user='root';"
-    fi
+    mysql -uroot -e "UPDATE mysql.user SET authentication_string=PASSWORD('${pwd}') WHERE user='root';"
 fi
 
 mysql -uroot -e "FLUSH PRIVILEGES";
@@ -164,6 +171,7 @@ def set_panel_pwd(password, ncli=False):
         print("|-新密码: " + password)
     else:
         print(username)
+
 
 # 设置数据库目录
 def set_mysql_dir(path):
@@ -224,7 +232,6 @@ def PackagePanel():
     os.system('rm -f /www/server/panel/data/domain.conf')
     os.system('rm -f /www/server/panel/data/user*')
     os.system('rm -f /www/server/panel/data/admin_path.pl')
-    os.system('rm -rf /www/backup/panel/*')
     os.system('rm -f /root/.ssh/*')
 
     print('\t\033[1;32m[done]\033[0m')
@@ -261,45 +268,15 @@ history -c
     else:
         public.writeFile('/www/server/panel/php_mysql_auto.pl', "True")
 
-    print("|-请选择idc品牌信息展示设置：")
-    print("=" * 50)
-    print(" (1) 显示默认宝塔Linux面板信息")
-    print(" (2) 显示IDC定制版面板信息")
-    print("=" * 50)
-    i_input = input("请选择显示的面板信息(default: 1): ")
-    if i_input in [2, '2']:
-        print("2 显示IDC定制版面板信息")
-        print("=" * 50)
-    else:
-        print("1 显示默认宝塔Linux面板信息")
-        print("=" * 50)
-        panelPath = '/www/server/panel'
-        pFile = panelPath + '/config/config.json'
-        pInfo = json.loads(public.readFile(pFile))
-        pInfo['title'] = u'宝塔Linux面板'
-        pInfo['brand'] = u'宝塔'
-        pInfo['product'] = u'Linux面板'
-        public.writeFile(pFile, json.dumps(pInfo))
-        tFile = panelPath + '/data/title.pl'
-        if os.path.exists(tFile):
-            os.remove(tFile)
-
     print("|-请选择用户初始化方式：")
     print("=" * 50)
     print(" (1) 访问面板页面时显示初始化页面")
     print(" (2) 首次启动时自动随机生成新帐号密码")
-    print(" (3) 首次启动时自动随机生成新帐号密码和安全路径")
     print("=" * 50)
     p_input = input("请选择初始化方式(default: 1): ")
     print(p_input)
     if p_input in [2, '2']:
         public.writeFile('/www/server/panel/aliyun.pl', "True")
-        s_file = '/www/server/panel/install.pl'
-        if os.path.exists(s_file): os.remove(s_file)
-        public.M('config').where("id=?", ('1',)).setField('status', 1)
-    elif p_input in [3, '3']:
-        public.writeFile('/www/server/panel/aliyun.pl', "True")
-        public.writeFile('/www/server/panel/random_path.pl', "True")
         s_file = '/www/server/panel/install.pl'
         if os.path.exists(s_file): os.remove(s_file)
         public.M('config').where("id=?", ('1',)).setField('status', 1)
@@ -309,11 +286,12 @@ history -c
     port = public.readFile('data/port.pl').strip()
     print('========================================================')
     print('\033[1;32m|-面板封装成功,请不要再登陆面板做任何其它操作!\033[0m')
-    if p_input not in [2, '2', 3, '3']:
+    if not p_input in [2, '2']:
         print('\033[1;41m|-面板初始化地址: http://{SERVERIP}:' + port + '/install\033[0m')
     else:
         print('\033[1;41m|-获取初始帐号密码命令:bt default \033[0m')
         print('\033[1;41m|-注意：仅在首次登录面板前能正确获取初始帐号密码 \033[0m')
+
 
 # 清空正在执行的任务
 def CloseTask():
@@ -1042,9 +1020,12 @@ def bt_cli(u_input=0):
             print()
             print("#### 如需关闭，请输入0 关闭免端口访问面板")
 
+        n_installed = 1
         if not os.path.exists("/www/server/nginx/sbin/nginx"):
+            n_installed = 0
+
+        if n_installed == 0:
             print("检测到您未安装nginx，继续设置会自动为您安装nginx服务，过程可能需要等待5-10分钟！")
-            return
 
         site_name = input("请输入访问面板的域名或IP：")
 
@@ -1061,6 +1042,21 @@ def bt_cli(u_input=0):
             if not public.check_ip(site_name) and not public.is_domain(site_name):
                 print("域名或ip格式错误，请重新输入，例如：panel.bt.cn")
                 return
+
+        if n_installed == 0:
+            print("正在安装nginx 1.24，请勿终止此操作！")
+            if os.path.exists('/usr/bin/yum'):
+                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 1 install nginx 1.24")
+            elif os.path.exists('/usr/bin/apt-get'):
+                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 4 install nginx 1.24")
+            else:
+                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 0 install nginx 1.24")
+
+            if not os.path.exists("/www/server/nginx/sbin/nginx"):
+                print("nginx安装失败，请联系宝塔运维处理！")
+                return
+
+            print("安装完成，开始设置...")
 
         get = public.to_dict_obj({
             "siteName": site_name
@@ -1249,7 +1245,15 @@ def bt_cli(u_input=0):
             if os.path.exists('/www/server/panel/data/panel_generation.pl'):
                 conf = json.loads(public.readFile('/www/server/panel/data/panel_generation.pl'))
                 __http = 'https://' if os.path.exists("/www/server/panel/data/ssl.pl") else 'http://'
-                address = __http + conf['domain'] + public.readFile('/www/server/panel/data/admin_path.pl').strip()
+                admin_path = public.readFile('/www/server/panel/data/admin_path.pl')
+                if admin_path:
+                    if admin_path.strip() in ("", "/"):
+                        admin_path = '/login'
+                    else:
+                        admin_path = admin_path.strip()
+                else:
+                    admin_path = '/login'
+                address = __http + conf['domain'] + admin_path
                 public.writeFile('/www/server/panel/data/panel_site_address.pl', address)
             else:
                 public.ExecShell("rm -rf /www/server/panel/data/panel_site_address.pl")

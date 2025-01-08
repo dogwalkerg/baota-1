@@ -82,6 +82,8 @@ public_http_post = public.httpPost
 
 panel_version = public.version
 
+get_webserver = public.get_webserver
+
 # 获取证书列表
 get_cert_list = certModel.main().get_cert_list
 to_dict_obj = public.to_dict_obj

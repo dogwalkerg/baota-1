@@ -327,6 +327,8 @@ class crontab:
                 task['sBody'] = task['sBody'].split("bash -c '", 1)[-1].rstrip("'")
             self.get_mysql_increment_save(task)
             self.format_cycle(task)
+            if not task['type_id']:
+                task['type_id']=0
             task['type_name'] = self.get_type_name(task)  # 添加分类名称
     def get_mysql_increment_save(self,task):
         if task['sType']=="mysql_increment_backup":
@@ -391,7 +393,7 @@ class crontab:
         else:
             return " "        
     def search_tasks(self, data, search_term):
-        return [item for item in data if search_term in item['name'] or search_term in item['sName'] or search_term in item['addtime']]
+        return [item for item in data if search_term in item['name'] or search_term in item['sName'] or search_term in item['addtime'] or search_term in item['echo']]
 
     def generate_cycle(self, type, where1, where_hour, where_minute,sType,second:None):
         try:

@@ -5638,6 +5638,11 @@ location ^~ %s
 
         if get.siteName == 'phpmyadmin':
             get.configFile = self.setupPath + '/nginx/conf/nginx.conf'
+            if os.path.exists('/www/server/panel/vhost/nginx/phpmyadmin.conf'):
+                conf = public.readFile('/www/server/panel/vhost/nginx/phpmyadmin.conf')
+                rep = "\n\s*#AUTH_START(.|\n){1,200}#AUTH_END"
+                conf = re.sub(rep, '', conf)
+                public.writeFile('/www/server/panel/vhost/nginx/phpmyadmin.conf', conf)
         else:
             get.configFile = self.setupPath + '/panel/vhost/nginx/' + get.siteName + '.conf'
 

@@ -800,6 +800,131 @@ class Task:
         except:
             pass
 
+    # 2024/5/21 下午5:32 更新 GeoLite2-Country.json
+    def flush_geoip(self):
+
+        '''
+            @name 检测如果大小小于3M或大于1个月则更新
+            @author wzz <2024/5/21 下午5:33>
+            @param "data":{"参数名":""} <数据类型> 参数描述
+            @return dict{"status":True/False,"msg":"提示信息"}
+        '''
+        _ips_path = "/www/server/panel/data/firewall/GeoLite2-Country.json"
+        m_time_file = "/www/server/panel/data/firewall/geoip_mtime.pl"
+
+        if not os.path.exists(_ips_path):
+            os.system("mkdir -p /www/server/panel/data/firewall")
+            os.system("touch {}".format(_ips_path))
+
+        try:
+            if not os.path.exists(_ips_path):
+                public.downloadFile('{}/install/lib/{}'.format(public.get_url(), os.path.basename(_ips_path)), _ips_path)
+                public.writeFile(m_time_file, str(int(time.time())))
+                return
+
+            _ips_size = os.path.getsize(_ips_path)
+            if os.path.exists(m_time_file):
+                _ips_mtime = int(public.readFile(m_time_file))
+            else:
+                _ips_mtime = 0
+
+            if _ips_size < 3145728 or time.time() - _ips_mtime > 2592000:
+                os.system("rm -f {}".format(_ips_path))
+                os.system("rm -f {}".format(m_time_file))
+                public.downloadFile('{}/install/lib/{}'.format(public.get_url(), os.path.basename(_ips_path)), _ips_path)
+                public.writeFile(m_time_file, str(int(time.time())))
+
+                if os.path.exists(_ips_path):
+                    try:
+                        import json
+                        from xml.etree.ElementTree import ElementTree, Element
+                        from safeModel.firewallModel import main as firewall
+
+                        firewallobj = firewall()
+                        ips_list = json.loads(public.readFile(_ips_path))
+                        if ips_list:
+                            for ip_dict in ips_list:
+                                if os.path.exists('/usr/bin/apt-get') and not os.path.exists("/etc/redhat-release"):
+                                    btsh_path = "/etc/ufw/btsh"
+                                    if not os.path.exists(btsh_path):
+                                        os.makedirs(btsh_path)
+                                    tmp_path = '{}/{}.sh'.format(btsh_path, ip_dict['brief'])
+                                    if os.path.exists(tmp_path):
+                                        public.writeFile(tmp_path, "")
+
+                                    _string = "#!/bin/bash\n"
+                                    for ip in ip_dict['ips']:
+                                        if firewallobj.verify_ip(ip):
+                                            _string = _string + 'ipset add ' + ip_dict['brief'] + ' ' + ip + '\n'
+                                    public.writeFile(tmp_path, _string)
+                                else:
+                                    xml_path = "/etc/firewalld/ipsets/{}.xml.old".format(ip_dict['brief'])
+                                    xml_body = """<?xml version="1.0" encoding="utf-8"?>
+<ipset type="hash:net">
+  <option name="maxelem" value="1000000"/>
+</ipset>
+"""
+                                    if os.path.exists(xml_path):
+                                        public.writeFile(xml_path, xml_body)
+                                    else:
+                                        os.makedirs(os.path.dirname(xml_path), exist_ok=True)
+                                        public.writeFile(xml_path, xml_body)
+
+                                    tree = ElementTree()
+                                    tree.parse(xml_path)
+                                    root = tree.getroot()
+                                    for ip in ip_dict['ips']:
+                                        if firewallobj.verify_ip(ip):
+                                            entry = Element("entry")
+                                            entry.text = ip
+                                            root.append(entry)
+
+                                    firewallobj.format(root)
+                                    tree.write(xml_path, 'utf-8', xml_declaration=True)
+                    except:
+                        pass
+        except:
+            try:
+                public.downloadFile('{}/install/lib/{}'.format(public.get_url(), os.path.basename(_ips_path)), _ips_path)
+                public.writeFile(m_time_file, str(int(time.time())))
+            except:
+                pass
+
+    # 2024/3/20 上午 11:09 更新docker_hub镜像排行数据
+    def flush_docker_hub_repos(self):
+        '''
+            @name 更新docker_hub镜像排行数据
+            @author wzz <2024/3/20 上午 11:09>
+            @param "data":{"参数名":""} <数据类型> 参数描述
+            @return dict{"status":True/False,"msg":"提示信息"}
+        '''
+        public.ExecShell("/www/server/panel/pyenv/bin/python3.7 /www/server/panel/class/btdockerModel/script/syncreposdb.py")
+
+    def upload_send_num(self):
+        try:
+            pl_path = public.get_plugin_path() + '/mail_sys/upload_send_num.pl'
+            if not os.path.exists(pl_path):
+                return False
+            last_time = public.readFile(pl_path)
+            if not last_time:
+                return False
+            if int(time.time()) - int(last_time) < 3600:
+                return False
+
+            from mailModel import manageModel
+            res = manageModel.main().upload_send_num()
+        except:
+            pass
+
+    def auto_deploy_ssl(self):
+        # public.print_log("启动SSL证书自动部署")
+        try:
+            from sslModel import autodeployModel
+            res = autodeployModel.main().get_task_list()
+            # public.print_log(res)
+        except:
+            pass
+
     # 502错误检查线程
     def check502Task(self):
         try:
@@ -811,8 +936,12 @@ class Task:
                 self.sess_expire()
                 # self.mysql_quota_check()
                 self.siteEdate()
+                self.upload_send_num()
+                self.auto_deploy_ssl()
                 time.sleep(600)
                 PluginLoader.daemon_panel()
+                self.flush_docker_hub_repos()
+                self.flush_geoip()
 
         except Exception as ex:
             self.write_log(ex)

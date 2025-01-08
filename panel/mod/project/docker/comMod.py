@@ -215,7 +215,7 @@ class main(AppManage, RuntimeManage, SitesManage):
 
             for app in installed_apps["data"]:
                 if not "running" in app["status"]: installed_apps["data"].remove(app)
-                if app["apptype"] in not_allow_category: installed_apps["data"].remove(app)
+                if app["apptype"] in not_allow_category: installed_apps["data"].remove(app) if app in installed_apps["data"] else None
 
             return public.returnResult(status=installed_apps["status"], data=installed_apps["data"])
 

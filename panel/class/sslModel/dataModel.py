@@ -240,7 +240,7 @@ class main(sslBase):
         data.append({'name':get.name,'type_id':type_id})
         public.writeFile(sfile,json.dumps(data))
         return public.returnMsg(True,'添加成功')
-
+    
     def del_domain_type(self, get):
         sfile = '{}/data/domains_type.json'.format(public.get_panel_path())
         try:
@@ -255,7 +255,7 @@ class main(sslBase):
             return public.returnMsg(True, '删除成功')
         except:
             return public.returnMsg(True, '删除失败')
-
+        
 
     def __init_data(self):
         """

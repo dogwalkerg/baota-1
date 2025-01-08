@@ -240,11 +240,11 @@ class panelSearch:
     # 搜索文件
     @classmethod
     def __search_files(cls, search_data: dict, ws_get=None):
-        ws_get._ws.send(public.getJson({
-            "type": "files_search",
-            "ws_callback": ws_get.ws_callback,
-            "result": False,
-        }))
+        # ws_get._ws.send(public.getJson({
+        #     "type": "files_search",
+        #     "ws_callback": ws_get.ws_callback,
+        #     "result": False,
+        # }))
         
         # 获取总文件数
         total_files = sum([len(files) for _, _, files in os.walk(search_data["path"])])

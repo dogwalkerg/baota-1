@@ -200,6 +200,7 @@ class main:
 
     # 获取日志内容
     def run(self, get=None):
+        public.set_module_logs("sitelogpush", "run_push")
         print('开始运行网站日志检查任务【{}】'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         config = self.get_site_log_push(None)
         endtime = int(datetime.now().timestamp()) - 60 * int(config['cycle'])

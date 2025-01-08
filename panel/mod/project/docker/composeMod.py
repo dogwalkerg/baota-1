@@ -555,24 +555,6 @@ class main(Compose):
                 name_map.pop(bt_compose_name)
                 public.writeFile(config_path, json.dumps(name_map))
 
-        if not os.path.exists(get.path):
-            command = self.set_type(0).set_compose_name(get.project_name).get_compose_delete_for_ps()
-        else:
-            command = self.set_type(0).set_path(get.path).get_compose_delete()
-        stdout, stderr = public.ExecShell(command)
-        if "invalid compose project" in stderr:
-            command = self.set_type(0).set_compose_name(get.project_name).get_compose_delete_for_ps()
-            public.ExecShell(command)
-
-        # public.ExecShell("rm -rf {}".format(os.path.dirname(get.path)))
-        if hasattr(get, '_ws'):
-            get._ws.send(json.dumps(self.wsResult(
-                True,
-                "删除容器编排",
-                data=-1,
-                code=0
-            )))
-
         stacks_list = dp.sql("stacks").select()
         compose_list = self.ls(get)
         for i in stacks_list:
@@ -584,6 +566,33 @@ class main(Compose):
                     break
             else:
                 dp.sql("stacks").where("name=?", (i['name'])).delete()
+
+        if not os.path.exists(get.path):
+            command = self.set_type(0).set_compose_name(get.project_name).get_compose_delete_for_ps()
+        else:
+            command = self.set_type(0).set_path(get.path).get_compose_delete()
+        stdout, stderr = public.ExecShell(command)
+        if "invalid compose project" in stderr:
+            command = self.set_type(0).set_compose_name(get.project_name).get_compose_delete_for_ps()
+            stdout, stderr = public.ExecShell(command)
+
+        if stderr and "Error" in stderr:
+            if hasattr(get, '_ws'):
+                get._ws.send(json.dumps(self.wsResult(
+                    False,
+                    "删除失败，请检查compose.yaml文件格式是否正确：\r\n{}".format(stderr.replace("\n", "\r\n")),
+                    data=-1,
+                    code=4,
+                )))
+                return
+
+        if hasattr(get, '_ws'):
+            get._ws.send(json.dumps(self.wsResult(
+                True,
+                "删除容器编排",
+                data=-1,
+                code=0
+            )))
 
     # 2024/6/27 下午8:39 批量删除指定compose.yaml的docker-compose编排
     def batch_delete(self, get):

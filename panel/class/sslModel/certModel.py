@@ -154,7 +154,7 @@ class main(sslBase):
         path = "/www/server/panel/vhost/cert/"
         data = {'cancel': []} if not pure else {}
         for cert in site_data:
-            if cert['project_type'] in ['PHP', 'proxy']:
+            if cert['project_type'] in ['PHP', 'proxy', 'WP2']:
                 if sites_model.get_site_ssl_info(cert['name']) == -1:
                     continue
             else:
@@ -212,6 +212,7 @@ class main(sslBase):
         group_id = get.get('group_id', '')
         status_id = get.get('status_id', '')
         search_domain = get.get('search_domain', '')
+        cert_type = get.get('cert_type', '0')
         if status_id:
             status_id = int(status_id)
         if search:
@@ -254,13 +255,6 @@ class main(sslBase):
         # 告警数据
         report_data_dic = self.get_report_task()
 
-        # 证书夹数据
-        cert_data = []
-        if status_id != 0:
-            cert_data = public.M('ssl_info').field(
-                'id,hash,dns,cloud_id,not_after,auth_info,info,ps,group_id'
-            ).select()
-
         format_time_strs = ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S")
         from datetime import datetime
         today_time = datetime.today().timestamp()
@@ -272,229 +266,263 @@ class main(sslBase):
             cancel_list.extend(exclude_hash['exclude_hash_let'].values())
 
         will_num = 0
+        end_num = 0
         data = []
-        for cert in cert_data:
-            if not isinstance(cert,dict):
-                continue
-            if cert['hash'] in cancel_list:
-                continue
-            end_time = 90
-            for f_str in format_time_strs:
+
+        if cert_type in ("4", "0"):
+            # 证书夹数据
+            cert_data = []
+            if status_id != 0:
+                cert_data = public.M('ssl_info').field(
+                    'id,hash,dns,cloud_id,not_after,auth_info,info,ps,group_id'
+                ).select()
+
+            for cert in cert_data:
+                if not isinstance(cert,dict):
+                    continue
+                if cert['hash'] in cancel_list:
+                    continue
+                end_time = 90
+                for f_str in format_time_strs:
+
+                    try:
+                        end_time = int(
+                            (datetime.strptime(cert["not_after"], f_str).timestamp() - today_time) / (60 * 60 * 24)
+                        )
+                    except Exception as e:
+                        continue
+
+                cert["sort"] = cert['endDay'] = end_time
+
+                if 0 < cert['endDay'] <= 30:
+                    will_num += 1
+                elif cert['endDay'] <= 0:
+                    end_num += 1
+
+                if status_id == 1 and cert['endDay'] <= 0:
+                    continue
+                elif status_id == 2 and (cert['endDay'] > 30 or cert['endDay'] <= 0):
+                    continue
+                elif status_id == 3 and (cert['endDay'] > 0):
+                    continue
+
+                if ssl_ids and str(cert['id']) not in ssl_ids['3']:
+                    if str(group_id) == '0':
+                        if str(cert['id']) in exclude_ids['3']:
+                            continue
+                    else:
+                        continue
+                cert['group_name'] = group_name if group_name else group_name_dic["3"].get(str(cert['id']), "默认分组")
+                info = json.loads(cert["info"])
+                cert['title'] = info['issuer']
+
+                cert["domainName"] = json.loads(cert["dns"])
+                domainName = ",".join(cert['domainName'] or [])
+                if search.lower() not in domainName.lower() and search.lower() not in cert['title'].lower():
+                    continue
+                if search_domain and search_domain not in cert["domainName"]:
+                    continue
+                cert["auth_info"] = json.loads(cert["auth_info"])
+
+                cert['type'] = "3"
+                cert["use_site"] = use_site_dic.get(cert["hash"], [])
+                cert["ssl_id"] = cert["hash"]
+                cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
+                data.append(cert)
+
+        if cert_type in ("1", "0"):
+            brand_data = self.get_cert_brand()
+
+            # 商用证书订单数据
+            import ssl_info
+            try:
+                _cert_data = panelSSL.panelSSL().get_order_list(get)
+            except:
+                _cert_data = []
+            if not isinstance(_cert_data, list):
+                _cert_data = []
+            for cert in _cert_data:
+                if cert['endDate']:
+                    cert['endDay'] = int(
+                        (cert['endDate'] - today_time) / (60 * 60 * 24)
+                    )
+                if 0 < cert['endDay'] <= 30:
+                    will_num += 1
+                elif cert['endDay'] <= 0 and cert['orderStatus'] in ('COMPLETE', "EXPIRED"):
+                    end_num += 1
+                if status_id == 0 and cert['orderStatus'] not in ("PENDING", ""):
+                    continue
+                elif status_id == 1 and (cert['endDay'] <= 0 or cert['orderStatus'] != 'COMPLETE'):
+                    continue
+                elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['orderStatus'] != 'COMPLETE'):
+                    continue
+                elif status_id == 3 and (cert['endDay'] > 0 or cert['orderStatus'] not in ('COMPLETE', "EXPIRED")):
+                    continue
+
+                cert['id'] = cert['oid']
+                if ssl_ids and str(cert['id']) not in ssl_ids['1']:
+                    if str(group_id) == '0':
+                        if str(cert['id']) in exclude_ids['1']:
+                            continue
+                    else:
+                        continue
+                if cert['orderStatus'] in ('COMPLETE', "EXPIRED"):
+                    title = brand_data.get(cert['code'], "")
+                    if title:
+                        cert["title"] = title
+                    else:
+                        # 证书信息
+                        get.oid = cert['oid']
+                        certInfo = panelSSL.panelSSL().get_order_find(get)
+                        if certInfo['certificate'] and certInfo['caCertificate']:
+                            _info = ssl_info.ssl_info().load_ssl_info_by_data(certInfo['certificate']+"\n"+certInfo['caCertificate'])
+                            cert["title"] = _info['issuer']
+                            self.set_cert_brand({cert['code']: title})
+
+                cert['group_name'] = group_name if group_name else group_name_dic["1"].get(str(cert['id']), "默认分组")
+                domainName = ",".join(cert['domainName'] or [])
+                if search.lower() not in domainName.lower() and search.lower() not in cert["title"].lower():
+                    continue
+                # if search_domain and (search_domain not in cert["domainName"] or not cert['domainName']):
+                #     continue
+                cert['type'] = "1"
+                cert["use_site"] = use_site_dic.get(str(cert["oid"]), [])
+                cert["ssl_id"] = str(cert["oid"])
+                cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
+                if cert["orderStatus"] == "":
+                    cert["sort"] = 99998
+                elif cert["orderStatus"] == "PENDING":
+                    cert["sort"] = 99999
+                cert['download_status'] = True if cert['orderStatus'] == 'COMPLETE' and cert['status'] == 1 else False
+                # cert["title"] = title
+                data.append(cert)
+
+        if cert_type in ("2", "0"):
+            # 测试证书订单数据
+            try:
+                test_cert_data = panelSSL.panelSSL().GetOrderList(get)
+            except:
+                test_cert_data = {}
+            for cert in test_cert_data.get('data', []):
 
                 try:
                     end_time = int(
-                        (datetime.strptime(cert["not_after"], f_str).timestamp() - today_time) / (60 * 60 * 24)
+                        (cert["endtime"]/1000 - today_time) / (60 * 60 * 24)
                     )
                 except Exception as e:
+                    end_time = 90
+                cert['endDay'] = end_time
+
+                if 0 < cert['endDay'] <= 30 and cert['stateCode'] == "COMPLETED":
+                    will_num += 1
+                elif cert['endDay'] <= 0 and cert['stateCode'] == "COMPLETED":
+                    end_num += 1
+
+                if status_id == 0 and cert['stateCode'] != "WF_DOMAIN_APPROVAL":
+                    continue
+                elif status_id == 1 and (cert['endDay'] <= 0 or cert['stateCode'] != "COMPLETED"):
+                    continue
+                elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['stateCode'] != "COMPLETED"):
+                    continue
+                elif status_id == 3 and (cert['endDay'] > 0 or cert['stateCode'] != "COMPLETED"):
                     continue
 
-            cert["sort"] = cert['endDay'] = end_time
-
-            if 0 < cert['endDay'] <= 30:
-                will_num += 1
-            if status_id == 1 and cert['endDay'] <= 0:
-                continue
-            elif status_id == 2 and (cert['endDay'] > 30 or cert['endDay'] <= 0):
-                continue
-            elif status_id == 3 and (cert['endDay'] > 0):
-                continue
-
-            if ssl_ids and str(cert['id']) not in ssl_ids['3']:
-                if str(group_id) == '0':
-                    if str(cert['id']) in exclude_ids['3']:
+                cert['ssl_id'] = str(cert['ssl_id'])
+                cert['id'] = cert['ssl_id']
+                if ssl_ids and str(cert['id']) not in ssl_ids['2']:
+                    if str(group_id) == '0':
+                        if str(cert['id']) in exclude_ids['2']:
+                            continue
+                    else:
                         continue
-                else:
+
+                cert['group_name'] = group_name if group_name else group_name_dic["2"].get(str(cert['id']), "默认分组")
+                cert['title'] = "TrustAsia RSA DV TLS CA G2"
+                if search.lower() not in cert["authDomain"].lower() and search.lower() not in cert['title'].lower():
                     continue
-            cert['group_name'] = group_name if group_name else group_name_dic["3"].get(str(cert['id']), "默认分组")
-            info = json.loads(cert["info"])
-            cert['title'] = info['issuer']
 
-            cert["domainName"] = json.loads(cert["dns"])
-            domainName = ",".join(cert['domainName'] or [])
-            if search.lower() not in domainName.lower() and search.lower() not in cert['title'].lower():
-                continue
-            if search_domain and search_domain not in cert["domainName"]:
-                continue
-            cert["auth_info"] = json.loads(cert["auth_info"])
+                cert['domainName'] = [cert['authDomain']]
+                # if search_domain and search_domain not in cert["domainName"]:
+                #     continue
+                cert['type'] = "2"
+                cert["use_site"] = use_site_dic.get(cert["partnerOrderId"], [])
+                cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
+                cert["sort"] = -99999999
+                if cert['stateCode'] != 'COMPLETED':
+                    del cert['endDay']
+                    # cert["sort"] = 99999
+                data.append(cert)
 
+        if cert_type in ("3", "0"):
+            # 计划任务
+            crontab_data = self.get_crontab()
+            # let's encrypt证书订单数据
+            import acme_v2
+            let_cert_data = acme_v2.acme_v2().get_order_list(get)
+            for cert in let_cert_data:
+                if 0 < cert['endDay'] <= 30:
+                    will_num += 1
+                elif cert['endDay'] <= 0:
+                    end_num += 1
+                # 状态
+                if status_id == 0 and (cert['status'] != "pending" or cert['endDay'] <= 0):
+                    continue
+                elif status_id == 1 and (cert['endDay'] <= 0 or cert['status'] == "pending"):
+                    continue
+                elif status_id == 2 and (cert['endDay'] > 30 or cert['endDay'] <= 0):
+                    continue
+                elif status_id == 3 and (cert['endDay'] > 0):
+                    continue
+                # 搜索
+                cert['title'] = "let's Encrypt"
+                cert['domainName'] = cert['domains']
+                # if search_domain and search_domain not in cert["domainName"]:
+                #     continue
+                domainName = ",".join(cert['domainName'] or [])
+                if search.lower() not in domainName.lower() and search.lower() not in cert["title"].lower():
+                    continue
 
-            cert['type'] = "3"
-            cert["use_site"] = use_site_dic.get(cert["hash"], [])
-            cert["ssl_id"] = cert["hash"]
-            cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
-            data.append(cert)
-
-        brand_data = self.get_cert_brand()
-
-        # 商用证书订单数据
-        import ssl_info
-        try:
-            _cert_data = panelSSL.panelSSL().get_order_list(get)
-        except:
-            _cert_data = []
-        if not isinstance(_cert_data, list):
-            _cert_data = []
-        for cert in _cert_data:
-            if cert['endDate']:
-                cert['endDay'] = int(
-                    (cert['endDate'] - today_time) / (60 * 60 * 24)
-                )
-            if 0 < cert['endDay'] <= 30:
-                will_num += 1
-            if status_id == 0 and cert['orderStatus'] not in ("PENDING", ""):
-                continue
-            elif status_id == 1 and (cert['endDay'] <= 0 or cert['orderStatus'] != 'COMPLETE'):
-                continue
-            elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['orderStatus'] != 'COMPLETE'):
-                continue
-            elif status_id == 3 and (cert['endDay'] > 0 or cert['orderStatus'] not in ('COMPLETE', "EXPIRED")):
-                continue
-
-            cert['id'] = cert['oid']
-            if ssl_ids and str(cert['id']) not in ssl_ids['1']:
-                if str(group_id) == '0':
-                    if str(cert['id']) in exclude_ids['1']:
+                if ssl_ids and str(cert['index']) not in ssl_ids['3']:
+                    if str(group_id) == '0':
+                        if str(cert['index']) in exclude_ids['3']:
+                            continue
+                    else:
                         continue
-                else:
-                    continue
-            if cert['orderStatus'] in ('COMPLETE', "EXPIRED"):
-                title = brand_data.get(cert['code'], "")
-                if title:
-                    cert["title"] = title
-                else:
-                    # 证书信息
-                    get.oid = cert['oid']
-                    certInfo = panelSSL.panelSSL().get_order_find(get)
-                    if certInfo['certificate'] and certInfo['caCertificate']:
-                        _info = ssl_info.ssl_info().load_ssl_info_by_data(certInfo['certificate']+"\n"+certInfo['caCertificate'])
-                        cert["title"] = _info['issuer']
-                        self.set_cert_brand({cert['code']: title})
 
-            cert['group_name'] = group_name if group_name else group_name_dic["1"].get(str(cert['id']), "默认分组")
-            domainName = ",".join(cert['domainName'] or [])
-            if search.lower() not in domainName.lower() and search.lower() not in cert["title"].lower():
-                continue
-            if search_domain and (search_domain not in cert["domainName"] or not cert['domainName']):
-                continue
-            cert['type'] = "1"
-            cert["use_site"] = use_site_dic.get(str(cert["oid"]), [])
-            cert["ssl_id"] = str(cert["oid"])
-            cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
-            if cert["orderStatus"] == "":
-                cert["sort"] = 99998
-            elif cert["orderStatus"] == "PENDING":
-                cert["sort"] = 99999
-            # cert["title"] = title
-            data.append(cert)
-        # 测试证书订单数据
-        try:
-            test_cert_data = panelSSL.panelSSL().GetOrderList(get)
-        except:
-            test_cert_data = {}
-        for cert in test_cert_data.get('data', []):
+                cert['type'] = "3"
+                cert['order_status'] = cert['status']
+                cert['order_status_nm'] = cert['status']
+                if cert['status'] == 'pending':
+                    cert['order_status_nm'] = '待验证'
+                    if cert.get('auth_tag'):
+                        cert['status'] = 'invalid'
+                        cert['order_status'] = 'invalid'
+                        cert['order_status_nm'] = '验证失败'
+                elif cert['status'] == 'valid':
+                    cert['order_status_nm'] = '已完成'
 
-            try:
-                end_time = int(
-                    (cert["endtime"]/1000 - today_time) / (60 * 60 * 24)
-                )
-            except Exception as e:
-                end_time = 90
-            cert['endDay'] = end_time
-
-            if 0 < cert['endDay'] <= 30 and cert['stateCode'] == "COMPLETED":
-                will_num += 1
-
-            if status_id == 0 and cert['stateCode'] != "WF_DOMAIN_APPROVAL":
-                continue
-            elif status_id == 1 and (cert['endDay'] <= 0 or cert['stateCode'] != "COMPLETED"):
-                continue
-            elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['stateCode'] != "COMPLETED"):
-                continue
-            elif status_id == 3 and (cert['endDay'] > 0 or cert['stateCode'] != "COMPLETED"):
-                continue
-
-            cert['id'] = cert['ssl_id']
-            if ssl_ids and str(cert['id']) not in ssl_ids['2']:
-                if str(group_id) == '0':
-                    if str(cert['id']) in exclude_ids['2']:
+                cert['group_name'] = group_name if group_name else group_name_dic["3"].get(str(cert['index']), "默认分组")
+                cert["ssl_id"] = cert["index"]
+                cert["id"] = cert["index"]
+                cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
+                cert["use_site"] = use_site_dic.get(str(cert["index"]), [])
+                cert["cloud_id"] = 1
+                cert['crontab_id'] = -1
+                for crontab in crontab_data:
+                    if not crontab['sBody']:
                         continue
-                else:
-                    continue
-
-            cert['group_name'] = group_name if group_name else group_name_dic["2"].get(str(cert['id']), "默认分组")
-            cert['title'] = "TrustAsia RSA DV TLS CA G2"
-            if search.lower() not in cert["authDomain"].lower() and search.lower() not in cert['title'].lower():
-                continue
-
-            cert['domainName'] = [cert['authDomain']]
-            if search_domain and search_domain not in cert["domainName"]:
-                continue
-            cert['type'] = "2"
-            cert["use_site"] = use_site_dic.get(cert["partnerOrderId"], [])
-            cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
-            cert["sort"] = -99999999
-            if cert['stateCode'] != 'COMPLETED':
-                del cert['endDay']
-                # cert["sort"] = 99999
-            data.append(cert)
-        # 计划任务
-        crontab_data = self.get_crontab()
-        # let's encrypt证书订单数据
-        import acme_v2
-        let_cert_data = acme_v2.acme_v2().get_order_list(get)
-        for cert in let_cert_data:
-            if 0 < cert['endDay'] <= 30:
-                will_num += 1
-            # 状态
-            if status_id == 0 and (cert['status'] != "pending" or cert['endDay'] <= 0):
-                continue
-            elif status_id == 1 and (cert['endDay'] <= 0 or cert['status'] == "pending"):
-                continue
-            elif status_id == 2 and (cert['endDay'] > 30 or cert['endDay'] <= 0):
-                continue
-            elif status_id == 3 and (cert['endDay'] > 0):
-                continue
-            # 搜索
-            cert['title'] = "let's Encrypt"
-            cert['domainName'] = cert['domains']
-            if search_domain and search_domain not in cert["domainName"]:
-                continue
-            domainName = ",".join(cert['domainName'] or [])
-            if search.lower() not in domainName.lower() and search.lower() not in cert["title"].lower():
-                continue
-
-            if ssl_ids and str(cert['index']) not in ssl_ids['3']:
-                if str(group_id) == '0':
-                    if str(cert['index']) in exclude_ids['3']:
-                        continue
-                else:
-                    continue
-
-            cert['type'] = "3"
-            cert['order_status'] = cert['status']
-            cert['order_status_nm'] = cert['status']
-            if cert['status'] == 'pending':
-                cert['order_status_nm'] = '待验证'
-            elif cert['status'] == 'valid':
-                cert['order_status_nm'] = '已完成'
-
-            cert['group_name'] = group_name if group_name else group_name_dic["3"].get(str(cert['index']), "默认分组")
-            cert["ssl_id"] = cert["index"]
-            cert["id"] = cert["index"]
-            cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
-            cert["use_site"] = use_site_dic.get(str(cert["index"]), [])
-            cert["cloud_id"] = 1
-            cert['crontab_id'] = -1
-            for crontab in crontab_data:
-                if not crontab['sBody']:
-                    continue
-                if cert['index'] in crontab['sBody']:
-                    cert['crontab_id'] = crontab['id']
-                    break
-            cert["sort"] = cert['endDay']
-            if cert['status'] == 'pending' and cert['endDay'] > 0:
-                cert["sort"] = 99999
-            data.append(cert)
+                    if cert['index'] in crontab['sBody']:
+                        cert['crontab_id'] = crontab['id']
+                        try:
+                            renew_data = json.loads(public.readFile("{}/config/letsencrypt_auto_renew.json".format(public.get_panel_path())))
+                        except:
+                            renew_data = {}
+                        cert['crontab_data'] = renew_data.get(str(cert['index']), {"status": 1, "error_msg": ""})
+                        break
+                cert["sort"] = cert['endDay']
+                if cert['status'] == 'pending' and cert['endDay'] > 0:
+                    cert["sort"] = 99999
+                data.append(cert)
 
         reverse = True
         sort = 'sort'
@@ -511,7 +539,7 @@ class main(sslBase):
 
         search_history = public.get_search_history('ssl', 'get_cert_list')
         page_data = public.get_page(count, p, limit, collback)
-        page_data.update({"data": data[start: end], 'search_history': search_history, 'will_num': will_num})
+        page_data.update({"data": data[start: end], 'search_history': search_history, 'will_num': will_num, 'end_num': end_num})
         return page_data
 
     def remove_cloud_cert(self, get):
@@ -533,8 +561,8 @@ class main(sslBase):
                 local = True
             if "cloud" in get and get.cloud.strip() in ("1", 1, True, "true"):
                 cloud = True
-            if "force" in get and get.force.strip() in ("1", 1, True, "true"):
-                force = True
+            # if "force" in get and get.force.strip() in ("1", 1, True, "true"):
+            #     force = True
 
         except (ValueError, AttributeError, KeyError):
             return public.ReturnMsg(False, "参数错误")
@@ -580,7 +608,7 @@ class main(sslBase):
             hash_dic = self.get_cert_to_site()
             no_site_list = hash_dic.get(target["hash"], [])
             if no_site_list and not force:
-                raise ValueError("证书正在被网站【{}】使用，请关闭这些网站的SSL后再删除或选择强制删除".format(",".join(no_site_list)))
+                raise ValueError("证书正在被网站【{}】使用，请关闭这些网站的SSL或将这些网站配置成其他的证书后再删除".format(",".join(no_site_list)))
             if os.path.exists(target["path"]):
                 shutil.rmtree(target["path"])
             self._remove_ssl_from_local(target["hash"])  # 把ssl下的也删除
@@ -950,16 +978,16 @@ class main(sslBase):
         return data
 
     def batch_download_cert(self, get):
-        if not 'ssl_hash' in get and not 'index' in get:
+        if not 'ssl_hash' in get and not 'index' in get and not 'oid' in get:
             return public.returnMsg(False, "缺少必填参数")
         finish_list = []
         cert_data = []
-        if 'ssl_hash' in get:
+        if 'ssl_hash' in get and get.ssl_hash.strip():
             hash_list = get.ssl_hash.split(',')
             ssl_hash = "','".join(hash_list) if len(hash_list) > 1 else hash_list[0]
             cert_data = public.M('ssl_info').where("hash in ('{}')".format(ssl_hash), ()).select()
 
-        if 'index'in get:
+        if 'index'in get and get.index.strip():
             index_list = get.index.split(',')
             for index in index_list:
                 try:
@@ -969,6 +997,25 @@ class main(sslBase):
 
         rpath = '{}/temp/_ssl'.format(public.get_panel_path())
         if os.path.exists(rpath): shutil.rmtree(rpath)
+
+        if 'oid' in get and get.oid.strip():
+            import panelSSL
+            import base64
+
+            os.makedirs(rpath)
+            oid_list = get.oid.split(',')
+            for oid in oid_list:
+
+                try:
+                    result = panelSSL.panelSSL().download_cert(public.to_dict_obj({'oid': oid}))
+                    if not result or not result.get('data') or not result.get('filename'):
+                        finish_list.append({"status": False, "cert": {"info": json.dumps({"issuer": oid})}})
+                        continue
+                    with open(rpath + '/{}_{}'.format(oid, result['filename']), 'wb') as f:
+                        f.write(base64.b64decode(result['data']))
+                    finish_list.append({"status": True, "cert": {"info": json.dumps({"issuer": oid})}})
+                except:
+                    finish_list.append({"status": False, "cert": {"info": json.dumps({"issuer": oid})}})
 
         for cert in cert_data:
             csrpath = os.path.join(cert['path'], "fullchain.pem")
@@ -1027,16 +1074,73 @@ class main(sslBase):
             zfile = ''
         return {'finish_list': finish_list, 'url': zfile}
 
+    def parse_certificate(self, get):
+        """
+        获取证书信息
+        """
+        try:
+            from cryptography import x509
+            from cryptography.hazmat.backends import default_backend
+
+            cert = x509.load_pem_x509_certificate(get.csr, default_backend())
+            try:
+                # 提取品牌（证书颁发对象）
+                brand = cert.issuer.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
+                # 提取 CA 名称
+                ca_name = cert.issuer.get_attributes_for_oid(x509.NameOID.ORGANIZATION_NAME)[0].value
+            except:
+                brand = "未知"
+                ca_name = "未知"
+
+            # 提取认证域名
+            try:
+                cn = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
+            except IndexError:
+                cn = None
+
+            # 提取 SAN（Subject Alternative Name）
+            try:
+                san_extension = cert.extensions.get_extension_for_oid(x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
+                san_domains = san_extension.get_values_for_type(x509.DNSName)
+            except x509.ExtensionNotFound:
+                san_domains = []
+                # 合并 CN 和 SAN，并去重
+            all_domains = set(san_domains)
+            if cn:
+                all_domains.add(cn)
+
+            # 提取到期时间
+            try:
+                expiration_date = cert.not_valid_after_utc.timestamp()
+            except:
+                expiration_date = "未知"
+
+        except Exception as e:
+            public.print_log(str(e))
+            brand = "未知"
+            all_domains = []
+            expiration_date = "未知"
+            ca_name = "未知"
+
+        return {
+            "brand": brand,
+            "domains": list(all_domains),
+            "expiration_date": expiration_date,
+            "ca_name": ca_name
+        }
+
     def save_cert(self, get):
         from panelSite import panelSite
         import ssl_info
         ssl_info = ssl_info.ssl_info()
+        create_order = False
 
         key = get.key.strip()
         csr = get.csr.strip()
 
         issuer = panelSite().analyze_ssl(csr)
         if issuer.get("organizationName") == "Let's Encrypt":
+            create_order = True
             csr += "\n"
 
         # 验证证书和密钥是否匹配格式是否为pem
@@ -1052,7 +1156,7 @@ class main(sslBase):
         keypath = path + "/privkey.pem"
 
         # 判断是否存在
-        if os.path.exists(path): return public.returnMsg(False, "证书已存在")
+        if os.path.exists(path): return {"status": True, "msg": "证书已存在", "creat_order": create_order, "ssl_hash": hash_data}
 
         # 保存文件
         public.ExecShell('mkdir -p ' + path)
@@ -1084,7 +1188,49 @@ class main(sslBase):
                 'hash,path,dns,subject,info,not_after'
                 , (hash_data, path, json.dumps(cert_data["dns"]), cert_data["subject"], json.dumps(cert_data), cert_data["notAfter"])
             )
-        return public.returnMsg(True, "保存成功")
+
+        return {"status": True, "msg": "保存成功", "creat_order": create_order, "ssl_hash": hash_data}
+
+    def create_order(self, get):
+        try:
+            target = self.find_ssl_info(ssl_hash=get.ssl_hash)
+            ssl_info = target.get('info')
+
+            if not ssl_info:
+                return public.returnMsg(False, "未找到证书信息")
+            if ssl_info.get("issuer_O") != "Let's Encrypt":
+                return public.returnMsg(False, "证书不是Let's Encrypt颁发的")
+            index = public.md5(str(uuid.uuid4()))
+            order_data = {
+                "status": "valid",
+                "auth_type": "dns",
+                "domains": ssl_info.get("dns"),
+                "auth_to": "dns",
+                "certificate_url": "",
+                "save_path": "vhost/ssl_saved/{}".format(get.ssl_hash),
+                "index": index,
+                "cert_timeout": datetime.strptime(ssl_info.get("notAfter"), "%Y-%m-%d").timestamp(),
+                "renew_time": 0,
+                "retry_count": 0,
+                "next_retry_time": 0
+            }
+            # 写入config
+            config_path = "/www/server/panel/config/letsencrypt_v2.json"
+            try:
+                config_data = json.loads(public.readFile(config_path))
+            except:
+                config_data = {}
+            config_data["orders"][index] = order_data
+            public.writeFile(config_path, json.dumps(config_data))
+
+            import acme_v2
+            acm_obj = acme_v2.acme_v2()
+            pem = public.readFile("vhost/ssl_saved/{}/fullchain.pem".format(get.ssl_hash))
+            acm_obj.set_exclude_hash(index, pem)
+            return {"status": True, "msg": "创建成功", "index": index}
+        except:
+            public.print_log(public.get_error_info())
+            return public.returnMsg(False, "创建失败")
 
     def apply_for_cert(self, get):
         """
@@ -1168,6 +1314,9 @@ class main(sslBase):
     def create_report_task(self, get):
         from mod.base.push_mod import manager
 
+        data = self.get_cert_list(public.to_dict_obj({"status_id": 1}))["data"]
+        if not get.ssl_id in [i['ssl_id'] for i in data]:
+            return public.returnMsg(False, "未找到证书信息")
         sender_lsit = get.sender.split(",")
         task_data = {"task_data":{"tid":"71","type":"cert_endtime","title":"证书到期","status":True,"count":0,"interval":600,"project":get.ssl_id,"cycle":int(get.cycle)},"sender":sender_lsit,"number_rule":{"day_num":0,"total":int(get.total)},"time_rule":{"send_interval":0,"time_range":[0,86399]}}
         get.template_id = "71"

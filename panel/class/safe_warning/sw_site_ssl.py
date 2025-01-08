@@ -45,7 +45,7 @@ def check_run():
             not_ssl_list.append(site_info['name'])
 
     if not_ssl_list:
-        return False ,'以下站点未部署SSL证书: <br />' + ('<br />'.join(not_ssl_list))
+        return False, '以下站点未部署SSL证书: \n' + ('\n'.join(not_ssl_list))
 
     return True,'无风险'
 

@@ -91,6 +91,13 @@
     "sort": 13
   },
   {
+    "title": "邮局",
+    "href": "/mail",
+    "class": "menu_mail",
+    "id": "memuAmail",
+    "sort": 13
+  },
+  {
     "title": "终端",
     "href": "/xterm",
     "class": "menu_xterm",

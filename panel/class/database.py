@@ -567,20 +567,6 @@ class database(datatool.datatools):
             public.WriteLog('数据库管理', '添加远程MySQL数据库[%s]成功' % (get.db_name))
             return public.returnMsg(True, '添加成功!')
         return public.returnMsg(False, '添加失败： {}'.format(result))
-    
-    def GetMysqlVer(self):
-        try:
-            if os.path.exists("/www/server/mysql/version.pl1"):
-                m_version = public.readFile("/www/server/mysql/version.pl")
-            elif os.path.exists("/www/server/mysql/version_check.pl1"):
-                m_version = public.readFile("/www/server/mysql/version_cehck.pl")
-            elif os.path.exists("/www/server/mysql/bin/mysql"):
-                m_version=public.ExecShell("/www/server/mysql/bin/mysql -V")[0]
-            else:
-                m_version="0"
-        except:
-            m_version="0"
-        return m_version
 
     def CheckCloudDatabase(self, conn_config):
         '''
@@ -692,6 +678,16 @@ class database(datatool.datatools):
         # try:
         data_name = get['name'].strip().lower()
         if not data_name: return public.returnMsg(False, '数据库名称不能为空')
+
+        try:
+            msid=get.sid
+            if int(msid) == 0:
+                db_data_path = self.GetMySQLInfo(get)['datadir']
+                disk_free_size=public.get_disk_usage(db_data_path)[2]
+                if disk_free_size == 0:
+                    return public.returnMsg(False, '磁盘数据已满，请清理磁盘空间再创建数据库！')
+        except:
+            pass
 
         if self.CheckRecycleBin(data_name): return public.returnMsg(False, '数据库[' + data_name + ']已在回收站，请从回收站恢复!')
         if len(data_name.encode("utf-8")) > 64: return public.returnMsg(False, '数据库名不能大于64位!')
@@ -1274,7 +1270,7 @@ SetLink
 
             if is_modify:
                 admin_user = 'root'
-                m_version = self.GetMysqlVer()
+                m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
                 if sid:
                     admin_user = mysql_obj._USER
                     m_version = mysql_obj.query('select version();')[0][0]
@@ -1328,7 +1324,7 @@ SetLink
         if sid and username == 'root': return public.returnMsg(False, '不能修改远程数据库的root密码')
         mysql_obj = public.get_mysql_obj_by_sid(sid)
         if not mysql_obj: return public.returnMsg(False, '连接指定数据库失败')
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         if sid:
             m_version = mysql_obj.query('select version();')[0][0]
 
@@ -2565,7 +2561,7 @@ SetLink
         annotation = {'mysql_set': 'bt_mysql_set', 'memSize': 'bt_mem_size', 'query_cache_size': 'bt_query_cache_size'}
         mycnf = public.readFile('/etc/my.cnf')
         n = 0
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile('/www/server/mysql/version.pl')
         if not m_version: m_version = ''
 
         # 保存选项
@@ -2628,7 +2624,7 @@ SetLink
         if not 'Run' in result and result:
             result['Run'] = int(time.time()) - int(result['Uptime'])
 
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         if m_version.find('8.4') != -1 or m_version.find('9.0') != -1:
             tmp = panelMysql.panelMysql().query('SHOW BINARY LOG STATUS')
         else:
@@ -2656,7 +2652,7 @@ SetLink
 
         text = public.readFile(index_file)
 
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         if m_version.find('8.4') != -1 or m_version.find('9.0') != -1:
             rows = panelMysql.panelMysql().query("SHOW BINARY LOG STATUS")
         else:
@@ -3531,7 +3527,7 @@ USE \`{db_name}\`;
         # 修改MYSQL
         mysql_obj = public.get_mysql_obj_by_sid(get.sid)
         if not mysql_obj: return public.returnMsg(False, '连接指定数据库失败')
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
 
         if m_version.find('5.7') != -1 or m_version.find('8.0') != -1:
             # mysql_obj.execute("update mysql.user set authentication_string='' where User='" + username + "'")
@@ -3960,19 +3956,15 @@ USE \`{db_name}\`;
             ]
         }
         err_type = "unknown"
-        try:
-            for type, pattern in error_patterns.items():
-                if isinstance(pattern, str):
-                    if pattern in err_data:
-                        err_type= type
+        for type, pattern in error_patterns.items():
+            if isinstance(pattern, str) and pattern in err_data:
+                err_type= type
+                break
+            elif isinstance(pattern, list):
+                for sub_pattern in pattern:
+                    if sub_pattern in err_data:
+                        err_type=type
                         break
-                elif isinstance(pattern, list):
-                    for sub_pattern in pattern:
-                        if sub_pattern in err_data:
-                            err_type=type
-                            break
-        except:
-            err_type = "unknown"
         data={}
         data['err_type'] = err_type
         data['status'] = True
@@ -4118,10 +4110,7 @@ USE \`{db_name}\`;
         return public.ReturnMsg(True,"设置成功！")
 
     def GetTimeOut(self,get=None):
-        if not os.path.exists("/www/server/mysql/bin/mysql"):
-            return public.ReturnMsg(False,"此功能仅限本地mysql使用！")
-
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         data = self.map_to_list(panelMysql.panelMysql().query('show variables'))
 
         if any(mysql_version in m_version for mysql_version in ['8.0', '8.4', '9.0']):
@@ -4142,7 +4131,7 @@ USE \`{db_name}\`;
 
     def SetTimeOut(self,get=None):
         mysql_obj = panelMysql.panelMysql()
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         gets = ['wait_timeout', 'interactive_timeout', 'default_password_lifetime','expire_logs_days']
         for g in gets:
             if any(mysql_version in m_version for mysql_version in ['8.0', '8.4', '9.0']) and g=="expire_logs_days": 
@@ -4158,8 +4147,6 @@ USE \`{db_name}\`;
         pay = self.__check_auth()
         if pay is False:
             return public.returnMsg(False, "当前功能为企业版专享，使用需要Mysql-8.0")
-        if not os.path.exists("/www/server/mysql/bin/mysql"):
-            return public.ReturnMsg(False,"此功能仅限本地mysql使用！")
         data = self.map_to_list(panelMysql.panelMysql().query('show variables like "%audit_log%";'))
         data_dict={}
         if not data:
@@ -4182,7 +4169,7 @@ USE \`{db_name}\`;
             public.ExecShell("/etc/init.d/mysqld restart")
             return public.ReturnMsg(True,"关闭审计日志模块成功!")
 
-        m_version = self.GetMysqlVer()
+        m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         if not any(mysql_version in m_version for mysql_version in ['8.0', '8.4']):
             return public.ReturnMsg(False,"当前mysql不支持审计模块，请使用mysql-8.0/8.4")
 

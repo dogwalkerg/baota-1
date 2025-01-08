@@ -39,6 +39,14 @@ class SenderManager:
             tmp = sender_config.get_by_id(sender_id)
             if tmp is None:
                 sender_id = None
+        else:
+            # Check if the sender configuration already exists
+            existing_sender = any(
+                conf for conf in sender_config.config
+                if conf['sender_type'] == sender_type and conf['data']['title'] == args.get("title", "")
+            )
+            if existing_sender:
+                return json_response(status=False, msg="同名的发送配置已存在，无法重复添加")
 
         if sender_type == "weixin":
             data = WeiXinMsg.check_args(args)
@@ -83,13 +91,6 @@ class SenderManager:
                 return json_response(status=False, data=data, msg="测试发送失败")
         else:
             return json_response(status=False, msg="当前接口不适应的类型")
-            # Check if the sender configuration already exists
-        existing_sender = any(
-            conf for conf in sender_config.config
-            if conf['sender_type'] == sender_type and 'title' in conf['data'] and conf['data']['title'] == data['title'] and conf['id'] != sender_id
-        )
-        if existing_sender:
-            return json_response(status=False, msg="同样的发送配置已存在，无法重复添加")
         now_sender_id = None
         if not sender_id:
             now_sender_id = sender_config.nwe_id()
@@ -105,8 +106,6 @@ class SenderManager:
             now_sender_id = sender_id
             tmp = sender_config.get_by_id(sender_id)
             tmp["data"].update(data)
-
-
 
         sender_config.save_config()
         if sender_type == "webhook":

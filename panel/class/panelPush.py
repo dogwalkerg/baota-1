@@ -902,31 +902,52 @@ class panelPush:
         where = "type = '告警通知'"
         sql = public.M('logs')
 
-
-        # get.keyword="标题：【项目停止告警】"
-        # get.status="true"
-        # if hasattr(get, 'search'):
-        #     where = " and log like '%{search}%' ".format(search=get.search)  
-        
-                  
-        if hasattr(get, 'status'):
-            status = get.status.strip()
-            if status=="true":
-                status="成功"
-            if status=="false":
-                status="失败"
-            if status:
-                where += " and log like '%{}%'".format(status)
+        # 查询关键字过滤
         if hasattr(get, 'keyword'):
             keyword = get.keyword.strip()
             if keyword:
                 where += " and log like '%{}%'".format(keyword)
+
+        # 查询数据库记录总数
         count = sql.where(where, ()).count()
         data = public.get_page(count, int(p), int(limit))
-        data['data'] = public.M('logs').where(where, ()).limit('{},{}'.format(data['shift'], data['row'])).order(
-            'id desc').select()
+        
+        # 查询数据
+        raw_logs = public.M('logs').where(where, ()).limit('{},{}'.format(data['shift'], data['row'])).order('id desc').select()
+        # 使用正则表达式提取状态并过滤数据
+        filtered_logs = []
+        if hasattr(get, 'status') and get.status:
 
+            target_status = get.status.strip()
+            if target_status == "true":
+                target_status = "成功"
+            elif target_status == "false":
+                target_status = "失败"
+            
+            for entry in raw_logs:
+
+                log = entry['log']
+                status = self.extract_status(log)  # 提取状态
+                if status == target_status:
+                    filtered_logs.append(entry)
+        else:
+            # 如果没有状态过滤，直接返回原始数据
+            filtered_logs = raw_logs
+
+        data['data'] = filtered_logs
         return data
+
+    @staticmethod
+    def extract_status(log):
+        import re
+        """
+        使用正则表达式从 log 中提取状态 (成功或失败)
+        """
+        match = re.search(r'<span[^>]*>(成功|失败)</span>', log)
+        if match:
+            return match.group(1)  # 返回提取的状态
+        return None
+
 
     # 兼容旧版本的告警
     def update_config(self, config):

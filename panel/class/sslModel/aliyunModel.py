@@ -139,9 +139,17 @@ class main(sslBase):
 
     def get_dns_record(self, get):
         domain_name, _, sub_domain = self.extract_zone(get.domain_name)
+        query_param = {"DomainName": domain_name}
+        if "limit" in get:
+            query_param["PageSize"] = get.limit
+        if "p" in get:
+            query_param["PageNumber"] = get.p
+        if "search" in get:
+            query_param["KeyWord"] = get.search
+
         data = {}
         try:
-            response = self.sign_to_response(get.dns_id, "DescribeDomainRecords", {"DomainName": domain_name})
+            response = self.sign_to_response(get.dns_id, "DescribeDomainRecords", query_param)
             res = response.json()
             if response.status_code != 200:
                 return {}

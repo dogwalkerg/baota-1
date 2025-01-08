@@ -245,6 +245,23 @@ class TomCat:
         public.WriteFile(conf_path, log_path)
         return True
 
+    def change_default_user(self, user: str) -> bool:
+        target_sh = os.path.join(self.path, "bin/daemon.sh")
+        if not os.path.exists(target_sh):
+            return False
+
+        file_data = public.readFile(target_sh)
+        if not isinstance(file_data, str):
+            return False
+
+        new_list = []
+        for i in file_data.split("\n"):
+            if i.startswith('test ".$TOMCAT_USER" = . && TOMCAT_USER='):
+                new_list.append('test ".$TOMCAT_USER" = . && TOMCAT_USER="{}"'.format(user))
+            else:
+                new_list.append(i)
+        public.writeFile(target_sh, "\n".join(new_list))
+
     @property
     def config_xml(self) -> Optional[ElementTree]:
         if self._config_xml is None:
@@ -463,6 +480,7 @@ class TomCat:
             return True
 
         self._init_log_file(by_user)
+        self.change_default_user(by_user)
         if self.service_exists:
             public.ExecShell("systemctl start {}".format(self.service_name))
             if self.running():
@@ -493,6 +511,8 @@ class TomCat:
         if self.service_exists:
             if not os.path.exists(self.log_file):
                 public.ExecShell("touch {file} && chown {user}:{user} {file}".format(file=self.log_file, user=by_user))
+
+            self.change_default_user(by_user)
 
             public.ExecShell("systemctl restart {}".format(self.service_name))
             if self.running():

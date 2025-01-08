@@ -49,6 +49,37 @@ class main(panelBase):
 
         return res
 
+    # 2025/1/6 16:38 检查指定账户是否已经领取满了14天企业版体验卷
+    def check_exp_ltd(self):
+        '''
+            @name 检查指定账户是否已经领取满了14天企业版体验卷
+        '''
+        data = public.get_user_info()
+        data['o'] = public.get_oem_name()
+        sUrl = 'https://api.bt.cn/auth/GetUserGiveAway'
+        import panelSSL
+        ssl_obj = panelSSL.panelSSL()
+        pdata = {"data": ssl_obj.De_Code(data)}
+        try:
+            exp_ltd_info = json.loads(public.httpPost(sUrl, pdata))
+        except:
+            return {
+                "no_exceed_limit": True,
+                "user_give": False
+            }
+
+        if not exp_ltd_info:
+            return {
+                "no_exceed_limit": True,
+                "user_give": False
+            }
+
+        # {
+        #     "no_exceed_limit": true, // 没有超过限制，如果这个值是False就表示不能再领取，超过最大使用次数了
+        #     "user_give": false // 表示本机当前的时间线下是否领取了体验卷
+        # }
+        return exp_ltd_info
+
     def get_public_config(self, args):
         """
         @name 获取公共配置
@@ -60,6 +91,8 @@ class main(panelBase):
         data['task_list'] = self.task_obj.get_task_lists(args)
         data['task_count'] = public.M('tasks').where("status!=?", ('1',)).count()
         data['get_pd'] = self.get_pd(args)
+        data["install_ltd"] = False if not os.path.exists("data/install_ltd.pl") else True
+        data["exp_ltd"] = self.check_exp_ltd()
         data['ipv6'] = ''
         if _config_obj.get_ipv6_listen(None): data['ipv6'] = 'checked'
         data['is_local'] = ''

@@ -895,6 +895,8 @@ class AppManage(App):
             return self.pageResult(True, data=page_data["data"], page=page_data["page"])
 
         page_data = self.get_page(backup_json[get.id], get)
+        # 2025/1/6 15:20 时间倒序
+        page_data["data"] = sorted(page_data["data"], key=lambda x: x["backup_time"], reverse=True)
         return self.pageResult(True, data=page_data["data"], page=page_data["page"])
 
     # 2024/8/1 下午6:19 删除备份

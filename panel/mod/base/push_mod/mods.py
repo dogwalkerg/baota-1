@@ -149,6 +149,13 @@ class SenderConfig(BaseConfig):
                 "original": True
             }]))
 
+    def key_exists(self, sender_type: str, key: str, value: any) -> bool:
+        for i in self.config:
+            if i.get("sender_type", None) == sender_type:
+                if i.get("data", {}).get(key, None) == value:
+                    return True
+        return False
+
 
 def init_db():
     global DB_INIT_ERROR

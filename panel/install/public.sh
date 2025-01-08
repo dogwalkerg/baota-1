@@ -9,6 +9,11 @@ export PATH
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 
+NODE_FILE_CHECK=$(cat /www/server/panel/data/node.json |grep 125.88.182.172)
+if [ "${NODE_FILE_CHECK}" ];then
+	rm -f /www/server/panel/data/node.json
+fi
+
 if [ -f "/www/server/panel/install/d_node.pl" ];then
 	LOCAL_DATE=$(date +%Y-%m-%d)
 	FILE_DATE=$(stat /www/server/panel/install/d_node.pl|grep Change|awk '{print $2}')
@@ -23,16 +28,15 @@ if [ -f "/www/server/panel/install/d_node.pl" ];then
 	fi
 fi
 
-NODE_FILE_CHECK=$(cat /www/server/panel/data/node.json |grep 125.88.182.172)
-if [ "${NODE_FILE_CHECK}" ];then
-	rm -f /www/server/panel/data/node.json
-fi
-
 get_node_url(){
 	nodes=(https://dg2.bt.cn https://download.bt.cn https://ctcc1-node.bt.cn https://cmcc1-node.bt.cn https://ctcc2-node.bt.cn https://hk1-node.bt.cn https://na1-node.bt.cn https://jp1-node.bt.cn https://cf1-node.aapanel.com);
 
 	if [ -f "/www/server/panel/data/domestic_ip.pl" ];then
 		nodes=(https://dg2.bt.cn https://download.bt.cn https://ctcc1-node.bt.cn https://cmcc1-node.bt.cn https://ctcc2-node.bt.cn https://hk1-node.bt.cn);
+	fi
+
+	if [ -f "/www/server/panel/data/foreign_ip.pl" ];then
+		nodes=(https://cf1-node.aapanel.com https://dg2.bt.cn https://na1-node.bt.cn  https://jp1-node.bt.cn https://download.bt.cn https://ctcc1-node.bt.cn  https://ctcc2-node.bt.cn https://hk1-node.bt.cn);
 	fi
 
 	if [ "$1" ];then
@@ -47,7 +51,11 @@ get_node_url(){
 	touch $tmp_file2
 	for node in ${nodes[@]};
 	do
-		NODE_CHECK=$(curl --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${node}/net_test|xargs)
+		if [ "${node}" == "https://cf1-node.aapanel.com" ];then
+			NODE_CHECK=$(curl --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${node}/1net_test|xargs)
+		else
+			NODE_CHECK=$(curl --connect-timeout 3 -m 3 2>/dev/null -w "%{http_code} %{time_total}" ${node}/net_test|xargs)
+		fi
 		RES=$(echo ${NODE_CHECK}|awk '{print $1}')
 		NODE_STATUS=$(echo ${NODE_CHECK}|awk '{print $2}')
 		TIME_TOTAL=$(echo ${NODE_CHECK}|awk '{print $3 * 1000 - 500 }'|cut -d '.' -f 1)

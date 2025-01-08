@@ -3085,7 +3085,7 @@ echo $! > {pid_file}'''.format(
         } for i in ports}
 
         from firewallModel.comModel import main
-        port_list = main().port_rules_list(get)["data"]
+        port_list = main().port_rules_list(get)['data']
         for i in port_list:
             if str(i["Port"]) in res:
                 res[str(i["Port"])]['fire_wall'] = i

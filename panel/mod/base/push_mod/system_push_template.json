@@ -119,6 +119,14 @@
           "suffix": "后触发告警",
           "default": 80,
           "err_msg_prefix": "CPU"
+        },
+        {
+          "attr": "next_data",
+          "name": "告警后执行",
+          "suffix": "请选择告警后的下一步操作",
+          "type": "multiple-select",
+          "items": [],
+          "default": []
         }
       ],
       "sorted": [
@@ -188,6 +196,14 @@
           "suffix": "后触发告警",
           "default": 80,
           "err_msg_prefix": "负载"
+        },
+        {
+          "attr": "next_data",
+          "name": "告警后执行",
+          "suffix": "请选择告警后的下一步操作",
+          "type": "multiple-select",
+          "items": [],
+          "default": []
         }
       ],
       "sorted": [
@@ -257,6 +273,14 @@
           "suffix": "后触发告警",
           "default": 80,
           "err_msg_prefix": "内存"
+        },
+        {
+          "attr": "next_data",
+          "name": "告警后执行",
+          "suffix": "请选择告警后的下一步操作",
+          "type": "multiple-select",
+          "items": [],
+          "default": []
         }
       ],
       "sorted": [

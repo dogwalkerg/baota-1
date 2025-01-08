@@ -1440,6 +1440,7 @@ class one_key_wp(wpbase):
         if data.get('status') is False:
             return data
         if int(data.get('databaseStatus', 0)) != 1:
+            self.del_site(public.to_dict_obj({'s_id': data.get('siteId', 0)}))
             return public.returnMsg(False, "数据库创建失败，请检查mysql运行状态并重试")
 
         return self.deploy_wp(public.to_dict_obj({

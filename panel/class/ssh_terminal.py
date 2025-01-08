@@ -216,11 +216,7 @@ class ssh_terminal:
                 except Exception as e:
                     e = str(e)
                     if e.find('keyboard-interactive') >= 0:
-                        try:
-                            self._auth_interactive()
-                        except Exception as e:
-                            self.debug('二次认证失败，正在尝试认证密码')
-                            self._tp.auth_password(username=self._user, password=self._pass)
+                        self._auth_interactive()
                     else:
                         self.debug('正在认证密码')
                         self._tp.auth_password(username=self._user, password=self._pass)

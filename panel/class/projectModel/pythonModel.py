@@ -4174,7 +4174,7 @@ echo $! > {pid_file}'''.format(
 
         # 获取端口规则列表
         from firewallModel.comModel import main
-        port_list = main().port_rules_list(get)["data"]
+        port_list = main().port_rules_list(get)['data']
 
         # 更新防火墙信息
         for i in port_list:

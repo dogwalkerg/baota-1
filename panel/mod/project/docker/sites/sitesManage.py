@@ -1008,7 +1008,7 @@ location ~ [^/]\.php(/|$) {{
         if not get.proxy_json_conf:
             return public.returnResult(status=False, msg="读取配置文件失败，请删除网站重新添加！")
 
-        if len(get.proxy_json_conf["domain_list"]) == 1:
+        if len(get.proxy_json_conf["domain_list"]) < 2 and dp.sql("docker_domain").where("pid=?", (get.id,)).count() < 2:
             return public.returnResult(status=False, msg="至少保留一个域名！")
 
         while get.domain in get.proxy_json_conf["domain_list"]:
@@ -1609,12 +1609,45 @@ location ~ [^/]\.php(/|$) {{
         '''
             @name 获取防盗链信息
         '''
-        from panelSite import panelSite
-        result = panelSite().GetSecurity(get)
-        if "domains" in result and result["domains"] == "":
-            result["domains"] = get.name
-
-        return result
+        file = '/www/server/panel/vhost/nginx/' + get.name + '.conf'
+        conf = public.readFile(file)
+        data = {}
+        if type(conf) == bool: return public.returnMsg(False, '读取配置文件失败!')
+        if conf.find('SECURITY-START') != -1:
+            rep = "#SECURITY-START(\n|.)+#SECURITY-END"
+            tmp = re.search(rep, conf).group()
+            content = re.search("\(.+\)\$", tmp)
+            if content:
+                data['fix'] = content.group().replace('(', '').replace(')$', '').replace('|', ',')
+            else:
+                data['fix'] = ''
+            try:
+                data['domains'] = ','.join(list(set(re.search("valid_referers\s+none\s+blocked\s+(.+);\n", tmp).groups()[0].split())))
+            except:
+                data['domains'] = ','.join(list(set(re.search("valid_referers\s+(.+);\n", tmp).groups()[0].split())))
+            data['status'] = True
+            data['http_status'] = tmp.find('none blocked') != -1
+            try:
+                data['return_rule'] = re.findall(r'(return|rewrite)\s+.*(\d{3}|(/.+)\s+(break|last));', conf)[0][1].replace('break', '').strip()
+            except:
+                data['return_rule'] = '404'
+        else:
+            conf_file = '/www/server/panel/vhost/config/{}_door_chain.json'.format(get.name)
+            try:
+                data = json.loads(public.readFile(conf_file))
+                data['status'] = data['status'] == "true"
+            except:
+                data = {}
+                data['fix'] = 'jpg,jpeg,gif,png,js,css'
+                domains = public.M('docker_domain').where('pid=?', (get.id,)).field('name').select()
+                tmp = []
+                for domain in domains:
+                    tmp.append(domain['name'])
+                data['domains'] = ','.join(tmp)
+                data['return_rule'] = '404'
+                data['status'] = False
+                data['http_status'] = False
+        return data
 
     # 2024/4/22 上午11:12 设置防盗链
     def SetSecurity(self, get):
@@ -1993,6 +2026,7 @@ location ~ [^/]\.php(/|$) {{
             SNI=sni_conf,
             custom_conf="",
             timeout_conf=get.proxy_timeout,
+            PROXY_BUFFERING="",
             websocket_support=get.proxy_json_conf["websocket"]["websocket_conf"],
         )
 

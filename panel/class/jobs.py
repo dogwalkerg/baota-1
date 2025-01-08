@@ -25,6 +25,7 @@ def control_init():
     check_enable_php()
     rm_apache_cgi_test()
     ping_test()
+    sync_default_msg_channel()
     if not os.path.exists('/www/server/panel/data/check_ssl_cron.pl'): check_ssl_cron()
 
     try:
@@ -1359,6 +1360,20 @@ def ping_test():
     else:
         server_store = "others"
     public.writeFile("/www/server/panel/data/server_store.pl", server_store)
+
+
+def sync_default_msg_channel():
+    if "/www/server/panel" not in sys.path:
+        sys.path.append("/www/server/panel")
+
+    try:
+        from mod.base.msg import update_mod_push_msg
+        os.remove("/www/server/panel/data/mod_push_data/update_sender.pl")
+        update_mod_push_msg()
+        # public.print_log("更新消息通道成功！")
+    except:
+        # public.print_log("更新消息通道失败！")
+        pass
 
 
 if __name__ == '__main__':

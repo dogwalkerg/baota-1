@@ -1206,8 +1206,11 @@ class ProjectStatusTask(BaseTask):
 
         model_obj = import_module(".{}".format(self._to_project_model(task_data["cycle"])), package="projectModel")
         model_main_obj = model_obj.main()
-        running, project_name = getattr(model_main_obj, "get_project_status")(task_data["project"])
-        if running is not False:
+        try:
+            running, project_name = getattr(model_main_obj, "get_project_status")(task_data["project"])
+            if running is not False:
+                return None
+        except:
             return None
 
         s_list = [

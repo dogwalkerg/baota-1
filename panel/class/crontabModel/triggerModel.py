@@ -331,13 +331,14 @@ class main(crontabBase):
             cycle_hour = args.cycle_hour
             cycle_minute = args.cycle_minute
         # 获取开始执行时间和执行次数
-        start_time = args.start_time if hasattr(args, 'start_time') else 0
-        exec_count = args.exec_count if hasattr(args, 'exec_count') else 0
+        start_time = getattr(args,'start_time',0) or 0
+        exec_count = getattr(args,'exec_count',0) or 0
+        
         # 获取当前时间戳
         current_time = int(time.time())
-
+        
         # 检查开始时间是否小于当前时间
-        if start_time < current_time:
+        if start_time !=0 and start_time < current_time:
             return public.returnMsg(False, '设置的开始执行时间不能早于当前时间')
         pdata = {
             'name':args.name,
