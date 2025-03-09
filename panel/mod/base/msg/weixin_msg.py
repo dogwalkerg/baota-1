@@ -55,7 +55,7 @@ class WeiXinMsg:
             test_task.to_weixin_msg(test_msg, test_task.the_push_public_data()),
             "消息通道配置提醒"
         )
-        if res:
+        if res is True:
             return data
 
         return res

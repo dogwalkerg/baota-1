@@ -88,16 +88,22 @@ class main(dockerBase):
 
             from btdockerModel.dockerSock import image
             sk_image = image.dockerImage()
-            sk_image.load_image(get.path)
+            result = sk_image.load_image(get.path)
+            if "error" in result:
+                if "Read timed out" in result["error"]:
+                    return public.returnMsg(False, "导入镜像失败,连接docker超时,请尝试重启docker后再试!")
+                if "no such file or directory" in result["error"]:
+                    return public.returnMsg(False, "导入镜像失败，容器临时目录创建不成功，请检查防护软件是否存在拦截记录!")
 
             dp.write_log("镜像 [{}] 导入成功!".format(get.path))
             return public.returnMsg(True, "镜像导入成功！{}".format(get.path))
         except Exception as e:
-            if "Read timed out" in str(e):
-                return public.returnMsg(False, "导出镜像失败,连接docker超时,请尝试重启docker后再试!")
-            if "no such file or directory" in str(e):
-                return public.returnMsg(False, "导入镜像失败，容器临时目录创建不成功，请检查防护软件是否存在拦截记录!")
-            return public.returnMsg(False, "导入镜像失败!  {}".format(e))
+            # if "Read timed out" in str(e):
+            #     return public.returnMsg(False, "导出镜像失败,连接docker超时,请尝试重启docker后再试!")
+            # if "no such file or directory" in str(e):
+            #     return public.returnMsg(False, "导入镜像失败，容器临时目录创建不成功，请检查防护软件是否存在拦截记录!")
+
+            return public.returnMsg(False, "导入镜像失败!  {}".format(str(e)))
 
     # 列出所有镜像
     def image_list(self, get):
@@ -391,6 +397,56 @@ class main(dockerBase):
         )
         return public.returnMsg(True, "设置成功！")
 
+    def __parse_progress(self, progress_detail, progress_str):
+        """
+        解析 progressDetail 字典和 progress 字符串，返回当前值和总值（均以字节为单位）。
+        """
+        current = progress_detail.get('current', 0)
+        try:
+            current = float(current)
+        except (ValueError, TypeError):
+            current = 0
+
+        import re
+        # 使用正则表达式提取数值和单位
+        match = re.match(r'(\d+(?:\.\d+)?)\s*([kBMGT]?B)', progress_str.strip(), re.IGNORECASE)
+        if match:
+            total = float(match.group(1))
+            unit = match.group(2).upper()
+        else:
+            # 如果无法匹配，使用 current 作为总值，并假设单位为 B
+            total = current
+            unit = 'B'
+        return current, total, unit
+
+    def __convert_to_bytes(self, value, unit):
+        """
+        将值转换为字节。
+        支持的单位: B, kB, MB, GB, TB
+        """
+        units = {'B': 1, 'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4}
+        return value * units.get(unit, 1)
+
+    def __display_progress_bar(self, current, total, last_progress, bar_length=50):
+        """
+        在终端中显示进度条。
+        """
+        try:
+            if total == 0:
+                percent = 0
+            else:
+                percent = current / total
+            if last_progress[0] == 1.0: last_progress[0] = 0.0
+            if percent > last_progress[0]:
+                filled_length = int(bar_length * percent)
+                content = '=' * filled_length + '>' + ' ' * (bar_length - filled_length - 1)
+                last_progress[0] = percent  # 更新上一次的百分比
+                return "[{}] {:.2f}%".format(content, percent * 100)
+            else:
+                return ""
+        except:
+            return ""
+
     def pull(self, get):
         """
         :param image
@@ -403,26 +459,25 @@ class main(dockerBase):
         """
         get._ws.send("正在拉取镜像,请等待...\r\n")
 
-        import docker.errors
         import time
         time.sleep(0.1)
         get._ws.send("拉取或者搜索镜像中...\r\n")
+        auth_data = {
+            "username": get.username,
+            "password": get.password,
+            "registry": get.registry if get.registry else None
+        }
+        auth_conf = auth_data if get.username else None
+
+        if get.registry == "docker.io":
+            get.image = '{}:latest'.format(get.image) if ':' not in get.image else get.image
+
+        if not hasattr(get, "tag"): get.tag = get.image.split(":")[-1]
+
+        if get.registry != "docker.io":
+            get.image = "{}/{}/{}:{}".format(get.registry, get.namespace, get.name, get.image)
+
         try:
-            auth_data = {
-                "username": get.username,
-                "password": get.password,
-                "registry": get.registry if get.registry else None
-            }
-            auth_conf = auth_data if get.username else None
-
-            if get.registry == "docker.io":
-                get.image = '{}:latest'.format(get.image) if ':' not in get.image else get.image
-
-            if not hasattr(get, "tag"): get.tag = get.image.split(":")[-1]
-
-            if get.registry != "docker.io":
-                get.image = "{}/{}/{}:{}".format(get.registry, get.namespace, get.name, get.image)
-
             ret = dp.docker_client_low(self._url).pull(
                 repository=get.image.split(":")[0],
                 auth_config=auth_conf,
@@ -434,71 +489,33 @@ class main(dockerBase):
                 get._ws.send("bt_failed, 拉取失败!\r\n")
                 return
             last_result = None
-            last_progress_str = None
+            output_str = None
+            last_progress = [0.0]
             while True:
                 try:
                     output = next(ret)
                     output = json.loads(output)
-                    if "errorDetail" in output:
-                        if "message" in output['errorDetail']:
-                            if ("download failed after" in output['errorDetail']['message'] and
-                                    "i/o timeout" in output['errorDetail']['message']):
-                                try:
-                                    if not os.path.exists("/www/server/panel/config/docker_registry.json"):
-                                        public.DownloadFile(
-                                            "{}/src/docker_registry.json".format(public.get_url()),
-                                            "/www/server/panel/config/docker_registry.json"
-                                        )
+                    try:
+                        # 状态
+                        output_status = output.get('status', "")
+                        progress_detail = output.get('progressDetail', {})
 
-                                    registry_list = json.loads(
-                                        public.readFile("/www/server/panel/config/docker_registry.json"))
-                                    if len(registry_list) > 0:
-                                        get._ws.send(
-                                            "使用默认的镜像站拉取镜像失败!正在为您尝试使用其他的镜像站拉取，请等待...\r\n")
-                                        if not "/" in get.image:
-                                            get.image = "{}/library/{}".format(registry_list[0].replace("https://", ""),
-                                                                               get.image)
-                                        else:
-                                            get.image = "{}/{}".format(registry_list[0].replace("https://", ""),
-                                                                       get.image)
+                        if output_status in ["Downloading", "Extracting"] and progress_detail:
+                            progress = output.get('progress', "")
+                            current, total, unit = self.__parse_progress(progress_detail, progress)
 
-                                        stdout, stderr = public.ExecShell("docker pull {}".format(get.image))
-                                        if stderr:
-                                            get._ws.send("bt_failed, 拉取镜像失败!\r\n")
-                                            return public.returnMsg(False, "拉取镜像失败!")
-
-                                        public.ExecShell("docker tag {} {}".format(get.image, get.image.split("/")[-1]))
-                                        public.ExecShell("docker rmi {}".format(get.image))
-                                        public.writeFile("/www/server/panel/config/bad_registry.pl", registry_list[0])
-                                        get._ws.send(
-                                            "bt_successful, 镜像拉取 [{}] 成功, 建议将：{}设置为加速站\r\n".format(
-                                                get.image, registry_list[0])
-                                        )
-                                except:
-                                    import traceback
-                                    print(traceback.format_exc())
-                                    pass
+                            if total == 0:
+                                continue
+                            total_bytes = self.__convert_to_bytes(total, unit)
+                            output_str = self.__display_progress_bar(current, total_bytes, last_progress)
                         else:
-                            get._ws.send("bt_failed, 拉取失败!{}\r\n".format(output['errorDetail']))
+                            output_str = output_status
+                    except:
+                        continue
 
-                        return
-
-                    if 'status' in output:
-                        output_str = output['status']
-                        if output_str == "Downloading":
-                            progress = output['progressDetail']
-                            if not progress: continue
-                            current_mb = progress['current'] / (1024 * 1024)  # 将当前字节数转换为兆字节
-                            total_mb = progress['total'] / (1024 * 1024)  # 将总字节数转换为兆字节
-                            progress_str = "Downloading: {:.2f}MB/{:.2f}MB, {}%".format(current_mb, total_mb, int(
-                                progress['current'] * 100 / progress['total']))
-                            if progress_str != last_progress_str:
-                                get._ws.send(progress_str + "\r\n")
-                                last_progress_str = progress_str
-                        else:
-                            if output_str != last_result:
-                                get._ws.send(output_str + "\r\n")
-                                last_result = output_str
+                    if output_str != last_result and output_str:
+                        get._ws.send(output_str + "\r\n")
+                    last_result = output_str
                     time.sleep(0.1)
                 except StopIteration:
                     get._ws.send("bt_successful, 镜像拉取 [{}] 成功\r\n".format(get.image))
@@ -506,7 +523,6 @@ class main(dockerBase):
                 except ValueError:
                     get._ws.send("bt_failed, 拉取镜像失败!\r\n")
                     return public.returnMsg(False, "拉取镜像失败!")
-
         except docker.errors.ImageNotFound as e:
             if "pull access denied for" in str(e):
                 get._ws.send("bt_failed, 拉取失败，镜像不存在，或该镜像可能是私有镜像，需要输入dockerhub的账号密码!\r\n")
@@ -522,6 +538,33 @@ class main(dockerBase):
             return
 
         except docker.errors.APIError as e:
+            if "Client.Timeout exceeded while awaiting headers" in str(e):
+                try:
+                    get._ws.send(
+                        "使用默认的镜像站拉取镜像失败!正在为您尝试使用其他的镜像站拉取，请等待...\r\n")
+                    if not "/" in get.image:
+                        get.image = "docker.1ms.run/library/{}".format(get.image)
+                    else:
+                        get.image = "docker.1ms.run/{}".format(get.image)
+
+                    stdout, stderr = public.ExecShell("docker pull {}".format(get.image))
+                    if stderr:
+                        get._ws.send("bt_failed, 拉取镜像失败!\r\n")
+                        return
+                    public.print_log(get.image)
+                    public.print_log(stdout)
+
+                    public.ExecShell("docker tag {} {}".format(get.image, get.image.split("/")[-1]))
+                    public.ExecShell("docker rmi {}".format(get.image))
+                    get._ws.send(
+                        "bt_successful, 镜像拉取 [{}] 成功！\r\n建议将：{}设置为加速站\r\n".format(
+                            get.image, "docker.1ms.run")
+                    )
+                    return
+                except Exception as e:
+                    get._ws.send("bt_failed, 拉取镜像失败!{}\r\n".format(str(e)))
+                    return
+
             if "invalid tag format" in str(e):
                 get._ws.send("bt_failed, 拉取失败, 镜像格式错误, 如: nginx:v 1!\r\n")
                 return
@@ -679,6 +722,7 @@ class main(dockerBase):
             #     print(public.get_error_info())
             # public.print_log(public.get_error_info())
             return []
+
     # 拉取容器日志
     def get_cmd_log(self, get):
         """

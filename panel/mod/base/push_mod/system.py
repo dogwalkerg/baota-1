@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Optional, List, Tuple, Dict, Type, Any, Union
 import datetime
 from threading import Thread
@@ -7,7 +8,7 @@ from threading import Thread
 from .base_task import BaseTask
 from .mods import TaskTemplateConfig, TaskConfig, TaskRecordConfig, SenderConfig
 from .send_tool import sms_msg_normalize
-from .tool import load_task_cls_by_path, load_task_cls_by_function, T_CLS
+from .tool import load_task_cls_by_path, load_task_cls_by_function, T_CLS, load_task_cls
 from .util import get_server_ip, get_network_ip, format_date, get_config_value
 from .compatible import rsync_compatible
 
@@ -39,7 +40,7 @@ class PushSystem:
 
     def get_sms_sender_id(self) -> Optional[str]:
         for sender in self.sd_cfg.config:
-            if sender["type"] == "sms" and sender["status"]:
+            if sender["sender_type"] == "sms":
                 return sender["id"]
         return None
 
@@ -76,20 +77,8 @@ class PushSystem:
     def get_task_object(self, template_id, load_cls_data: dict) -> Optional[BaseTask]:
         if template_id in self.task_cls_cache:
             return self.task_cls_cache[template_id]()
-        if "load_type" not in load_cls_data:
-            return None
-        if load_cls_data["load_type"] == "func":
-            cls = load_task_cls_by_function(
-                name=load_cls_data["name"],
-                func_name=load_cls_data["func_name"],
-                is_model=load_cls_data.get("is_model", False),
-                model_index=load_cls_data.get("is_model", ''),
-                args=load_cls_data.get("args", None),
-                sub_name=load_cls_data.get("sub_name", None),
-            )
-        else:
-            cls_path = load_cls_data["cls_path"]
-            cls = load_task_cls_by_path(cls_path, load_cls_data["name"])
+
+        cls = load_task_cls(load_cls_data)
 
         if not cls:
             return None
@@ -105,9 +94,12 @@ class PushSystem:
             template = task_template[t["template_id"]]
             if not template["used"]:
                 continue
-            print(t)
-            print(_PushRunner(t, template, self)())
-            print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+            try:
+                _PushRunner(t, template, self)()
+            except:
+                print("任务执行失败", t["id"], template["title"], t["task_data"])
+                traceback.print_exc()
+                continue
 
         global WAIT_TASK_LIST
         if WAIT_TASK_LIST:  # 有任务启用子线程的，要等到这个线程结束，再结束主线程
@@ -188,10 +180,12 @@ class _PushRunner:
         return data
 
     def __call__(self):
+        # print("=====================\ntask:", self.task)
         self.run()
         self.save_result()
         if self.task_obj:
             self.task_obj.task_run_end_hook(self.result)
+        # print("result", self.result, "\n======================")
         return self.result_to_return()
 
     def result_to_return(self) -> dict:
@@ -200,7 +194,7 @@ class _PushRunner:
     def run(self):
         self.task_obj = self.push_system.get_task_object(self.template["id"], self.template["load_cls"])
 
-        if not self.task_obj:
+        if not self.task_obj or not isinstance(self.task_obj, BaseTask):
             self.result["stop_msg"] = "任务类加载失败"
             return
 
@@ -221,7 +215,7 @@ class _PushRunner:
         if not self.run_time_rule(self.task["time_rule"]):
             return
 
-        # 执行时间规则判断
+        # 执行发送次数规则判断
         if not self.number_rule(self.task["number_rule"]):
             return
 
@@ -335,7 +329,7 @@ class _PushRunner:
                 res = sd_cls(conf).send_msg(
                     self.task_obj.to_web_hook_msg(push_data, self.public_push_data),
                     self.task_obj.title,
-                    self.task_obj.title
+                    self.task_obj.template_name
                 )
 
             elif conf["sender_type"] == "feishu":
@@ -349,11 +343,14 @@ class _PushRunner:
                     self.task_obj.title
                 )
             elif conf["sender_type"] == "sms":
-                sm_type, sm_args = self.task_obj.to_sms_msg(push_data, self.public_push_data)
-                if not sm_type or not sm_args:
-                    continue
-                sm_args = sms_msg_normalize(sm_args)
-                res = sd_cls(conf).send_msg(sm_type, sm_args)
+                try:
+                    sm_type, sm_args = self.task_obj.to_sms_msg(push_data, self.public_push_data)
+                    if not sm_type or not sm_args:
+                        continue
+                    sm_args = sms_msg_normalize(sm_args)
+                    res = sd_cls(conf).send_msg(sm_type, sm_args)
+                except NotImplementedError:
+                    res = "暂不支持该短信通道"
 
             elif conf["sender_type"] == "wx_account":
                 wx_account.append(conf)
@@ -369,7 +366,12 @@ class _PushRunner:
 
         if len(wx_account) > 0:
             sd_cls = self.push_system.sender_cls("wx_account")
-            res = sd_cls(*wx_account).send_msg(self.task_obj.to_wx_account_msg(push_data, self.public_push_data))
+            try:
+                wx_account_msg = self.task_obj.to_wx_account_msg(push_data, self.public_push_data)
+            except NotImplementedError:
+                res = "暂不支持该微信公众号发通道"
+            else:
+                res = sd_cls(*wx_account).send_msg(wx_account_msg)
             for i in wx_account:
                 if isinstance(res, str):
                     self.result["send_data"][i["id"]] = res

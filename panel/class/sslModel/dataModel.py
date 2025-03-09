@@ -34,7 +34,7 @@ class main(sslBase):
         if 'fun_name' not in get:
             return public.returnMsg(False,'缺少参数 fun_name')
 
-        if not get.fun_name in ['delete_dns_record','create_dns_record','get_dns_record','update_dns_record','set_dns_record_status']:
+        if not get.fun_name in ['delete_dns_record','create_dns_record','get_dns_record','update_dns_record','set_dns_record_status', 'get_domain_list']:
             return public.returnMsg(False,'参数错误，未知的函数名')
 
         dns_type = False
@@ -286,15 +286,15 @@ class main(sslBase):
         site_domains = {self.extract_zone(i['name'])[0] for i in public.M('domain').field('name').select()}
         docker_site_domains = {self.extract_zone(i['name'])[0] for i in public.M('docker_domain').field('name').select()}
         add_domains = (site_domains | docker_site_domains) - root_domains - set(skip_domains)
-        del_domains = root_domains - (docker_site_domains | site_domains)
+        # del_domains = root_domains - (docker_site_domains | site_domains)
 
         # 添加域名
         for domain in add_domains:
             public.M('ssl_domains').add('domain,dns_id,type_id,endtime,ps', (domain, 0, 0, 0, ''))
 
         # 删除域名
-        for domain in del_domains:
-            public.M('ssl_domains').where("domain=?", (domain,)).delete()
+        # for domain in del_domains:
+        #     public.M('ssl_domains').where("domain=?", (domain,)).delete()
 
     def del_domains(self, get):
         """
@@ -321,8 +321,14 @@ class main(sslBase):
         @name 手动同步域名
         """
         root_domains = {i['domain'] for i in public.M('ssl_domains').field('domain').select()}
-        site_domains = {self.extract_zone(i['name'])[0] for i in public.M('domain').field('name').select()}
-        docker_site_domains = {self.extract_zone(i['name'])[0] for i in public.M('docker_domain').field('name').select()}
+        site_domains = {
+            i['name'] if self._is_ip(i['name']) else self.extract_zone(i['name'])[0]
+            for i in public.M('domain').field('name').select()
+        }
+        docker_site_domains = {
+            i['name'] if self._is_ip(i['name']) else self.extract_zone(i['name'])[0]
+            for i in public.M('docker_domain').field('name').select()
+        }
         add_domains = (site_domains | docker_site_domains) - root_domains
         del_domains = root_domains - (docker_site_domains | site_domains)
 
@@ -338,6 +344,14 @@ class main(sslBase):
         except: pass
         return public.returnMsg(True, '同步成功')
 
+    @staticmethod
+    def _is_ip(data: str):
+        import ipaddress
+        try:
+            ipaddress.ip_address(data)
+        except:
+            return False
+        return True
 
     def __create_table(self):
         """
@@ -352,6 +366,9 @@ class main(sslBase):
 	`ps` TEXT
 )
 """)
+
+    def check_table(self):
+        self.__create_table()
 
     def get_objectModel(self):
         '''
@@ -396,7 +413,7 @@ class main(sslBase):
         if 'domain_name' in get:
             where_sql += " AND name like ?"
             param.append('%{}%'.format(get.domain_name))
-        data = public.M('domain').where(where_sql, param).field('name,pid as site_id').select()
+        data = public.M('domain').where(where_sql, param).field('name,pid as site_id').select() + public.M('docker_domain').where(where_sql, param).field('name,pid as site_id').select()
         for i in data:
             root, sub_domain, _ = self.extract_zone(i['name'])
             i["status"] = 0
@@ -425,7 +442,7 @@ class main(sslBase):
         return data
 
     def get_site_list(self, get):
-        return public.M('sites').field('name,id').select()
+        return public.M('sites').field('name,id').select() + public.M('docker_sites').field('name,id').select()
 
     def create_report_task(self, get):
         from mod.base.push_mod import manager
@@ -441,7 +458,7 @@ class main(sslBase):
         from mod.base.push_mod import manager
         return manager.PushManager().remove_task_conf(get)
 
-    def add_dns_value_by_domain(self, domain, dns_value, record_type="TXT", is_let_txt=False):
+    def add_dns_value_by_domain(self, domain, dns_value, record_type="TXT", is_let_txt=False, mx=10):
         root, _, subd = self.extract_zone(domain, is_let_txt)
         domain_name = subd+'.'+root if is_let_txt else domain
         try:
@@ -457,6 +474,7 @@ class main(sslBase):
                     "domain_dns_value": dns_value,
                     "record_type": record_type,
                     "domain_name": domain_name,
+                    "mx": mx,
                 }
                 _return = self.run_fun(public.to_dict_obj(args))
                 if not _return["status"] and '记录已存在' not in _return["msg"]:
@@ -510,4 +528,15 @@ class main(sslBase):
             domain.update({"site_name": site_data['name']})
             domain.update({"record_a": socket.gethostbyname(domain['name'])})
         return domains
+
+    def add_domain(self, get):
+        domain_name = get.domain_name
+        dns_id = get.dns_id
+        data = public.M('ssl_domains').field('id').where("domain=?", (domain_name,)).select()
+        if data:
+            return public.returnMsg(False, '域名已存在')
+        public.M('ssl_domains').add('domain,dns_id,type_id,endtime,ps', (domain_name, dns_id, 0, 0, ''))
+        return public.returnMsg(True, '添加成功')
+
+
 

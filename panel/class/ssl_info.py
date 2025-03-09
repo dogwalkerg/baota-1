@@ -289,12 +289,14 @@ class ssl_info:
             public.print_log(public.get_error_info())
             return True, str(e)
 
+    # TODO 待完善,先不检测
     def verify_certificate_chain(self, cert_pem):
         """
         验证证书链是否完整
         :param cert_pem: 证书链内容
         :return: 验证成功返回True，失败返回False
         """
+        return True, ""
         try:
             from cryptography.hazmat.primitives.asymmetric import padding, ec
             cert_chain = [(i+"-----END CERTIFICATE-----").strip() for i in cert_pem.strip().split("-----END CERTIFICATE-----") if i]

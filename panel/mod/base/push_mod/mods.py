@@ -17,7 +17,9 @@ from uuid import uuid4
 
 import fcntl
 
-from .util import Sqlite, write_log, read_file, write_file
+from .base_task import BaseTask
+from .tool import load_task_cls
+from .util import Sqlite, write_log, read_file, write_file, debug_log
 
 _push_db_lock = Lock()
 
@@ -115,7 +117,67 @@ class BaseConfig:
 
 
 class TaskTemplateConfig(BaseConfig):
+    TAGS_MAP = {
+        "common": "常用",
+        "site": "网站",
+        "ssl": "SSL",
+        "system": "系统",
+        "soft": "软件",
+        "plugin": "插件",
+        "panel": "面板",
+        "safe": "安全",
+    }
+
     config_file_path = "{}/task_template.json".format(PUSH_DATA_PATH)
+
+    _VIEW_MSG_CLASS = []
+    _CAN_CALL_TEMPLATE = []
+    _UPDATE_TIMESTAMP = 0
+    _NOT_CHECKED = (  # 仅需要面板的告警不检查 后续添加需要更新
+        "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "10", "20", "21", "22", "23", "71",
+        "101", "102", "110","121", "122", "123",
+    )
+
+    def __init__(self):
+        super().__init__()
+
+    @classmethod
+    def _update_view_msg_class(cls, self):
+        cls_list = set()
+        can_call_template = []
+        for i in self.config:
+            if i["used"] is False:
+                continue
+            load_data = i.get("load_cls", {})
+            task_cls = load_task_cls(load_data)
+            if task_cls:
+                cls_list.add(task_cls.VIEW_MSG)
+                task: BaseTask = task_cls()
+                if i["id"] in self._NOT_CHECKED:
+                    continue
+                if task.filter_template(i["template"]):
+                    can_call_template.append(i["id"])
+
+        cls._VIEW_MSG_CLASS = list(cls_list)
+        cls._CAN_CALL_TEMPLATE = can_call_template + list(self._NOT_CHECKED)
+        cls._UPDATE_TIMESTAMP = int(os.path.getmtime(cls.config_file_path))
+
+    @classmethod
+    def can_call_template_ids(cls) -> List[str]:
+        cls._update_view_msg_class(cls())
+        return cls._CAN_CALL_TEMPLATE
+
+
+    @classmethod
+    def task_view_msg_format(cls, task: dict) -> str:
+        if cls._UPDATE_TIMESTAMP != int(os.path.getmtime(cls.config_file_path)):
+            cls._update_view_msg_class(cls())
+        for i in cls._VIEW_MSG_CLASS:
+            res = i().get_msg(task)
+            if res:
+                return res
+        return "<span>--</span>"
 
 
 class TaskConfig(BaseConfig):
@@ -125,6 +187,13 @@ class TaskConfig(BaseConfig):
         for i in self.config:
             if i.get("source", None) == source and i.get("keyword", None) == keyword:
                 return i
+
+    def get_by_source(self, source: str) -> List[Dict[str, Any]]:
+        res = []
+        for i in self.config:
+            if i.get("source", None) == source:
+                res.append(i)
+        return res
 
 
 class TaskRecordConfig(BaseConfig):

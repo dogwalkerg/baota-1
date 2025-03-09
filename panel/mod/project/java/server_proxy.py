@@ -226,8 +226,10 @@ map $http_upgrade $connection_upgrade {
             target_path = rewrite["target_path"]
             if target_path.endswith("/"):
                 target_path = target_path[:-1]
-
-            rewrite = "\n        rewrite ^{}(.*)$ {}/$1 break;".format(src_path, target_path)
+            if src_path == "/":
+                rewrite = "\n        rewrite ^{}$ {} break;".format(src_path, target_path)
+            else:
+                rewrite = "\n        rewrite ^{}(.*)$ {}/$1 break;".format(src_path, target_path)
 
         add_headers = ""
         if "add_headers" in proxy_data:

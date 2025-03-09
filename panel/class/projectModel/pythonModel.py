@@ -691,7 +691,8 @@ class main(projectBase):
             pid = public.readFile(prep_pid_file)
             if isinstance(pid, str):
                 ps = psutil.Process(int(pid))
-                if ps.is_running():
+                if ps.is_running() and os.path.samefile(ps.exe(), "/www/server/panel/pyenv/bin/python3") and \
+                        any("script/py_project_env.py" in tmp for tmp in ps.cmdline()):
                     return "running"
         except:
             pass
@@ -1522,6 +1523,10 @@ echo $! > {pid_file}'''.format(
         else:
             return public.returnMsg(False, "项目停止失败")
 
+    def restart_project(self, get):
+        get.name = get.project_name
+        return self.RestartProject(get)
+
     def RestartProject(self, get):
         name = get.name.strip()
         project_find = self.get_project_find(name)
@@ -1543,6 +1548,15 @@ echo $! > {pid_file}'''.format(
         s_mgr.stop_project()
         s_mgr.start_project()
         return public.returnMsg(True, "项目重启指令已执行，请注意查看日志")
+
+    def stop_project(self, get):
+        get.name = get.project_name
+        return self.StopProject(get)
+
+    def remove_project(self, get):
+        get.name = get.project_name
+        get.remove_env = True
+        return self.RemoveProject(get)
 
     def RemoveProject(self, get):
         """删除项目接口
@@ -4166,7 +4180,7 @@ echo $! > {pid_file}'''.format(
             return json_response(False, "未找到端口")
 
         # 初始化结果字典
-        res = {str(i): {
+        res: Dict[str, Dict] = {str(i): {
             "port": i,
             "fire_wall": None,
             "nginx_proxy": None,

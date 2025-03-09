@@ -8,7 +8,11 @@
 # -------------------------------------------------------------------
 import fnmatch
 import os, sys, time
+import json
+import subprocess
 from _stat import S_ISREG, S_ISDIR, S_ISLNK
+from gevent.lock import BoundedSemaphore
+import contextlib
 
 # ------------------------------
 # Docker安全检测
@@ -25,11 +29,266 @@ def auto_progress(func):
     @name 自动增长进度条（装饰器）
     @author lwh<2024-1-23>
     """
+
     def wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)
         self.progress_percent += self.scan_percent
         return result
+
     return wrapper
+
+
+class DockerImageInspector:
+    def __init__(self):
+        self.image_info = None
+        self.image_id = None
+        self._container_lock = BoundedSemaphore(1)
+        self._active_containers = set()
+
+    def open_image_by_id(self, image_id):
+        """打开指定ID的镜像"""
+        self.image_id = image_id
+        return self
+
+    def get_image_info(self):
+        """获取镜像详细信息"""
+        try:
+            cmd = f"docker inspect {self.image_id}"
+            result = subprocess.run(cmd.split(), capture_output=True, text=True)
+            # public.print_log("|===========result:{}".format(result))
+            if result.returncode == 0:
+                self.image_info = json.loads(result.stdout)[0]
+                return self.image_info
+            return None
+        except Exception as e:
+            print(f"获取镜像信息失败: {str(e)}")
+            return None
+
+    def ocispec_v1(self):
+        """
+        获取镜像的OCI规范信息
+        返回包含配置和历史记录的字典
+        """
+        if not self.image_info:
+            self.get_image_info()
+
+        if not self.image_info:
+            return {}
+        try:
+            # 获取配置信息
+            config = self.image_info.get('Config', {})
+
+            # 构造OCI规范格式
+            oci_spec = {
+                'created': self.image_info.get('Created'),
+                'architecture': self.image_info.get('Platform', 'amd64'),  # 默认amd64
+                'os': self.image_info.get('Platform', 'linux'),  # 默认linux
+                'config': {
+                    'Env': config.get('Env', []),
+                    'Cmd': config.get('Cmd', []),
+                    'WorkingDir': config.get('WorkingDir', ''),
+                    'Entrypoint': config.get('Entrypoint', []),
+                    'ExposedPorts': config.get('ExposedPorts', {}),
+                    'Volumes': config.get('Volumes', {}),
+                },
+                'history': []
+            }
+
+            # 使用docker history命令获取历史记录
+            try:
+                cmd = f"docker history --no-trunc --format '{{{{.CreatedBy}}}}' {self.image_id}"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    history_lines = result.stdout.strip().split('\n')
+                    for line in history_lines:
+                        if line:  # 跳过空行
+                            history_entry = {
+                                'created': '',  # 历史记录中可能没有具体时间
+                                'created_by': line,
+                                'empty_layer': line.startswith('#(nop)')  # 判断是否为空层
+                            }
+                            oci_spec['history'].append(history_entry)
+            except Exception as e:
+                print(f"获取历史记录失败: {str(e)}")
+
+            return oci_spec
+
+        except Exception as e:
+            print(f"获取OCI规范信息失败: {str(e)}")
+            return {}
+
+    def reporefs(self):
+        """获取镜像的仓库引用名称列表"""
+        if not self.image_info:
+            self.get_image_info()
+
+        refs = []
+        if self.image_info and 'RepoTags' in self.image_info:
+            refs.extend(self.image_info['RepoTags'])
+        return refs
+
+    def id(self):
+        """获取镜像ID"""
+        return self.image_id
+
+    @contextlib.contextmanager
+    def _temp_container(self):
+        """创建临时容器的上下文管理器"""
+        container_id = None
+        try:
+            with self._container_lock:
+                # 创建临时容器
+                cmd = f"docker create {self.image_id}"
+                result = subprocess.run(cmd.split(), capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise Exception(f"创建临时容器失败: {result.stderr}")
+
+                container_id = result.stdout.strip()
+                self._active_containers.add(container_id)
+
+            yield container_id
+
+        finally:
+            if container_id:
+                with self._container_lock:
+                    try:
+                        # 清理临时容器
+                        subprocess.run(['docker', 'rm', container_id],
+                                       capture_output=True,
+                                       check=True)
+                        self._active_containers.remove(container_id)
+                    except Exception as e:
+                        # public.print_log(f"清理临时容器失败 {container_id}: {str(e)}")
+                        pass
+
+    def listdir(self, path):
+        """列出指定路径下的所有文件和目录"""
+        try:
+            with self._temp_container() as container_id:
+                cmd = f"docker export {container_id} | tar -t"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+                files = set()
+                for line in result.stdout.splitlines():
+                    line = line.strip().strip('/')
+                    if not line:
+                        continue
+
+                    rel_path = os.path.relpath(line, path.strip('/'))
+                    if rel_path.startswith('..'):
+                        continue
+
+                    parts = rel_path.split('/')
+                    if len(parts) == 1:
+                        files.add(parts[0])
+
+                return list(files)
+
+        except Exception as e:
+            return []
+
+    def walk(self, top):
+        """遍历目录树"""
+        try:
+            with self._temp_container() as container_id:
+                cmd = f"docker export {container_id} | tar -t"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+                dir_tree = {}
+                for line in result.stdout.splitlines():
+                    line = line.strip().strip('/')
+                    if not line or not line.startswith(top.strip('/')):
+                        continue
+
+                    parts = line.split('/')
+                    current_path = ''
+                    for i, part in enumerate(parts):
+                        parent_path = current_path
+                        current_path = os.path.join(current_path, part) if current_path else part
+
+                        if current_path not in dir_tree:
+                            dir_tree[current_path] = {'dirs': set(), 'files': set()}
+
+                        if i < len(parts) - 1:
+                            dir_tree[parent_path]['dirs'].add(part)
+                        else:
+                            dir_tree[parent_path]['files'].add(part)
+
+                for dirpath in sorted(dir_tree.keys()):
+                    if not dirpath.startswith(top.strip('/')):
+                        continue
+
+                    full_path = '/' + dirpath
+                    dirs = sorted(dir_tree[dirpath]['dirs'])
+                    files = sorted(dir_tree[dirpath]['files'])
+                    yield full_path, dirs, files
+
+        except Exception as e:
+            yield top, [], []
+
+    def stat(self, path):
+        """获取文件状态信息"""
+        try:
+            with self._temp_container() as container_id:
+                cmd = f"docker export {container_id} | tar -tvf - {path.lstrip('/')}"
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+                if result.returncode != 0:
+                    raise Exception("文件不存在")
+
+                info = result.stdout.strip().split(None, 5)[0:5]
+                mode, uid, gid, size = info[0], info[2], info[3], info[4]
+
+                class StatResult:
+                    def __init__(self, mode, size, uid, gid):
+                        self.st_mode = int(mode, 8)
+                        self.st_size = int(size)
+                        self.st_uid = int(uid)
+                        self.st_gid = int(gid)
+
+                return StatResult(mode, size, uid, gid)
+
+        except Exception as e:
+            raise
+
+    def open(self, path, mode="rb"):
+        """打开文件"""
+        try:
+            with self._temp_container() as container_id:
+                cmd = f"docker export {container_id} | tar -xOf - {path.lstrip('/')}"
+                result = subprocess.run(cmd, shell=True, capture_output=True)
+
+                if result.returncode != 0:
+                    raise Exception("无法读取文件")
+
+                class FileWrapper:
+                    def __init__(self, data):
+                        self.data = data
+                        self.position = 0
+
+                    def read(self):
+                        return self.data
+
+                    def close(self):
+                        pass
+
+                return FileWrapper(result.stdout)
+
+        except Exception as e:
+            raise
+
+    def cleanup(self):
+        """清理所有活动的临时容器"""
+        with self._container_lock:
+            for container_id in list(self._active_containers):
+                try:
+                    subprocess.run(['docker', 'rm', container_id],
+                                   capture_output=True,
+                                   check=True)
+                    self._active_containers.remove(container_id)
+                except Exception as e:
+                    # public.print_log(f"清理临时容器失败 {container_id}: {str(e)}")
+                    pass
 
 
 class main(dockerBase):
@@ -88,7 +347,7 @@ class main(dockerBase):
         """
         now_time = time.time()
         # 判断间隔时间是否小于100ms
-        if now_time-self.send_time <= 0.1 and not end and status == 1:
+        if now_time - self.send_time <= 0.1 and not end and status == 1:
             return
         self.send_time = now_time
         # 根据风险情况进行扣分
@@ -99,8 +358,18 @@ class main(dockerBase):
         else:
             score = 0
         # msg：扫描内容，score：当前分数，type：类型docker/image
-        get._ws.send(public.GetJson({"end": end, "image_name": self.image_name, "status": status, "detail": detail,
-                                     "msg": msg, "repair": repair, "score": score, "type": "image"}))
+        get._ws.send(public.GetJson(
+            {
+                "end": end,
+                "image_name": self.image_name,
+                "status": status,
+                "detail": detail,
+                "msg": msg,
+                "repair": repair,
+                "score": score,
+                "type": "image"
+            }
+        ))
 
     def send_docker_ws(self, get, msg, repair="", status=1, end=True):
         """
@@ -119,7 +388,9 @@ class main(dockerBase):
         else:
             score = 0
         # msg：扫描内容，progress：扫描进度，score：当前分数
-        get._ws.send(public.GetJson({"end": end, "image_name": self.image_name, "status": status, "msg": msg, "repair": repair, "score": score, "type": "docker"}))
+        get._ws.send(public.GetJson(
+            {"end": end, "image_name": self.image_name, "status": status, "msg": msg, "repair": repair, "score": score,
+             "type": "docker"}))
 
     def reduce_core(self, score):
         """
@@ -132,6 +403,50 @@ class main(dockerBase):
         if self.scan_score < 0:
             return 0
         return self.scan_score
+
+    def fix_libdl_dependency(self):
+        """修复libdl.so依赖"""
+        try:
+            # 检查系统中的libdl文件
+            result, _ = public.ExecShell("find /usr/lib /usr/lib64 /lib /lib64 -name 'libdl.so*' 2>/dev/null")
+            libdl_files = [x for x in result.strip().split('\n') if x]
+
+            if not libdl_files:
+                # 如果没有找到任何libdl.so文件，需要安装
+                sys_ver = public.get_os_version()
+                if "Ubuntu" in sys_ver or "Debian" in sys_ver:
+                    public.ExecShell("apt-get update && apt-get install -y libc6-dev")
+                elif "CentOS" in sys_ver:
+                    public.ExecShell("yum install -y glibc-devel")
+
+                # 重新检查
+                result, _ = public.ExecShell("find /usr/lib /usr/lib64 /lib /lib64 -name 'libdl.so*' 2>/dev/null")
+                libdl_files = [x for x in result.strip().split('\n') if x]
+
+            if not libdl_files:
+                return False
+
+            # 找到libdl.so.2文件
+            libdl_so2 = None
+            for f in libdl_files:
+                if 'libdl.so.2' in f:
+                    libdl_so2 = f
+                    break
+
+            if not libdl_so2:
+                return False
+
+            # 创建软链接
+            target_dirs = ['/usr/lib', '/usr/lib64', '/lib', '/lib64']
+            for dir_path in target_dirs:
+                if os.path.exists(dir_path):
+                    link_path = os.path.join(dir_path, 'libdl.so')
+                    if not os.path.exists(link_path):
+                        public.ExecShell(f"ln -sf {libdl_so2} {link_path}")
+
+            return True
+        except Exception as e:
+            return False
 
     def image_safe_scan(self, get):
         """
@@ -151,86 +466,103 @@ class main(dockerBase):
         # 初始化时间
         self.send_time = time.time()
 
-        # 初始化安装检测SDK
-        try:
-            from veinmind import docker
-        except Exception as e:
-            # public.print_log("导入veinmind失败：{}".format(e))
-            # requirements_list = ["veinmind"]
-            self.send_image_ws(get, msg="正在初始化检测引擎中，首次加载耗时可能较长...", status=1)
-            shell_command = "btpip install --no-dependencies {}".format("veinmind")
-            public.ExecShell(shell_command)
-            sys_ver = public.get_os_version()
-            if "Ubuntu" in sys_ver or "Debian" in sys_ver:
-                public.WriteFile("/etc/apt/sources.list.d/libveinmind.list",
-                                 "deb [trusted=yes] https://download.veinmind.tech/libveinmind/apt/ ./")
-                self.send_image_ws(get, msg="正在更新apt-get，首次加载耗时可能较长...", status=1)
-                public.ExecShell("apt-get update")
-                time.sleep(1)
-                self.send_image_ws(get, msg="正在安装检测引擎，首次执行耗时可能较长...", status=1)
-                public.ExecShell("apt-get install -y libveinmind-dev")
-                time.sleep(1)
-            elif "CentOS" in sys_ver:
-                public.WriteFile("/etc/yum.repos.d/libveinmind.repo", """[libveinmind]
-name=libVeinMind SDK yum repository
-baseurl=https://download.veinmind.tech/libveinmind/yum/
-enabled=1
-gpgcheck=0""")
-                self.send_image_ws(get, msg="正在更新yum缓存，首次加载耗时可能较长...", status=1)
-                public.ExecShell("yum makecache")
-                self.send_image_ws(get, msg="正在安装检测引擎，首次执行耗时可能较长...", status=1)
-                public.ExecShell("yum install -y libveinmind-devel")
-            else:
-                self.send_image_ws(get, msg="不支持的系统版本{}".format(sys_ver), status=1)
-                return public.returnMsg(False, "不支持的系统版本{}\n目前仅支持Debian、Ubuntu、Centos".format(sys_ver))
-            self.send_image_ws(get, msg="正在检查libdl.so依赖库...", status=1)
-            result, err = public.ExecShell("whereis libdl.so")
-            result = result.strip().split(" ")
-            # public.print_log("libdl.so库的情况：{}".format(result))
-            if len(result) <= 1:
-                # public.print_log("缺少libdl.so库")
-                result, err = public.ExecShell("whereis libdl.so.2")
-                result = result.strip().split(" ")
-                # public.print_log("libdl.so.2库的情况：{}".format(result))
-                if len(result) <= 1:
-                    # public.print_log("缺少libdl.so库，需要安装libdl.so或libdl.so2")
-                    public.returnMsg(False, "缺少libdl.so库，需要安装libdl.so或libdl.so2")
-                else:
-                    # 建立libdl.so软链接至libdl.so.2
-                    for lib in result[1:]:
-                        ln_command = "ln -s {} {}".format(lib, lib[:-2])
-                        # public.print_log("正在软链接：{}".format(ln_command))
-                        public.ExecShell(ln_command)
-            from veinmind import docker
+        #         # 初始化安装检测SDK
+        #         try:
+        #             from veinmind import docker
+        #         except Exception as e:
+        #             public.print_log("导入veinmind失败：{}".format(e))
+        #             # requirements_list = ["veinmind"]
+        #             self.send_image_ws(get, msg="正在初始化检测引擎中，首次加载耗时可能较长...", status=1)
+        #             # 安装veinmind
+        #             shell_command = "btpip install --no-dependencies {}".format("veinmind")
+        #             public.ExecShell(shell_command)
 
-        # 开始检测
-        # 获取docker对象
-        docker_obj = docker.Docker()
-        # # 获取所有镜像id
-        # ids = docker_obj.list_image_ids()
-        # # 计算镜像进度占比
-        # self.ids_percent = math.floor(100 / len(ids))
-        # # 计算每个镜像扫描进度占比
-        # self.scan_percent = math.floor(self.ids_percent / 3)
-        # 开始镜像检测
-        # for key, id in enumerate(ids):
-        image = docker_obj.open_image_by_id(image_id=image_id)
-        # 获取ref镜像名
-        refs = image.reporefs()
-        if len(refs) > 0:
-            self.image_name = refs[0]
-        else:
-            self.image_name = image.id()
-        # public.print_log("正在检测：{}".format(self.image_name))
-        self.send_image_ws(get, msg="正在扫描{}异常历史命令".format(self.image_name))
-        self.scan_history(get, image)
-        self.send_image_ws(get, msg="正在扫描{}敏感信息".format(self.image_name))
-        self.scan_sensitive(get, image)
-        self.send_image_ws(get, msg="正在扫描{}后门".format(self.image_name))
-        self.scan_backdoor(get, image)
-        self.send_image_ws(get, msg="正在扫描{}容器逃逸")
-        self.scan_escape(get, image)
-        self.send_image_ws(get, msg="{}扫描完成".format(self.image_name), end=True)
+        #             # 安装系统依赖
+        #             sys_ver = public.get_os_version()
+        #             if "Ubuntu" in sys_ver or "Debian" in sys_ver:
+        #                 public.WriteFile("/etc/apt/sources.list.d/libveinmind.list",
+        #                                  "deb [trusted=yes] https://download.veinmind.tech/libveinmind/apt/ ./")
+        #                 self.send_image_ws(get, msg="正在更新apt-get，首次加载耗时可能较长...", status=1)
+        #                 public.ExecShell("apt-get update")
+        #                 time.sleep(1)
+        #                 self.send_image_ws(get, msg="正在安装检测引擎，首次执行耗时可能较长...", status=1)
+        #                 public.ExecShell("apt-get install -y libveinmind-dev")
+        #                 time.sleep(1)
+        #             elif "CentOS" in sys_ver:
+        #                 public.WriteFile("/etc/yum.repos.d/libveinmind.repo", """[libveinmind]
+        # name=libVeinMind SDK yum repository
+        # baseurl=https://download.veinmind.tech/libveinmind/yum/
+        # enabled=1
+        # gpgcheck=0""")
+        #                 self.send_image_ws(get, msg="正在更新yum缓存，首次加载耗时可能较长...", status=1)
+        #                 public.ExecShell("yum makecache")
+        #                 self.send_image_ws(get, msg="正在安装检测引擎，首次执行耗时可能较长...", status=1)
+        #                 public.ExecShell("yum install -y libveinmind-devel")
+        #             else:
+        #                 self.send_image_ws(get, msg="不支持的系统版本{}".format(sys_ver), status=1)
+        #                 return public.returnMsg(False, "不支持的系统版本{}\n目前仅支持Debian、Ubuntu、Centos".format(sys_ver))
+
+        #             # 修复libdl.so依赖
+        #             self.send_image_ws(get, msg="正在检查libdl.so依赖库...", status=1)
+        #             result, err = public.ExecShell("whereis libdl.so")
+        #             result = result.strip().split(" ")
+        #             # 存在卡死问题·，如果发现result为2，会卡死
+        #             # if len(result) <= 1:
+        #             #     result, err = public.ExecShell("whereis libdl.so.2")
+        #             #     result = result.strip().split(" ")
+        #             #     if len(result) <= 1:
+        #             #         public.print_log("缺少libdl.so库，需要安装libdl.so或libdl.so2")
+        #             #     else:
+        #             #         # 建立libdl.so软链接至libdl.so.2
+        #             #         for lib in result[1:]:
+        #             #             ln_command = "ln -s {} {}".format(lib, lib[:-2])
+        #             #             public.ExecShell(ln_command)
+        #                     # 修复libdl.so依赖
+        #             self.send_image_ws(get, msg="正在修复系统依赖...", status=1)
+        #             if not self.fix_libdl_dependency():
+        #                 return public.returnMsg(False, "修复libdl.so依赖失败")
+        #             try:
+        #                 from veinmind import docker
+        #             except Exception as e:
+        #                 self.send_image_ws(get, msg="扫描完成:导入veinmind失败【{}】".format(e), end=True)
+
+        try:
+            # 自定义一个新的DockerImageInspector
+            docker_obj = DockerImageInspector()
+            # 打开镜像
+            image = docker_obj.open_image_by_id(image_id=image_id)
+            # 获取ref镜像名
+            refs = image.reporefs()
+
+            # # 获取docker对象
+            # docker_obj = docker.Docker()
+            # # 获取所有镜像id
+            # ids = docker_obj.list_image_ids()
+            # # 计算镜像进度占比
+            # self.ids_percent = math.floor(100 / len(ids))
+            # # 计算每个镜像扫描进度占比
+            # self.scan_percent = math.floor(self.ids_percent / 3)
+            # 开始镜像检测
+            # # for key, id in enumerate(ids):
+            # image = docker_obj.open_image_by_id(image_id=image_id)
+            # # 获取ref镜像名
+            # refs = image.reporefs()
+            if len(refs) > 0:
+                self.image_name = refs[0]
+            else:
+                self.image_name = image.id()
+            # 开始检测
+            self.send_image_ws(get, msg="正在扫描{}异常历史命令".format(self.image_name))
+            self.scan_history(get, image)
+            self.send_image_ws(get, msg="正在扫描{}敏感信息".format(self.image_name))
+            self.scan_sensitive(get, image)
+            self.send_image_ws(get, msg="正在扫描{}后门".format(self.image_name))
+            self.scan_backdoor(get, image)
+            self.send_image_ws(get, msg="正在扫描{}容器逃逸".format(self.image_name))
+            self.scan_escape(get, image)
+            self.send_image_ws(get, msg="{}扫描完成".format(self.image_name), end=True)
+        except Exception as e:
+            self.send_image_ws(get, msg="扫描镜像失败：{}".format(str(e)), end=True)
 
     def scan_history(self, get, image):
         """
@@ -242,9 +574,15 @@ gpgcheck=0""")
             "FROM", "CMD", "RUN", "LABEL", "MAINTAINER", "EXPOSE", "ENV", "ADD", "COPY", "ENTRYPOINT", "VOLUME", "USER",
             "WORKDIR", "ARG", "ONBUILD", "STOPSIGNAL", "HEALTHCHECK", "SHELL")
         rules = {
-            "rules": [{"description": "Miner Repo", "instruct": "RUN", "match": ".*(xmrig|ethminer|miner)\\.git.*"},
-                      {"description": "Unsafe Path", "instruct": "ENV", "match": "PATH=.*(|:)(/tmp|/dev/shm)"}]}
-
+            "rules": [
+                {"description": "Miner Repo", "instruct": "RUN", "match": ".*(xmrig|ethminer|miner)\\.git.*"},
+                {"description": "Unsafe Path", "instruct": "ENV", "match": "PATH=.*(|:)(/tmp|/dev/shm)"},
+                {
+                    "description": "MySQL Shell Installation",
+                    "instruct": "CMD"
+                }
+            ]
+        }
         ocispec = image.ocispec_v1()
         if 'history' in ocispec.keys() and len(ocispec['history']) > 0:
             for history in ocispec['history']:
@@ -258,10 +596,28 @@ gpgcheck=0""")
                         if len(command_split) == 2:
                             instruct = command_split[0]
                             command_content = command_split[1]
+                            # 如果是JSON格式的字符串，尝试解析
+                            if command_content.startswith('[') and command_content.endswith(']'):
+                                import json
+                                parsed_content = json.loads(command_content)
+                                if isinstance(parsed_content, list):
+                                    command_content = ' '.join(parsed_content)
+
+                            # 移除引号和方括号
+                            command_content = command_content.strip('[]"\' ')
+
+                            # command_content = " ".join(command_split[1:])
                             for r in rules["rules"]:
                                 if r["instruct"] == instruct:
                                     if re.match(r["match"], command_content):
-                                        self.send_image_ws(get, msg="发现可疑异常历史命令", detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(self.short_string(command_content)), repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失")
+                                        self.send_image_ws(
+                                            get,
+                                            status=0,
+                                            msg="发现可疑异常历史命令",
+                                            detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(
+                                                self.short_string(command_content)),
+                                            repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失"
+                                        )
                                         break
                         else:
                             instruct = command_split[0]
@@ -269,7 +625,14 @@ gpgcheck=0""")
                             for r in rules["rules"]:
                                 if r["instruct"] == instruct:
                                     if re.match(r["match"], command_content):
-                                        self.send_image_ws(get, msg="发现可疑异常历史命令", detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(self.short_string(command_content)), repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失")
+                                        self.send_image_ws(
+                                            get,
+                                            status=0,
+                                            msg="发现可疑异常历史命令",
+                                            detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(
+                                                self.short_string(command_content)),
+                                            repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失"
+                                        )
                                         break
                     else:
                         command_split = created_by.split()
@@ -277,13 +640,27 @@ gpgcheck=0""")
                             for r in rules["rules"]:
                                 if r["instruct"] == command_split[0]:
                                     if re.match(r["match"], " ".join(command_split[1:])):
-                                        self.send_image_ws(get, msg="发现可疑异常历史命令", detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(self.short_string(" ".join(command_split[1:]))), repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失")
+                                        self.send_image_ws(
+                                            get,
+                                            msg="发现可疑异常历史命令",
+                                            status=0,
+                                            detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(
+                                                self.short_string(" ".join(command_split[1:]))),
+                                            repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失"
+                                        )
                                         break
                         else:
                             for r in rules["rules"]:
                                 if r["instruct"] == "RUN":
                                     if re.match(r["match"], created_by):
-                                        self.send_image_ws(get, msg="发现可疑异常历史命令", detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(self.short_string(created_by)), repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失")
+                                        self.send_image_ws(
+                                            get,
+                                            msg="发现可疑异常历史命令",
+                                            status=0,
+                                            detail="发现镜像存在异常历史命令【{}】,可能会将恶意软件或代码在容器运行时植入宿主机系统，形成安全隐患".format(
+                                                self.short_string(created_by)),
+                                            repair="1.建议排查该命令是否是正常业务所需<br/>2.建议选择官方可靠的基础镜像，防止造成不必要的损失"
+                                        )
                                         break
 
     def scan_sensitive(self, get, image):
@@ -292,8 +669,8 @@ gpgcheck=0""")
         @author lwh<2024-1-22>
         """
         # 敏感数据规则
-        rules = {"whitelist": {
-            "paths": ["/usr/**", "/lib/**", "/lib32/**", "/bin/**", "/sbin/**", "/var/lib/**", "/var/log/**",
+        rules = {
+            "whitelist": {"paths": ["/usr/**", "/lib/**", "/lib32/**", "/bin/**", "/sbin/**", "/var/lib/**", "/var/log/**",
                       "**/node_modules/**/*.md", "**/node_modules/**/test/**", "**/service/iam/examples_test.go",
                       "**/grafana/public/build/*.js"]}, "rules": [
             {"id": 1, "name": "gitlab_personal_access_token", "description": "GitLab Personal Access Token",
@@ -581,160 +958,223 @@ gpgcheck=0""")
              "match": "glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}", "level": "high"},
             {"id": 131, "name": "prefect-api-token", "description": "Prefect API token", "match": "pnu_[a-z0-9]{36}",
              "level": "medium"}]}
-
-        # refs = image.reporefs()
-        # if len(refs) > 0:
-        #     ref = refs[0]
-        # else:
-        #     ref = image.id()
-        # public.print_log("start scan sensitive: " + ref)
-
-        # 检测docker历史（另外有扫描项）
-        # ocispec = image.ocispec_v1()
-        # if 'history' in ocispec.keys() and len(ocispec['history']) > 0:
-        #     for history in ocispec['history']:
-        #         command_content = history['created_by']
-        #         report_rule_list = []
-        #         for r in rules["rules"]:
-        #             # 正则选择 可以选择docker history的正则是由哪些模块检测
-        #             for i in ['env', 'match', 'filepath']:
-        #                 regexp_s = r.get(i)
-        #                 if not regexp_s:
-        #                     continue
-        #                 if re.search(regexp_s, command_content, re.IGNORECASE):
-        #                     self.send_image_ws(get, msg="镜像OCI存在敏感信息", detail=r["description"]+"镜像OCI存在敏感信息{}".format(command_content), repair="使用此镜像可能存在危险，建议更换同类型镜像或是部署容器时清理敏感信息", status=2)
-        #         if not report_rule_list:
+        # # 排除大型项目
+        # EXCLUDE_DIRS = [
+        #     "usr", "lib", "lib32", "lib64", "boot", "run", "media",
+        #     "proc", "sys", "dev", "bin", "sbin"
+        # ]
+        # # 排查目录
+        # sensitive_dirs = []
+        # try:
+        #     for filename in image.listdir("/"):
+        #         if filename not in EXCLUDE_DIRS:
+        #             sensitive_dirs.append("/"+filename)
+        #     # 过滤掉不存在的目录
+        #     valid_dirs = set()
+        #     for dir_path in sensitive_dirs:
+        #         try:
+        #             stat_result = image.stat(dir_path)
+        #             if S_ISDIR(stat_result.st_mode):  # 确认是目录
+        #                 valid_dirs.add(dir_path)
+        #         except:
         #             continue
-        # 检测env环境变量
-        # ocispec = image.ocispec_v1()
-        # if 'config' in ocispec.keys() and 'Env' in ocispec['config'].keys():
-        #     env_list = image.ocispec_v1()['config']['Env']
-        #     for env in env_list:
-        #         env_split = env.split("=")
-        #         if len(env_split) >= 2:
-        #             for r in rules["rules"]:
-        #                 if "env" in r.keys():
-        #                     env_regex = r["env"]
-        #                     if re.match(env_regex, env, re.IGNORECASE):
-        #                         self.send_image_ws(get, msg="镜像OCI存在敏感信息", detail=r["description"]+"\nenv存在敏感信息，可能会造成数据泄露", repair="使用该镜像部署容器时，及时修改默认密码或者鉴权值，防止被黑客利用入侵", status=2)
-        #                         break
-        # 排除大型项目
-        large_dir = ["usr", "lib"]
-        sensitive_dirs = []
+        #     sensitive_dirs = valid_dirs
+        # except Exception as e:
+        #     sensitive_dirs = ["/"]
+
+        # # 检测存在敏感数据的路径
+        # for sensitive_dir in sensitive_dirs:
+        #     try:
+        #         for root, dirs, files in image.walk(sensitive_dir):
+        #             # 短暂停留0.004s，防止占用太高影响其他接口响应
+        #             time.sleep(0.004)
+        #             # 遍历深度不超过3层
+        #             if len(root.split("/")) > 3:
+        #                 self.send_image_ws(get, msg=self.short_string1("正在扫描:{}".format(root)))
+        #                 continue
+        #             # 发送扫描进度
+        #             self.send_image_ws(get, msg=f"正在扫描: {root}")
+        #             # 如果目录为空，记录日志并继续
+        #             if not dirs and not files:
+        #                 self.send_image_ws(get, msg=f"跳过空目录: {root}")
+        #                 continue
+
+        #             # 处理目录
+        #             for d in dirs:
+        #                 try:
+        #                     dirpath = os.path.join(root, d)
+        #                     self.send_image_ws(get, msg=f"正在扫描: {dirpath}...")
+        #                     # 检测
+        #                     for r in rules["rules"]:
+        #                         if "filepath" in r.keys():
+        #                             if re.match(r["filepath"], dirpath):
+        #                                 self.send_image_ws(
+        #                                     get,
+        #                                     msg="发现敏感目录{}".format(dirpath),
+        #                                     detail="镜像存在敏感目录{}，可能会被攻击者利用窃取敏感数据或者源代码，导致进一步的安全问题".format(dirpath),
+        #                                     repair="1.进入使用该镜像部署的容器，在不影响业务的情况下删除该目录<br/>2.若不能删除，则限制对目录的访问权限".format(dirpath),
+        #                                     status=2
+        #                                 )
+        #                                 break
+        #                 except:
+        #                     pass
+        #             for filename in files:
+        #                 try:
+        #                     filepath = os.path.join(root, filename)
+        #                     self.send_image_ws(get, msg="正在扫描:{}...".format(filename))
+        #                     # 跳过白名单
+        #                     whitelist = rules["whitelist"]
+        #                     white_match = False
+        #                     white_paths = whitelist["paths"]
+        #                     for wp in white_paths:
+        #                         if fnmatch.filter([filepath], wp):
+        #                             white_match = True
+        #                             break
+        #                     if white_match:
+        #                         continue
+
+        #                     try:
+        #                         # 跳过非常规文件，超过10m
+        #                         f_stat = image.stat(filepath)
+        #                         if not S_ISREG(f_stat.st_mode):
+        #                             continue
+        #                         if f_stat.st_size > 10 * 1024 * 1024:
+        #                             continue
+
+        #                         f = image.open(filepath, mode="rb")
+        #                         f_content_byte = f.read()
+        #                     except:
+        #                         continue
+        #                     # 检测文件路径及文件名
+        #                     match = False
+        #                     for r in rules["rules"]:
+        #                         if "filepath" in r.keys():
+        #                             filepath_match_regex = r["filepath"]
+        #                             if re.match(filepath_match_regex, filepath):
+        #                                 match = True
+        #                                 self.send_image_ws(
+        #                                     get,
+        #                                     msg="发现敏感文件{}".format(filepath),
+        #                                     detail=r["description"] + "：<br/>发现镜像存在敏感文件{}，可能会造成泄露".format(filepath),
+        #                                     repair="1.进入使用该镜像部署的容器，在不影响业务的情况下建议删除文件<br/>2.若无法删除，则限制文件的访问权限<br/>3.使用密码保护敏感文件不被轻易读取",
+        #                                     status=2
+        #                                 )
+        #                                 break
+        #                     if match:
+        #                         continue
+        #                 except:
+        #                     pass
+        #     except Exception as e:
+        #         public.print_log("|===========遍历敏感文件时出错：{}".format(e))
+
+        # 排除系统目录
+        EXCLUDE_DIRS = {
+            "usr", "lib", "lib32", "lib64", "boot", "run", "media",
+            "proc", "sys", "dev", "bin", "sbin", "home"
+        }
+
+        def get_scan_dirs():
+            """获取需要扫描的目录列表"""
+            try:
+                root_contents = image.listdir("/")
+                return ["/" + d for d in root_contents if d not in EXCLUDE_DIRS]
+            except Exception as e:
+                return ["/"]
+
+        def check_file_content(filepath, content, rules):
+            """检查文件内容是否匹配敏感规则"""
+            try:
+                text_content = content.decode('utf-8', errors='ignore')
+                for rule in rules["rules"]:
+                    if "match" in rule and re.search(rule["match"], text_content):
+                        self.send_image_ws(
+                            get,
+                            msg=f"发现敏感信息: {filepath}",
+                            detail=f"{rule['description']}: 在文件 {filepath} 中发现敏感信息",
+                            repair="1.检查并清理敏感信息\n2.使用环境变量或安全的密钥管理系统",
+                            status=2
+                        )
+                        return True
+                return False
+            except:
+                return False
+
+        def check_path_pattern(path, rules):
+            """检查路径是否匹配敏感规则"""
+            for rule in rules["rules"]:
+                if "filepath" in rule and re.match(rule["filepath"], path):
+                    self.send_image_ws(
+                        get,
+                        msg=f"发现敏感{'目录' if os.path.isdir(path) else '文件'}: {path}",
+                        detail=f"{rule['description']}: 发现敏感路径 {path}，可能存在安全风险",
+                        repair="1.检查并删除不必要的敏感文件/目录\n2.限制访问权限\n3.加密存储敏感信息",
+                        status=2
+                    )
+                    return True
+            return False
+
         try:
-            for filename in image.listdir("/"):
-                if filename not in large_dir:
-                    sensitive_dirs.append("/"+filename)
-        except Exception as e:
-            # public.print_log("获取镜像目录失败{}".format(e))
-            sensitive_dirs = ["/"]
+            # 1. 获取待扫描目录
+            scan_dirs = get_scan_dirs()
 
-        # 检测存在敏感数据的路径
-        for sensitive_dir in sensitive_dirs:
-            for root, dirs, files in image.walk(sensitive_dir):
-                # 短暂停留0.004s，防止占用太高影响其他接口响应
-                time.sleep(0.004)
-                # 遍历深度不超过3
-                if len(root.split("/")) > 3:
-                    self.send_image_ws(get, msg=self.short_string1("正在扫描:{}".format(root)))
-                    # public.print_log("跳过{}".format(root))
+            # 2. 遍历每个目录
+            for base_dir in scan_dirs:
+                try:
+                    for root, dirs, files in image.walk(base_dir):
+                        # 控制遍历深度
+                        if len(root.split("/")) > 3:
+                            continue
+
+                        # 发送进度消息
+                        self.send_image_ws(get, msg=f"正在扫描: {root}")
+
+                        # 跳过空目录
+                        if not dirs and not files:
+                            continue
+
+                        # 检查目录
+                        for dirname in dirs[:]:  # 使用切片创建副本
+                            dirpath = os.path.join(root, dirname)
+                            check_path_pattern(dirpath, rules)
+
+                        # 检查文件
+                        for filename in files:
+                            try:
+                                filepath = os.path.join(root, filename)
+
+                                # 跳过白名单文件
+                                if any(fnmatch.fnmatch(filepath, wp) for wp in rules["whitelist"]["paths"]):
+                                    continue
+
+                                # 检查文件状态
+                                try:
+                                    f_stat = image.stat(filepath)
+                                    if not S_ISREG(f_stat.st_mode) or f_stat.st_size > 10 * 1024 * 1024:
+                                        continue
+
+                                    # 读取文件内容
+                                    with image.open(filepath, mode="rb") as f:
+                                        content = f.read()
+                                        if not content:  # 跳过空文件
+                                            continue
+
+                                        # 检查文件路径和内容
+                                        if check_path_pattern(filepath, rules):
+                                            continue
+                                        check_file_content(filepath, content, rules)
+
+                                except Exception as e:
+                                    continue
+
+                            except Exception as e:
+                                continue
+
+                except Exception as e:
                     continue
-                for dir in dirs:
-                    try:
-                        dirpath = os.path.join(root, dir)
-                        self.send_image_ws(get, msg="正在扫描:{}...".format(dirpath))
-                        # public.print_log("扫描目录{}".format(dirpath))
-                        # detect filepath or filename
-                        for r in rules["rules"]:
-                            if "filepath" in r.keys():
-                                filepath_match_regex = r["filepath"]
-                                if re.match(filepath_match_regex, dirpath):
-                                    self.send_image_ws(get, msg="发现敏感目录{}".format(dirpath), detail="镜像存在敏感目录{}，可能会被攻击者利用窃取敏感数据或者源代码，导致进一步的安全问题".format(dirpath), repair="1.进入使用该镜像部署的容器，在不影响业务的情况下删除该目录<br/>2.若不能删除，则限制对目录的访问权限".format(dirpath), status=2)
-                                    break
-                    except:
-                        pass
-                        # public.print_log("匹配敏感信息捕获异常{}".format(e))
-                for filename in files:
-                    try:
-                        filepath = os.path.join(root, filename)
-                        self.send_image_ws(get, msg="正在扫描:{}...".format(filename))
-                        # public.print_log("扫描文件{}".format(filepath))
-                        # 跳过白名单
-                        whitelist = rules["whitelist"]
-                        white_match = False
-                        white_paths = whitelist["paths"]
-                        for wp in white_paths:
-                            if fnmatch.filter([filepath], wp):
-                                white_match = True
-                                break
-                        if white_match:
-                            continue
 
-                        try:
-                            # 跳过非常规文件，超过10m
-                            f_stat = image.stat(filepath)
-                            if not S_ISREG(f_stat.st_mode):
-                                continue
-                            if f_stat.st_size > 10 * 1024 * 1024:
-                                continue
-
-                            f = image.open(filepath, mode="rb")
-                            f_content_byte = f.read()
-                        except:
-                            # public.print_log("遍历敏感文件时出错：{}".format(e))
-                            continue
-                        # except:
-                        #     public.print_log("遍历敏感文件时出错：{}".format(e))
-                        #     continue
-                        # 检测文件路径及文件名
-                        match = False
-                        for r in rules["rules"]:
-                            if "filepath" in r.keys():
-                                filepath_match_regex = r["filepath"]
-                                if re.match(filepath_match_regex, filepath):
-                                    match = True
-                                    self.send_image_ws(get, msg="发现敏感文件{}".format(filepath), detail=r["description"] + "：<br/>发现镜像存在敏感文件{}，可能会造成泄露".format(filepath), repair="1.进入使用该镜像部署的容器，在不影响业务的情况下建议删除文件<br/>2.若无法删除，则限制文件的访问权限<br/>3.使用密码保护敏感文件不被轻易读取", status=2)
-                                    break
-                        if match:
-                            continue
-                        # chardet_guess = chardet.detect(f_content_byte[0:64])
-                        # if chardet_guess["encoding"] != None:
-                        #     try:
-                        #         f_content = f_content_byte.decode(chardet_guess["encoding"])
-                        #     except:
-                        #         continue
-                        # else:
-                        #     f_content = str(f_content_byte)
-                        # mime_guess = magic.from_buffer(f_content_byte, mime=True)
-                        # for r in rules["rules"]:
-                        #     # mime
-                        #     mime_find = False
-                        #     if "mime" in r.keys():
-                        #         if r["mime"] == mime_guess:
-                        #             mime_find = True
-                        #     else:
-                        #         if mime_guess.startswith("text/"):
-                        #             mime_find = True
-                        #     if mime_find:
-                        #         if "match" in r.keys():
-                        #             match = r["match"]
-                        #             if match.startswith("$contains:"):
-                        #                 keyword = match.lstrip("$contains:")
-                        #                 if keyword in f_content:
-                        #                     file_stat = image.stat(filepath)
-                        #                     self.send_image_ws(get, msg="镜像路径{}存在敏感信息".format(filepath),
-                        #                                        repair="建议使用该镜像部署容器后，检查该文件是否有用，无用则清理",
-                        #                                        status=2)
-                        #
-                        #             else:
-                        #                 if re.match(match, f_content):
-                        #                     file_stat = image.stat(filepath)
-                        #                     self.send_image_ws(get, msg="镜像路径{}存在敏感信息".format(filepath),
-                        #                                        repair="建议使用该镜像部署容器后，检查该文件是否有用，无用则清理",
-                        #                                        status=2)
-                    except:
-                        pass
-                        # public.print_log("遍历敏感文件时出错：{}".format(e))
+        except Exception as e:
+            # public.print_log(f"|===========扫描失败: {str(e)}")
+            pass
 
     def scan_backdoor(self, get, image):
         """
@@ -770,22 +1210,39 @@ gpgcheck=0""")
                             f_content = f.read()
                             for backdoor_regex in backdoor_regex_list:
                                 if re.search(backdoor_regex, f_content):
-                                    self.send_image_ws(get, msg="发现bashrc后门{}".format(filepath), detail="发现镜像存在bashrc后门：【{}】，恶意代码内容：<br/>{}".format(filepath, self.short_string(f_content)), repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器", status=3)
+                                    self.send_image_ws(
+                                        get,
+                                        msg="发现bashrc后门{}".format(filepath),
+                                        detail="发现镜像存在bashrc后门：【{}】，恶意代码内容：<br/>{}".format(filepath,
+                                                                                                         self.short_string(
+                                                                                                             f_content)),
+                                        repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                        status=3
+                                    )
                             for backdoor_regex in backdoor_regex_list1:
                                 if re.search(backdoor_regex, f_content):
-                                    self.send_image_ws(get, msg="发现后门文件{}".format(filepath), detail="发现镜像存在bashrc后门文件【{}】，恶意代码内容：<br/>{}".format(filepath, self.short_string(f_content)), repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器", status=3)
+                                    self.send_image_ws(
+                                        get,
+                                        msg="发现后门文件{}".format(filepath),
+                                        detail="发现镜像存在bashrc后门文件【{}】，恶意代码内容：<br/>{}".format(filepath,
+                                                                                                            self.short_string(
+                                                                                                                f_content)),
+                                        repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                        status=3
+                                    )
                         except FileNotFoundError:
                             continue
                         except BaseException:
                             pass
-                            # public.print_log(e)
 
         def crontab():
             """
             @name crontab后门检测
             """
-            cron_list = ["/etc/crontab", "/etc/cron.hourly", "/etc/cron.daily", "/etc/cron.weekly", "/etc/cron.monthly",
-                         "/etc/cron.d"]
+            cron_list = [
+                "/etc/crontab", "/etc/cron.hourly", "/etc/cron.daily",
+                "/etc/cron.weekly", "/etc/cron.monthly", "/etc/cron.d"
+            ]
             environment_regex = '''[a-zA-Z90-9]+\s*=\s*[^\s]+$'''
             cron_regex = '''((\d{1,2}|\*)\s+){5}[a-zA-Z0-9]+\s+(.*)'''
             backdoor_regex_list = [
@@ -815,13 +1272,18 @@ gpgcheck=0""")
                             #         result_dict[backdoor_regex] = cmdline1
                             for backdoor_regex in backdoor_regex_list1:
                                 if re.search(backdoor_regex, cmdline1):
-                                    self.send_image_ws(get, msg="发现cron后门{}".format(filepath),
-                                                       detail="发现镜像存在cron后门【{}】，恶意代码内容：<br/>{}".format(
-                                                           filepath, self.short_string(cmdline1)),
-                                                       repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
-                                                       status=3)
+                                    self.send_image_ws(
+                                        get,
+                                        msg="发现cron后门{}".format(filepath),
+                                        detail="发现镜像存在cron后门【{}】，恶意代码内容：<br/>{}".format(filepath,
+                                                                                                      self.short_string(
+                                                                                                          cmdline1)),
+                                        repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                        status=3
+                                    )
                                     result_dict[backdoor_regex] = cmdline1
-                        else: continue
+                        else:
+                            continue
                 return result_dict
 
             for cron in cron_list:
@@ -862,16 +1324,19 @@ gpgcheck=0""")
                             f_content = f.read()
                             for backdoor_regex in backdoor_regex_list1:
                                 if re.search(backdoor_regex, f_content):
-                                    self.send_image_ws(get, msg="发现system后门:{}".format(filepath),
-                                                       detail="发现镜像存在systemd后门文件【{}】，恶意代码内容：<br/>{}".format(
-                                                           filepath, self.short_string(f_content)),
-                                                       repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
-                                                       status=3)
+                                    self.send_image_ws(
+                                        get,
+                                        msg="发现system后门:{}".format(filepath),
+                                        detail="发现镜像存在systemd后门文件【{}】，恶意代码内容：<br/>{}".format(filepath,
+                                                                                                             self.short_string(
+                                                                                                                 f_content)),
+                                        repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                        status=3
+                                    )
                         except FileNotFoundError:
                             continue
                         except BaseException:
                             pass
-                            # public.print_log(e)
 
         def sshd():
             """
@@ -890,13 +1355,18 @@ gpgcheck=0""")
                                 f_exename = filepath.split("/")[-1]
                                 f_link_exename = f_link.split("/")[-1]
                                 if f_exename in rootok_list and f_link_exename == "sshd":
-                                    self.send_image_ws(get, msg="发现sshd后门{}".format(filepath), detail="发现sshd软链接后门：{}，文件命中恶意特征【exe={};link_file={}】".format(filepath, f_exename, f_link),
-                                    repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器", status=3)
+                                    self.send_image_ws(
+                                        get,
+                                        msg="发现sshd后门{}".format(filepath),
+                                        detail="发现sshd软链接后门：{}，文件命中恶意特征【exe={};link_file={}】".format(
+                                            filepath, f_exename, f_link),
+                                        repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                        status=3
+                                    )
                         except FileNotFoundError:
                             continue
                         except BaseException as e:
                             pass
-                            # public.print_log(e)
 
         def tcpwrapper():
             """
@@ -909,13 +1379,18 @@ gpgcheck=0""")
                         f_content = f.read()
                         for backdoor_regex in backdoor_regex_list1:
                             if re.search(backdoor_regex, f_content):
-                                self.send_image_ws(get, msg="发现tcpwrapper后门{}".format(config_filepath), detail="发现镜像存在tcpwrapper后门文件【{}】，恶意代码内容：<br/>{}".format(config_filepath, self.short_string(f_content)),
-                                                   repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器", status=3)
+                                self.send_image_ws(
+                                    get,
+                                    msg="发现tcpwrapper后门{}".format(config_filepath),
+                                    detail="发现镜像存在tcpwrapper后门文件【{}】，恶意代码内容：<br/>{}".format(
+                                        config_filepath, self.short_string(f_content)),
+                                    repair="1.进入使用该镜像部署的容器删除文件下的恶意代码<br/>2.排查容器是否已被入侵，更新容器内业务的访问令牌或账号密码<br/>3.建议更换官方镜像或其他可信的镜像部署容器",
+                                    status=3
+                                )
                 except FileNotFoundError:
                     continue
                 except BaseException as e:
                     pass
-                    # public.print_log(e)
 
         # 执行后门检测函数
         bashrc()
@@ -935,12 +1410,14 @@ gpgcheck=0""")
         @name 逃逸风险
         @author lwh<2024-01-24>
         """
+
         def sudoers():
             """
             @name sudo逃逸
             """
             sudo_regex = "(\w{1,})\s\w{1,}=\(.*\)\s(.*)"
-            unsafe_sudo_files = ["wget", "find", "cat", "apt", "zip", "xxd", "time", "taskset", "git", "sed", "pip", "tmux", "scp", "perl", "bash", "less", "awk", "man", "vim", "env", "ftp"]
+            unsafe_sudo_files = ["wget", "find", "cat", "apt", "zip", "xxd", "time", "taskset", "git", "sed", "pip",
+                                 "tmux", "scp", "perl", "bash", "less", "awk", "man", "vim", "env", "ftp"]
             try:
                 with image.open("/etc/sudoers", mode="r") as f:
                     lines = f.readlines()
@@ -955,7 +1432,15 @@ gpgcheck=0""")
                             continue
                         for unsafe_sudo_file in unsafe_sudo_files:
                             if unsafe_sudo_file in sudo_command.lower():
-                                self.send_image_ws(get, msg="发现存在逃逸风险用户{}".format(user), detail="用户名{}可能通过命令【{}】完成容器逃逸，使得攻击者获取宿主机的访问权限或者其他容器的权限。恶意内容：<br/>{}".format(user, sudo_command, line), status=3, repair="1.建议删除镜像或不再使用<br/>2.若已有业务使用该镜像，则进入容器环境，删除/etc/sudoers文件内包含用户{}的内容".format(user))
+                                self.send_image_ws(
+                                    get,
+                                    msg="发现存在逃逸风险用户{}".format(user),
+                                    detail="用户名{}可能通过命令【{}】完成容器逃逸，使得攻击者获取宿主机的访问权限或者其他容器的权限。恶意内容：<br/>{}".format(
+                                        user, sudo_command, line),
+                                    status=3,
+                                    repair="1.建议删除镜像或不再使用<br/>2.若已有业务使用该镜像，则进入容器环境，删除/etc/sudoers文件内包含用户{}的内容".format(
+                                        user)
+                                )
                                 break
             except Exception as e:
                 # public.print_log(e)

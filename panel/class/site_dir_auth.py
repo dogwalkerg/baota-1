@@ -352,6 +352,8 @@ class SiteDirAuth:
             password = get.password.strip()
             if len(password) < 3:
                 return public.returnMsg(False, '密码不能少于3位')
+            elif len(password) > 8:
+                return public.returnMsg(False, '密码不能大于8位，超过8位的部分无法验证')
             if re.search('\s', password):
                 return public.returnMsg(False, '密码不能存在空格')
             values['password'] = password

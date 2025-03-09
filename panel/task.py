@@ -198,6 +198,9 @@ class Task:
 
             if os.path.exists("/www/server/panel/install/{}_not_support.pl".format(soft_name)):
                 return (0, '不兼容此系统！请点详情说明！')
+            
+            if os.path.exists("/www/server/panel/install/{}_mem_kill.pl".format(soft_name)):
+                return (0, '内存不足安装异常！请点详情说明！')
 
             soft_config = install_config[soft_name]
 
@@ -468,6 +471,7 @@ class Task:
         '''
         try:
             pdata = public.get_user_info()
+            if not pdata: return False
             pdata['mac'] = self.get_mac_address()
             list_body = self.HttpPost(self._check_url, pdata)
             if not list_body: return False
@@ -652,17 +656,20 @@ class Task:
                     try:
                         data = json.loads(public.readFile(filename))
                         # 超过执行时间
-                        if time.time() > data['time']:
+                        if time.time() > int(data['time']):
                             # 插件
-                            if data['type'] == 2:
+                            if data['type'] in [2,'2']:
                                 res = PluginLoader.plugin_run(data['name'], data['fun'], public.to_dict_obj(data['args']))
                                 if not res['status']: continue
-
                                 os.remove(filename)
                                 public.WriteLog(data['title'], res['msg'])
-                            elif data['type'] == 1:
+                            elif data['type'] in [1,'1']:
                                 # 面板
-                                pass
+                                args = public.to_dict_obj(data['args'])
+                                args.model_index = data['model_index']
+                                res = PluginLoader.module_run(data['name'], data['fun'], args)
+                                os.remove(filename)
+                                public.WriteLog(data['title'], res['msg'])
                     except:
                         os.remove(filename)
             time.sleep(60)
@@ -1441,99 +1448,6 @@ class Task:
             except:
                 time.sleep(7200)
 
-    def count_ssh_logs(self):
-        '''
-            @name 统计SSH登录日志
-            @return None
-        '''
-        time.sleep(360)
-
-        if os.path.exists("/etc/debian_version"):
-            version = public.readFile('/etc/debian_version').strip()
-            if 'bookworm' in version or 'jammy' in version or 'impish' in version:
-                version = 12
-            else:
-                try:
-                    version = float(version)
-                except:
-                    version = 11
-
-            if version >= 12:
-                while True:
-                    filepath = "/www/server/panel/data/ssh_login_counts.json"
-
-                    # 获取今天的日期
-                    today = datetime.now().strftime('%Y-%m-%d')
-                    result = {
-                        'date': today,  # 添加日期字段
-                        'error': 0,
-                        'success': 0,
-                        'today_error': 0,
-                        'today_success': 0
-                    }
-
-                    try:
-                        filedata = public.readFile(filepath) if os.path.exists(filepath) else public.writeFile(filepath, "[]")
-                        try:
-                            data_list = json.loads(filedata)
-                        except:
-                            data_list = []
-
-                        # 检查是否已有今天的记录，避免重复统计
-                        found_today = False
-                        for day in data_list:
-                            if day['date'] == today:
-                                found_today = True
-                                break
-
-                        if found_today:
-                            break  # 如果找到今天的记录，跳出while循环
-
-                        today_err_num1 = int(public.ExecShell(
-                            "journalctl -u ssh --no-pager -S today |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
-                        today_err_num2 = int(public.ExecShell(
-                            "journalctl -u ssh --no-pager -S today |grep -a 'Connection closed by authenticating user' |grep -a 'preauth' |wc -l")[0])
-                        today_success = int(public.ExecShell("journalctl -u ssh --no-pager -S today |grep -a 'Accepted' |wc -l")[0])
-
-                        # 查看文件大小 判断是否超过5G
-                        is_bigfile = False
-
-                        res, err = public.ExecShell("journalctl --disk-usage")
-                        total_bytes = public.parse_journal_disk_usage(res)
-                        limit_bytes = 5 * 1024 * 1024 * 1024
-                        if total_bytes > limit_bytes:
-                            is_bigfile = True
-
-                        if is_bigfile:
-                            err_num1 = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
-                            err_num2 = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager --grep='Connection closed by authenticating user|preauth' |wc -l")[0])
-                            success = int(public.ExecShell("journalctl -u ssh --since '30 days ago' --no-pager |grep -a 'Accepted' |wc -l")[0])
-                        else:
-                            # 统计失败登陆次数
-                            err_num1 = int(public.ExecShell(
-                                "journalctl -u ssh --no-pager |grep -a 'Failed password for' |grep -v 'invalid' |wc -l")[0])
-                            err_num2 = int(public.ExecShell(
-                                "journalctl -u ssh --no-pager --grep='Connection closed by authenticating user|preauth' |wc -l")[0])
-                            success = int(public.ExecShell("journalctl -u ssh --no-pager|grep -a 'Accepted' |wc -l")[0])
-                        result['error'] = err_num1 + err_num2
-                        # 统计成功登录次数
-                        result['success'] = success
-                        result['today_error'] = today_err_num1 + today_err_num2
-                        result['today_success'] = today_success
-
-                        data_list.insert(0, result)
-                        data_list = data_list[:7]
-                        public.writeFile(filepath, json.dumps(data_list))
-                    except:
-                        public.writeFile(filepath, json.dumps([{
-                            'date': today,  # 添加日期字段
-                            'error': 0,
-                            'success': 0,
-                            'today_error': 0,
-                            'today_success': 0
-                        }]))
-                    time.sleep(86400)
-
     # 2024/11/19 11:00 Docker网站项目-网站到期处理
     def deal_with_docker_expired_site(self):
         '''
@@ -1568,12 +1482,43 @@ class Task:
             if not os.path.exists(pl_file): public.writeFile(pl_file, 'True')
         except:
             pass
+    # 定时进行云安全扫描
+    def check_safecloud_task(self):
+        '''
+            @description 云安全扫描任务 /script/safecloud_list.py
+                        【恶意文件检测 已移植到task_ssh_error_count执行 每6小时执行一次】
+                        【首页风险任务 每24小时执行一次】
+                        【漏洞扫描任务 已移植到warning_list.py执行】
+            @author date
+            @return void
+        '''
+        self.write_log("启动云安全扫描任务")
+        time.sleep(120)  # 启动时延迟2分钟，避免与其他服务同时启动
 
+        while True:
+            try:
+                # 检查上一次执行是否还在运行
+                ps_result = public.ExecShell("ps aux |grep 'warning_list.py'|grep -v grep|wc -l")[0]
+                if int(ps_result) > 0:
+                    self.write_log("首页风险任务正在执行中，跳过本次执行", _level='WARNING')
+                    time.sleep(3600)  # 如果上一个任务还在运行，等待1小时后重试
+                    continue
+
+                # 执行扫描任务
+                self.write_log("开始执行首页风险任务")
+                os.system("nohup {} {}/script/warning_list.py > /dev/null 2>&1 &".format(self.python_bin, self.panel_path))
+
+                # 24小时执行一次
+                time.sleep(86400)  # 24 小时 24 * 60 * 60 = 3600 * 24 = 86400
+
+            except Exception as e:
+                time.sleep(3600)  # 发生异常时等待1小时后重试
     def run_thread(self):
         '''
             @name 运行线程集合
             @return None
         '''
+        from mailModel.power_mta.maillog_stat import maillog_event
         tkeys = self.thread_dict.keys()
 
         thread_list = {
@@ -1592,8 +1537,9 @@ class Task:
             'run_tasks_list': self.run_tasks_list,
             # "check_database_quota": self.check_database_quota,
             "start_daily": self.start_daily,
-            "count_ssh_logs": self.count_ssh_logs,
             "deal_with_docker_expired_site": self.deal_with_docker_expired_site,
+            "check_safecloud_task": self.check_safecloud_task,
+            "maillog_event": maillog_event,
         }
 
         for skey in thread_list.keys():

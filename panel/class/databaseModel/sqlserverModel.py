@@ -88,6 +88,7 @@ class main(databaseBase):
         '''
         @添加远程数据库
         '''
+        public.set_module_logs('sqlserver', 'addremoteserver', 1)
         return self.AddBaseCloudServer(args)
 
     def RemoveCloudServer(self, args):

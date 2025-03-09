@@ -566,6 +566,15 @@
 				[9, "addtime", "TEXT", 0, "''", 0],
 				[10, "brief", "TEXT", 0, "''", 0]
 			]
+		},
+		"firewall_malicious_ip": {
+			"sql": "CREATE TABLE `firewall_malicious_ip` (\n  `id` INTEGER PRIMARY KEY AUTOINCREMENT,\n  `address` TEXT DEFAULT '',\n  `brief` TEXT DEFAULT '',\n  `addtime` TEXT DEFAULT ''\n)",
+			"fields": [
+				[0, "id", "INTEGER", 0, 0, 1],
+				[1, "address", "TEXT", 0, "''", 0],
+				[2, "brief", "TEXT", 0, "''", 0],
+				[3, "addtime", "TEXT", 0, "''", 0]
+			]
 		}
 	},
 	"log.db": {

@@ -14,7 +14,7 @@
 
 import os, sys, re, json, shutil, psutil, time
 import traceback
-
+import datetime
 if not '/www/server/panel/class/' in sys.path: sys.path.insert(0, '/www/server/panel/class/')
 from projectModel.base import projectBase
 import public, firewalls
@@ -897,8 +897,7 @@ class main(projectBase):
             @return dict
         '''
         project_find = self.get_project_find(get.project_name)
-        day_time = time.time()
-        if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+        if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
             return public.return_error('当前项目已过期，请重新设置项目到期时间')
 
         res = self.stop_project(get)
@@ -919,7 +918,7 @@ class main(projectBase):
         '''
         project_find = self.get_project_find(get.project_name)
         day_time = time.time()
-        if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+        if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
             return public.return_error('当前项目已过期，请重新设置项目到期时间')
 
         pid_file = "{}/{}.pid".format(self._net_pid_path, get.project_name)
@@ -956,8 +955,7 @@ class main(projectBase):
         if not project_find: return public.returnMsg(False, '项目不存在')
 
         project_find = self.get_project_find(get.project_name)
-        day_time = time.time()
-        if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+        if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
             return public.return_error('当前项目已过期，请重新设置项目到期时间')
 
         self._update_project(get.project_name, project_find)
@@ -1342,8 +1340,10 @@ echo $! > {pid_file}'''.format(
             if hasattr(get, 'project_cmd'): project_find['project_config']['project_cmd'] = get.project_cmd.strip()
             if hasattr(get, 'release_firewall'): project_find['release_firewall'] = get.release_firewall
             if hasattr(get, 'ps'): project_find['ps'] = get.ps.strip()
+            if hasattr(get, 'project_ps'): project_find['ps'] = get.project_ps.strip()
             pdata = {
-                'project_config': json.dumps(project_find['project_config'])
+                'project_config': json.dumps(project_find['project_config']),
+                "ps": project_find["ps"],
             }
             public.M('sites').where('name=?', (get.project_name,)).update(pdata)
             self.set_config(get.project_name)

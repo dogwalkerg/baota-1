@@ -74,11 +74,8 @@ class SMSMsg:
         sm_args = self.canonical_data(sm_args)
         self._PDATA['data']['sm_type'] = s_type
         self._PDATA['data']['sm_args'] = sm_args
-        print(s_type)
-        print(sm_args)
         result = self._request('send_msg')
         u_key = '{}****{}'.format(self.user_info['username'][:3], self.user_info['username'][-3:])
-        print(result)
         if isinstance(result, str):
             write_push_log("短信", False, title, [u_key])
             return result

@@ -39,6 +39,7 @@ class main(safeBase):
     _white_list_file = "/www/server/panel/plugin/firewall/whitelist.txt"  # 证书验证IP
 
     _white_list = []
+    _host_ip = None
     _firewall_create_tip = '{}/data/firewall_sqlite.pl'.format(public.get_panel_path())
 
     def __init__(self):
@@ -46,6 +47,8 @@ class main(safeBase):
         if os.path.exists('/usr/sbin/firewalld') and os.path.exists('/usr/bin/yum'):
             self.__isFirewalld = True
         if os.path.exists('/usr/sbin/ufw') and os.path.exists('/usr/bin/apt-get'):
+            if not os.path.exists('/usr/sbin/ipset'):
+                public.ExecShell('apt-get install -y ipset')
             self.__isUfw = True
 
         self.get_old_rule()
@@ -155,7 +158,7 @@ class main(safeBase):
 
     def SetPing(self, get):
         if "status" not in get:
-            return public.returnMsg(False,'请传入status参数')
+            return public.returnMsg(False, '请传入status参数')
         if get.status == '1':
             get.status = '0'
         else:
@@ -193,6 +196,12 @@ class main(safeBase):
             return public.returnMsg(False, '未知控制命令!')
         names = ["重载", "重启", "停止", "启动"]
         result = dict(zip(order, names))
+
+        cache_key = "firewall_info"
+        from BTPanel import cache
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
+
         if self.__isUfw:
             if get.status == "stop":
                 public.ExecShell('/usr/sbin/ufw disable')
@@ -540,7 +549,8 @@ class main(safeBase):
             strategy = "放行"
         elif types == 'drop':
             strategy = "禁止"
-        public.WriteLog("系统防火墙", "添加端口规则: 协议:{}, 端口:{}, 策略:{}, IP:{}".format(protocol, ports, strategy, log_ip))
+        public.WriteLog("系统防火墙",
+                        "添加端口规则: 协议:{}, 端口:{}, 策略:{}, IP:{}".format(protocol, ports, strategy, log_ip))
         # 如果有忽略的端口，返回忽略的端口
         if ignore_list:
             return public.returnMsg(True, '添加成功，{} 端口存在相同规则已跳过'.format(', '.join(ignore_list)))
@@ -575,7 +585,9 @@ class main(safeBase):
             strategy = "放行"
         else:
             strategy = "禁止"
-        public.WriteLog("系统防火墙", "删除端口规则: 协议:{}, 端口:{}, 策略:{}, IP:{}".format(get.protocol, get.ports, strategy, log_ip))
+        public.WriteLog("系统防火墙",
+                        "删除端口规则: 协议:{}, 端口:{}, 策略:{}, IP:{}".format(get.protocol, get.ports, strategy,
+                                                                                log_ip))
         return public.returnMsg(True, 'DEL_SUCCESS')
 
     # 修改入栈规则
@@ -644,7 +656,9 @@ class main(safeBase):
             strategy = "放行"
         elif get.types == 'drop':
             strategy = "禁止"
-        public.WriteLog("系统防火墙", "修改端口规则： 协议:{}, 端口:{}, 策略:{}, IP:{}".format(get.protocol, get.ports.strip(), strategy, log_ip))
+        public.WriteLog("系统防火墙",
+                        "修改端口规则： 协议:{}, 端口:{}, 策略:{}, IP:{}".format(get.protocol, get.ports.strip(),
+                                                                                strategy, log_ip))
         return public.returnMsg(True, '操作成功')
 
     # firewall端口规则添加
@@ -1456,7 +1470,8 @@ class main(safeBase):
                 return ipaddress.ip_address(ip) == ipaddress.ip_address(ip_range[0])
             else:  # 如果是一个IP范围
                 start_ip, end_ip = ip_range
-                ip_networks = ipaddress.summarize_address_range(ipaddress.ip_address(start_ip), ipaddress.ip_address(end_ip))
+                ip_networks = ipaddress.summarize_address_range(ipaddress.ip_address(start_ip),
+                                                                ipaddress.ip_address(end_ip))
                 return any(ipaddress.ip_address(ip) in net for net in ip_networks)
         except:
             return True
@@ -1750,7 +1765,9 @@ class main(safeBase):
             strategy = "放行"
         elif get.types == 'drop':
             strategy = "禁止"
-        public.WriteLog("系统防火墙", "修改规则, IP:{}, 策略:{} -> IP:{}, 策略:{}".format(_address, old_strategy, get.address.strip(), strategy))
+        public.WriteLog("系统防火墙",
+                        "修改规则, IP:{}, 策略:{} -> IP:{}, 策略:{}".format(_address, old_strategy, get.address.strip(),
+                                                                            strategy))
         return public.returnMsg(True, '操作成功')
 
     # 查看端口转发状态
@@ -1822,7 +1839,8 @@ class main(safeBase):
         public.M('firewall_trans').add('start_port, ended_ip, ended_port, protocol, addtime',
                                        (s_port, d_ip, d_port, protocol, addtime))
         self.FirewallReload()
-        public.WriteLog("系统防火墙", "添加端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{}".format(s_port, d_port, d_ip))
+        public.WriteLog("系统防火墙",
+                        "添加端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{}".format(s_port, d_port, d_ip))
         return public.returnMsg(True, 'ADD_SUCCESS')
 
     # 删除端口转发
@@ -1846,7 +1864,8 @@ class main(safeBase):
                 self.iptables_handle_del(s_port, d_port, d_ip, protocol)
         public.M('firewall_trans').where("id=?", (id,)).delete()
         self.FirewallReload()
-        public.WriteLog("系统防火墙", "删除端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{}".format(s_port, d_port, d_ip))
+        public.WriteLog("系统防火墙",
+                        "删除端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{}".format(s_port, d_port, d_ip))
         return public.returnMsg(True, 'DEL_SUCCESS')
 
     # 修改端口转发
@@ -1889,7 +1908,9 @@ class main(safeBase):
         public.M('firewall_trans').where('id=?', id).update(
             {'start_port': s_port, "ended_ip": d_ip, "ended_port": d_port, "protocol": pool})
         self.FirewallReload()
-        public.WriteLog("系统防火墙", "修改端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{} -> 起始端口:{}, 目的端口:{}, 目的IP:{}".format(start_port, ended_port, ended_ip, s_port, d_port, d_ip))
+        public.WriteLog("系统防火墙",
+                        "修改端口转发规则: 起始端口:{}, 目的端口:{}, 目的IP:{} -> 起始端口:{}, 目的端口:{}, 目的IP:{}".format(
+                            start_port, ended_port, ended_ip, s_port, d_port, d_ip))
         return public.returnMsg(True, '操作成功.')
 
     # 处理ufw的端口转发添加
@@ -2126,15 +2147,17 @@ class main(safeBase):
         查询本机ip地址
         :return:
         """
-        try:
-            import socket
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(('8.8.8.8', 80))
-            ip = s.getsockname()[0]
-        finally:
-            s.close()
+        if self._host_ip is None:
+            try:
+                import socket
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8', 80))
+                # ip = s.getsockname()[0]
+                self._host_ip = s.getsockname()[0]
+            finally:
+                s.close()
 
-        return ip
+        return self._host_ip
 
     def load_white_list(self):
         try:
@@ -2144,103 +2167,88 @@ class main(safeBase):
                 white_list = []
                 for ip_obj in white_list_ips:
                     white_list += ip_obj["ips"]
-                self._white_list = white_list  # public.WriteLog("firewall_debug", str(white_list))
+                self._white_list = white_list
+                # public.WriteLog("firewall_debug", str(white_list))
             return self._white_list
         except Exception as e:
             public.WriteLog("firewall", "加载白名单列表失败！")
         return []
 
+    def ip_in_network(self, ip, ip_make_net):
+        """判断 IP 是否属于网段"""
+        # 解析网段
+        network_ip, prefix = ip_make_net.split("/")
+        prefix = int(prefix)
+
+        # 将 IP 和网段转换为整数
+        ip_int = int.from_bytes(map(int, ip.split(".")), "big")
+        network_int = int.from_bytes(map(int, network_ip.split(".")), "big")
+
+        # 计算掩码
+        mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+
+        # 判断 IP 是否属于网段
+        return (ip_int & mask) == (network_int & mask)
+
     def verify_ip(self, ip_entry):
         """检查规则IP是否和内网IP重叠"""
         try:
-            try:
-                import IPy
-            except:
-                ipy_tips = '/tmp/bt_ipy.pl'
-                if not os.path.exists(ipy_tips):
-                    os.system("nohup btpip install IPy &>/dev/null &")
-                    public.WriteFile(ipy_tips, 'True')
+            ip_start = ip_entry.split(".")
+            if ip_start[0] in ('127', '10'):
+                return False
 
-            release_ips = [IPy.IP("127.0.0.1"), IPy.IP("172.16.1.1"), IPy.IP("10.0.0.1"), IPy.IP("192.168.0.0"),
-                           IPy.IP(self.get_host_ip())]
+            if (ip_start[0] == "172" and ip_start[1] == "16") or (ip_start[0] == "192" and ip_start[1] == "168"):
+                return False
+
+            release_ips = [self.get_host_ip()]
             white_list = self.load_white_list()
-
             release_ips += white_list
 
-            ip = IPy.IP(ip_entry, make_net=True)
-            for rip_obj in release_ips:
-                overlap = ip.overlaps(rip_obj)
-                if overlap > 0:
+            for rip in release_ips:
+                if self.ip_in_network(rip, ip_entry):
                     return False
             return True
         except:
             return False
 
-    def handle_firewall_country(self, brief, ip_list, types, port_list, is_update = False):
-        try:
-            xml_path = "/etc/firewalld/ipsets/{}.xml".format(brief)
-            old_xml_path = "/etc/firewalld/ipsets/{}.xml.old".format(brief)
-            if not is_update:
-                if os.path.exists(xml_path):
-                    public.ExecShell("rm -f {}".format(xml_path))
-                if os.path.exists(old_xml_path):
-                    public.ExecShell("\cp -r {} {}".format(old_xml_path, xml_path))
-            else:
-                public.ExecShell("rm -f {}".format(xml_path))
-                public.ExecShell("rm -f {}".format(old_xml_path))
-
-            if not os.path.exists(xml_path) and not os.path.exists(old_xml_path):
-                public.ExecShell("firewall-cmd --permanent --zone=public --new-ipset='{}' --type=hash:net --option=maxelem=1000000".format(brief))
-                tree = ElementTree()
-                tree.parse(xml_path)
-                root = tree.getroot()
-                for ip in ip_list:
-                    if self.verify_ip(ip):
-                        entry = Element("entry")
-                        entry.text = ip
-                        root.append(entry)
-                self.format(root)
-                tree.write(xml_path, 'utf-8', xml_declaration=True)
-                public.ExecShell("rm -f {}".format(old_xml_path))
-                public.ExecShell("\cp -r {} {}".format(xml_path, old_xml_path))
-
-            if port_list:
-                for port in port_list:
-                    public.ExecShell('firewall-cmd --permanent --zone=public --add-rich-rule=\'rule source ipset="' + brief + '" port port="' + port + '" protocol=tcp ' + types + '\'')
-            else:
-                public.ExecShell('firewall-cmd --permanent --zone=public --add-rich-rule=\'rule source ipset="' + brief + '" ' + types + '\'')
-        except Exception as e:
-            return {"status": "error", "msg": str(e)}
-
-    def handle_ufw_country(self, brief, ip_list, types, port_list, is_update = False):
-        '''
-            @name ufw设置封锁ip到ipset的中
-            @author wzz <2024/2/23 上午 11:15>
-            @param "data":{"参数名":""} <数据类型> 参数描述
-            @return dict{"status":True/False,"msg":"提示信息"}
-        '''
-        btsh_path = "/etc/ufw/btsh"
-        if not is_update or not os.path.exists(btsh_path):
-            tmp_path = '/tmp/firewall_tmp.sh'
-            tmp_file = open(tmp_path, 'w')
-            _string = "#!/bin/bash\n"
+    def handle_firewall_country(self, brief, ip_list, types, port_list, is_update=False):
+        firewall_ipset_path = "/tmp/firewall_{}.txt".format(brief)
+        if is_update or not os.path.exists(firewall_ipset_path):
+            tmp_file = open(firewall_ipset_path, 'w')
+            _string = ""
             for ip in ip_list:
                 if self.verify_ip(ip):
-                    _string = _string + 'ipset add ' + brief + ' ' + ip + '\n'
+                    _string = _string + "add {} {}\n".format(brief, ip)
             tmp_file.write(_string)
             tmp_file.close()
-            public.ExecShell('ipset create ' + brief + ' hash:net maxelem 1000000; /bin/bash /tmp/firewall_tmp.sh')
+            public.ExecShell(
+                'ipset create {} hash:net maxelem 1000000; ipset restore -f {}'.format(brief, firewall_ipset_path))
         else:
-            public.ExecShell('ipset create {} hash:net maxelem 1000000; /bin/bash {}/{}.sh'.format(brief, btsh_path, brief))
-        if port_list:
-            for port in port_list:
-                public.ExecShell('iptables -I INPUT -m set --match-set {} src -p tcp --destination-port {} -j {}'.format(brief, port, types.upper()))
-        else:
-            public.ExecShell('iptables -I INPUT -m set --match-set {} src -j {}'.format(brief, types.upper()))
+            public.ExecShell(
+                'ipset create {} hash:net maxelem 1000000; ipset restore -f {}'.format(brief, firewall_ipset_path))
+
+        if self.__isUfw and not self.__isFirewalld:  # ufw防火墙和未知类型的
+            if port_list:
+                for port in port_list:
+                    public.ExecShell(
+                        'iptables -I INPUT -m set --match-set {} src -p tcp --destination-port {} -j {}'.format(brief,
+                                                                                                                port,
+                                                                                                                types.upper()))
+            else:
+                public.ExecShell('iptables -I INPUT -m set --match-set {} src -j {}'.format(brief, types.upper()))
+        else:  # firewalld防火墙 通过firewall --direct   让iptables来管理
+            if port_list:
+                for port in port_list:
+                    public.ExecShell(
+                        'firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -m set --match-set {brief} src -p tcp --dport {port} -j {action}'.format(
+                            brief=brief, port=port, action=types.upper()))
+            else:
+                public.ExecShell(
+                    'firewall-cmd --permanent --zone=public --direct --add-rule ipv4 filter INPUT 0 -m set --match-set {} src -j {}'.format(
+                        brief, types.upper()))
 
     # 查询区域规则
     def get_country_list(self, args):
-
         p = 1
         limit = 15
         if 'p' in args: p = args.p
@@ -2273,6 +2281,14 @@ class main(safeBase):
                 self.firewall_admin(get)
 
             content = self.get_profile(self._ips_path)
+            ip_dict = {}
+            try:
+                content = json.loads(content)
+            except:
+                return public.returnMsg(False, '获取区域列表失败！')
+            for cont in content:  # {"US":[],"XX":[]}
+                ip_dict.update({cont["brief"]: cont["ips"]})
+
             if "除中国之外" in input_country:
                 input_country = [i['CH'] for i in countrys if not "中国" in i['CH']]
                 countrys_dict = {i['CH']: i['brief'] for i in countrys}
@@ -2280,7 +2296,9 @@ class main(safeBase):
                 for i in input_country:
                     get.brief = countrys_dict.get(i, None)
                     get.country = i
-                    self.create_country(get, True, content)
+                    ip_list = ip_dict.get(get.brief)
+                    if ip_list:
+                        self.create_country(get, True, ip_list)
             else:
                 countrys_dict = {i['CH']: i['brief'] for i in countrys}
                 if isinstance(input_country, str):
@@ -2288,11 +2306,15 @@ class main(safeBase):
                 for i in input_country:
                     get.brief = countrys_dict.get(i, None)
                     get.country = i
-                    self.create_country(get, True, content)
+                    ip_list = ip_dict.get(get.brief)
+                    if ip_list is None: continue
+
+                    self.create_country(get, True, ip_list)
             get.status = "restart"
             self.firewall_admin(get)
             return public.returnMsg(True, '添加成功')
-        except:
+        except Exception as e:
+            public.print_log(e)
             return public.returnMsg(False, '添加失败')
 
     # 添加区域规则
@@ -2324,33 +2346,24 @@ class main(safeBase):
         if data: cache.delete(cache_key)
 
         self.get_os_info()
+        ip_list = []
         if _ips_paths is None:
             content = self.get_profile(self._ips_path)
+            try:
+                result = json.loads(content)
+            except:
+                return public.returnMsg(False, '获取区域列表失败！')
+            for r in result:
+                if brief == r["brief"]:
+                    ip_list = r["ips"]
+                    break
+            if not ip_list:
+                return public.returnMsg(True, "请输入正确的区域名称！")
         else:
-            content = _ips_paths
+            ip_list = _ips_paths
 
-        try:
-            result = json.loads(content)
-        except:
-            return public.returnMsg(False, '获取区域列表失败！')
+        self.handle_firewall_country(brief, ip_list, types, port_list, get.is_update)
 
-        ip_list = []
-        for r in result:
-            if brief == r["brief"]:
-                ip_list = r["ips"]
-                break
-        if not ip_list:
-            return public.returnMsg(True, "请输入正确的区域名称！")
-
-        if self.__isUfw:
-            self.handle_ufw_country(brief, ip_list, types, port_list, get.is_update)
-        else:
-            if self.__isFirewalld:
-                result = self.handle_firewall_country(brief, ip_list, types, port_list, get.is_update)
-                if result:
-                    return result
-            else:
-                self.handle_ufw_country(brief, ip_list, types, port_list, get.is_update)
         addtime = time.strftime('%Y-%m-%d %X', time.localtime())
         if port_list:
             for port in port_list:
@@ -2359,7 +2372,6 @@ class main(safeBase):
         else:
             public.M('firewall_country').add('country,types,brief,ports,addtime', (country, types, brief, '', addtime))
         if is_mutil is False:
-            # self.FirewallReload()
             get.status = "restart"
             self.firewall_admin(get)
         if not get.ports:
@@ -2373,7 +2385,19 @@ class main(safeBase):
         public.WriteLog("系统防火墙", "添加区域规则: 地区:{}, 策略:{}, 端口:{}".format(get.country, strategy, log_port))
         return public.returnMsg(True, 'ADD_SUCCESS')
 
-    # 删除区域规则
+    def del_all_countrys(self, get):  # 测试用 /safe/firewall/del_all_countrys
+        res = public.M('firewall_country').where('1=?', (1,)).get()
+        for r in res:
+            get.id = r['id']
+            get.types = r['types']
+            get.brief = r['brief']
+            get.ports = r['ports']
+            get.country = r['country']
+            get.reload = 0
+            self.remove_country(get)
+        get.status = "restart"
+        return self.firewall_admin(get)
+
     def remove_country(self, get):
         id = get.id
         types = get.types
@@ -2382,8 +2406,13 @@ class main(safeBase):
         country = get.country
         get.reload = get.get("reload/d", 1)
 
+        cache_key = "firewall_info"
+        from BTPanel import cache
+        data = cache.get(cache_key)
+        if data: cache.delete(cache_key)
+
         public.M('firewall_country').where("id=?", (id,)).delete()
-        if self.__isUfw:
+        if self.__isUfw or not self.__isFirewalld:
             if not ports:
                 public.ExecShell('iptables -D INPUT -m set --match-set ' + brief + ' src -j ' + types.upper())
             else:
@@ -2392,27 +2421,23 @@ class main(safeBase):
             if not public.M('firewall_country').where("country=?", (country,)).count() > 0:
                 public.ExecShell('ipset destroy ' + brief)
         else:
-            if self.__isFirewalld:
-                if not ports:
-                    public.ExecShell(
-                        'firewall-cmd --permanent --zone=public --remove-rich-rule=\'rule source ipset="' + brief + '" ' + types + '\'')
-                else:
-                    public.ExecShell(
-                        'firewall-cmd --permanent --zone=public --remove-rich-rule=\'rule source ipset="' + brief + '" port port="' + ports + '" protocol=tcp ' + types + '\'')
-                if not public.M('firewall_country').where("country=?", (country,)).count() > 0:
-                    public.ExecShell('firewall-cmd --permanent --zone=public --delete-ipset=' + brief)
-                public.ExecShell("ipset destroy " + brief)
-                if brief == "US":
-                    public.ExecShell("rm -f /etc/firewalld/ipsets/{}.xml".format(brief))
-                    public.ExecShell("rm -f /etc/firewalld/ipsets/{}.xml.old".format(brief))
+            if not ports:
+                public.print_log(
+                    "firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -m set --match-set {} src -j {}".format(
+                        brief, types.upper()))
+                res = public.ExecShell(
+                    "firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -m set --match-set {} src -j {}".format(
+                        brief, types.upper()))
+                public.print_log(res)
             else:
-                if not ports:
-                    public.ExecShell('iptables -D INPUT -m set --match-set ' + brief + ' src -j ' + types.upper())
-                else:
-                    public.ExecShell(
-                        'iptables -D INPUT -m set --match-set ' + brief + ' src -p tcp --destination-port ' + ports + ' -j ' + types.upper())
-                if not public.M('firewall_country').where("country=?", (country,)).count() > 0:
-                    public.ExecShell('ipset destroy ' + brief)
+                public.ExecShell(
+                    'firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -m set --match-set {} src -p tcp --dport {} -j {}'.format(
+                        brief, ports, types.upper()))
+            if not public.M('firewall_country').where("country=?", (country,)).count() > 0:
+                # firewalld 防火墙下 需要重启才能更新规则至iptables
+                get.status = "restart"
+                self.firewall_admin(get)
+                public.ExecShell("ipset destroy " + brief)
         if get.reload == 1:
             get.status = "restart"
             self.firewall_admin(get)
@@ -2801,7 +2826,7 @@ class main(safeBase):
         try:
             content = self.get_profile(self._country_path)
             result = json.loads(content)
-            result = sorted(result, key=lambda x : x['CH'], reverse=True)
+            result = sorted(result, key=lambda x: x['CH'], reverse=True)
 
             if isinstance(result, list):
                 result.insert(0, {"CH": "除中国之外", "brief": "OTHER"})
@@ -2817,7 +2842,7 @@ class main(safeBase):
             if not os.path.exists(b_path): os.makedirs(b_path)
 
             if path in [self._ips_path, self._country_path, self._white_list_file]:
-                public.downloadFile('{}/install/lib/{}'.format(public.get_url(),os.path.basename(path)), path)
+                public.downloadFile('{}/install/lib/{}'.format(public.get_url(), os.path.basename(path)), path)
 
         content = ""
         with open(path, "r", encoding='utf-8', errors='ignore') as fr:
@@ -3490,8 +3515,214 @@ class main(safeBase):
 
         return public.returnMsg(True, "解锁成功")
 
+    # 恶意IP封禁 --- start
+    def check_malicious_switch(self):
+        """
+        检查恶意IP封禁开关
+        :return: True:开启 False:关闭
+        """
+        # public.get_panel_path()
+        res = public.readFile("/www/server/panel/config/firewalld_malicious_ip.pl")
 
-# 端口放扫描 --- end
+        if res and 'open' in res:
+            return True
+        else:
+            return False
+
+    def get_malicious_ip_status(self, get):
+        """ /safe/firewall/get_malicious_ip_status
+        获取恶意IP封禁状态
+        :param get:
+        :return:
+        """
+        status = self.check_malicious_switch()
+        ip_count = public.M('firewall_malicious_ip').count()
+        malicious_ip_task_runtime = ''
+        if status:
+            crontab_malicious = public.M('crontab').where("name like '%恶意IP封禁%'", ()).get()
+            if len(crontab_malicious) > 0:
+                crontab_malicious = crontab_malicious[0]
+                malicious_ip_task_runtime = '{}时{}分'.format(crontab_malicious['where_hour'],
+                                                              crontab_malicious['where_minute'])
+            else:  # 用户手动从计划任务删除了任务的情况
+                status = False
+                ip_count = 0
+                get.status = 0
+                self.switch_malicious_ip(get)
+        return public.return_data(True, {'status': status, 'ip_count': ip_count, "runtime": malicious_ip_task_runtime})
+
+    def switch_malicious_ip(self, get):
+        """ /safe/firewall/switch_malicious_ip
+        切换恶意IP封禁开关
+        :param get: status 1开启 0关闭
+        :return:
+        """
+        if 'status' not in get: return public.returnMsg(False, '参数错误!')
+        status = int(get.status)
+        from crontab import crontab
+        self.init_malicious_ip_detect()
+        malicious_open = self.check_malicious_switch()
+
+        if status == 1:
+            if malicious_open:
+                return public.returnMsg(False, '恶意IP封禁功能已开启!')
+            crontab_malicious = public.M('crontab').where("name like '%恶意IP封禁%'", ()).get()
+            if len(crontab_malicious) > 0:
+                return public.returnMsg(True, '恶意IP封禁功能已开启!')
+
+            public.writeFile("/www/server/panel/config/firewalld_malicious_ip.pl", 'open')
+            public.WriteLog('自动恶意IP封禁', '功能开启')
+
+            public.set_module_logs('malicious', 'switch_malicious_ip', 1)
+
+            # 每个用户随机 凌晨0-4小时 之间运行 错开分流
+            import random
+            run_hour = random.randint(0, 4)
+            run_minute = random.randint(0, 59)
+
+            get.name = "BT-恶意IP封禁[系统任务请勿修改]"
+            get.type = "day"
+            get.hour = run_hour
+            get.minute = run_minute
+            get.where1 = "1"
+            get.week = "1"
+            get.timeType = "sday"
+            get.timeSet = "1"
+            get.second = ""
+            get.sType = "toShell"
+            get.sBody = "/www/server/panel/pyenv/bin/python3 -u /www/server/panel/script/malicious_ip_task.py"
+            get.sName = ""
+            get.backupTo = ""
+            get.save = ""
+            get.urladdress = ""
+            get.save_local = "0"
+            get.notice = "0"
+            get.notice_channel = ""
+            get.datab_name = ""
+            get.tables_name = ""
+            get.keyword = ""
+            get.flock = "1"
+            get.stop_site = "0"
+            get.version = ""
+            get.user = ""
+            return crontab().AddCrontab(get)
+        else:
+            if not malicious_open:
+                return public.returnMsg(True, '恶意IP封禁功能已关闭!')
+
+            public.WriteLog('自动恶意IP封禁', '功能关闭')
+            res = public.M('crontab').where("name like '%恶意IP封禁%'", ()).get()
+            if len(res) > 0:
+                for crontask in res:
+                    get.id = crontask["id"]
+                    crontab().DelCrontab(get)
+            self.remove_all_malicious_ip(get)
+            public.writeFile("/www/server/panel/config/firewalld_malicious_ip.pl", 'close')
+            return public.returnMsg(True, '恶意IP封禁功能已关闭!')
+
+    def init_malicious_ip_detect(self):
+        """
+        "自动封禁恶意ip初始化 只用运行一次"
+        :param get:
+        :return:
+        """
+        malicious_ip_pl = "/www/server/panel/config/firewalld_malicious_ip.pl"
+        if os.path.exists(malicious_ip_pl):
+            return False
+
+        public.ExecShell("sh /www/server/panel/script/open-iptables-log.sh")
+
+        # 执行sh脚本
+        public.M(None).db('firewall_malicious_ip').execute('''CREATE TABLE IF NOT EXISTS "firewall_malicious_ip" (
+            "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+            "address" TEXT DEFAULT '',
+            "brief" TEXT DEFAULT '',
+            "addtime" TEXT DEFAULT '');''')
+        public.M(None).db('firewall_malicious_ip').execute(
+            'CREATE INDEX firewall_malicious_ip_address ON firewall_malicious_ip (address);')
+        with open(malicious_ip_pl, 'w') as f:
+            f.write('close')
+        return True
+
+    def get_malicious_ip_list(self, get):
+        """ /safe/firewall/get_malicious_ip_list
+        获取恶意IP列表
+        :param get: p:页码 limit:每页显示数量 query:搜索关键词
+        :return:
+        """
+
+        if not self.check_malicious_switch():
+            return public.returnMsg(False, '请先开启恶意IP封禁功能!')
+
+        p = 1
+        limit = 10
+        if 'p' in get: p = int(get.p)
+        if 'limit' in get: limit = int(get.limit)
+
+        sql = public.M('firewall_malicious_ip')
+        where = '1=1'
+
+        if hasattr(get, 'query'):
+            where = " address like '%{search}%' or brief like '%{search}%'".format(search=get.query)
+
+        count = sql.where(where, ()).count()
+        data = public.get_page(count, int(p), int(limit))
+        data['data'] = sql.where(where, ()).limit('{},{}'.format(data['shift'], data['row'])).order(
+            'addtime desc').select()
+
+        data['data'] = public.return_area(data['data'], "address")
+        return data
+
+    def remove_malicious_ip(self, get):
+        """ /safe/firewall/remove_malicious_ip
+        删除恶意IP
+        :param get: id:恶意IPID address:恶意IP地址 reload:是否重启防火墙 1是 0否
+        :return:
+        """
+        if not self.check_malicious_switch():
+            return public.returnMsg(False, '请先开启恶意IP封禁功能!')
+        if 'id' not in get or 'address' not in get:
+            return public.returnMsg(False, '参数错误!')
+
+        get.reload = get.get("reload/d", 1)
+
+        id = get.id
+        address = get.address
+        public.M('firewall_malicious_ip').where('id=?', (id,)).delete()
+
+        public.ExecShell("ipset del malicious_ipset {}".format(address))
+
+        if get.reload == 1:
+            get.status = "restart"
+            self.firewall_admin(get)
+
+        return public.returnMsg(True, '删除成功!')
+
+    def remove_all_malicious_ip(self, get):
+        """ /safe/firewall/remove_all_malicious_ip
+        清空恶意IP列表
+        :param get:
+        :return:
+        """
+        if not self.check_malicious_switch():
+            return public.returnMsg(False, '请先开启恶意IP封禁功能!')
+
+        if public.M('firewall_malicious_ip').count() == 0:
+            return public.returnMsg(True, '清空成功!')
+
+        public.M('firewall_malicious_ip').delete()
+        if self.__isUfw or not self.__isFirewalld:
+            public.ExecShell('iptables -D INPUT -m set --match-set malicious_ipset src -j DROP')
+        else:
+            public.ExecShell(
+                "firewall-cmd --permanent --direct --remove-rule ipv4 filter INPUT 0 -m set --match-set malicious_ipset src -j DROP")
+        # 需要重启后才能清空
+        get.status = "reload"
+        self.firewall_admin(get)
+        public.ExecShell('ipset destroy malicious_ipset')
+
+        return public.returnMsg(True, '清空成功!')
+    # 恶意IP封禁 --- end
 
 
 class firewalld:
@@ -3674,7 +3905,8 @@ class Sqlite():
             "country" TEXT DEFAULT '',
             "brief" TEXT DEFAULT '',
             "addtime" TEXT DEFAULT '');''')
-        public.M(None).db('firewall_country').execute('CREATE INDEX firewall_country_name ON firewall_country (country);')
+        public.M(None).db('firewall_country').execute(
+            'CREATE INDEX firewall_country_name ON firewall_country (country);')
 
         # 创建firewall_domain表记录域名规则（屏蔽或放行）
         public.M(None).db('firewall_domain').execute('''CREATE TABLE IF NOT EXISTS "firewall_domain" (
@@ -3689,7 +3921,6 @@ class Sqlite():
             "protocol" TEXT DEFAULT '',
             "addtime" TEXT DEFAULT '');''')
         public.M(None).db('firewall_domain').execute('CREATE INDEX firewall_domain_addr ON firewall_domain (domain);')
-
 
         # # 修复之前已经创建的 firewall_domain 表无 domain_total 字段的问题
         # create_table_str = public.M('firewall_new').table('sqlite_master').where(

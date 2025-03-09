@@ -994,7 +994,8 @@ class Acme_V2(Sites):
             payload64 = self.calculate_safe_base64(json.dumps(payload))
         protected = self.get_acme_header(url)
         protected64 = self.calculate_safe_base64(json.dumps(protected))
-        signature = self.sign_message(
+        import acme_v2
+        signature = acme_v2.acme_v2().sign_message(
             message="{0}.{1}".format(protected64, payload64))  # bytes
         signature64 = self.calculate_safe_base64(signature)  # str
         data = json.dumps(

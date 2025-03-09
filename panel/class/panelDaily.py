@@ -109,6 +109,7 @@ class panelDaily:
     def set_daily_status(self,get=None):
         set_status=get.status
         if set_status == "start":
+            public.set_module_logs('daily', 'set_daily_status', 1)
             date = time.time()
             yesterday_date_str = public.format_date("%Y%m%d", date - 86400)
             public.writeFile('/www/server/panel/data/start_daily.pl', yesterday_date_str)

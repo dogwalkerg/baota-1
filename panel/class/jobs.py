@@ -1343,6 +1343,11 @@ def panel_create_chunk():
     if free_size is None:
         return
 
+    try:
+        free_size = int(free_size)
+    except:
+        return
+
     use_size = free_size * 0.05  # 取可用空间的5%
     if use_size > 512*1024*1024:
         use_size = 512*1024*1024

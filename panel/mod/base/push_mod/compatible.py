@@ -8,7 +8,6 @@ def rsync_compatible():
         "/www/server/panel/plugin/rsync/rsync_push.py",
     ]
     for f in files:
-        print(f)
         if not os.path.exists(f):
             continue
         src_data = read_file(f)

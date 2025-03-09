@@ -1,3 +1,4 @@
+# 数据库相关告警已移除，不再使用
 import json
 import os
 import sys
@@ -6,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Tuple, Union, Optional
 
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .util import read_file, DB, GET_CLASS
 
 try:
@@ -115,8 +116,9 @@ class MysqlPwdEndTimeTask(BaseTask):
                     conn_config["ps"], username, host, expire_time.strftime("%Y-%m-%d %H:%M:%S"))
             ]}
 
+    # 数据库相关告警已移除，不再使用
     def filter_template(self, template: dict) -> Optional[dict]:
-        return template
+        return None
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
         return "", {}
@@ -203,11 +205,9 @@ class MysqlReplicateStatusTask(BaseTask):
                 pass
         return slave_list
 
+    # 数据库相关告警已移除，不再使用
     def filter_template(self, template: dict) -> Optional[dict]:
-        template["field"][0]["items"] = self._get_mysql_replicate()
-        if not template["field"][0]["items"]:
-            return None
-        return template
+        return None
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
         return '', {}
@@ -220,7 +220,7 @@ class MysqlReplicateStatusTask(BaseTask):
         return msg
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
     _FORMAT = {
         "30": (
             lambda x: "<span>剩余时间小于{}天{}</span>".format(

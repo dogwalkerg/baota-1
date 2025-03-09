@@ -53,7 +53,7 @@ def split_log(siteName, num, log_cut_path):
         tmp, _ = apache_get_log_path(config, is_error_log=False)
         if tmp is not None:
             logsPath = tmp
-
+    
     # print('|-正在处理网站: {}'.format(siteName))
     # print(logsPath)
     log_path = os.path.join(log_cut_path, 'history_backups', siteName)
@@ -77,7 +77,7 @@ def split_log(siteName, num, log_cut_path):
         if os.path.exists(err_file):
             os.remove(err_file)
             print('|---多余日志[' + err_file + ']已删除!')
-
+    
     his_date = time.strftime("%Y-%m-%d_%H%M%S")
     ngx_access_log = os.path.join(logsPath, siteName + '.log')
     ngx_error_log = os.path.join(logsPath, siteName + '.error.log')
@@ -97,7 +97,7 @@ def split_log(siteName, num, log_cut_path):
             print('|---已切割日志到:' + history_log_file + '.gz')
         else:
             print('|---已切割日志到:' + history_log_file + '.gz')
-
+    
     httpd_access_log = os.path.join(logsPath, siteName + '-access_log')
     httpd_error_log = os.path.join(logsPath, siteName + '-error_log')
     if os.path.exists(httpd_access_log):
@@ -118,6 +118,7 @@ def split_log(siteName, num, log_cut_path):
                 print('|---已切割日志到:' + history_log_file + '.gz')
             else:
                 print('|---已切割日志到:' + history_log_file + '.gz')
+    print('|-网站: {} 完成处理'.format(siteName))
 
 
 def split_all(save,log_cut_path):

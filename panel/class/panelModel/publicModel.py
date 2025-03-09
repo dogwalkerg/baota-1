@@ -56,6 +56,17 @@ class main(panelBase):
         '''
         data = public.get_user_info()
         data['o'] = public.get_oem_name()
+        if data['o'] != "install_ltd":
+            return {
+                "no_exceed_limit": False,
+                "user_give": False
+            }
+
+        from BTPanel import cache
+        ikey = 'check_exp_ltd_cache'
+        data_cache = cache.get(ikey)
+        if data_cache: return data_cache
+
         sUrl = 'https://api.bt.cn/auth/GetUserGiveAway'
         import panelSSL
         ssl_obj = panelSSL.panelSSL()
@@ -64,13 +75,13 @@ class main(panelBase):
             exp_ltd_info = json.loads(public.httpPost(sUrl, pdata))
         except:
             return {
-                "no_exceed_limit": True,
+                "no_exceed_limit": False,
                 "user_give": False
             }
 
         if not exp_ltd_info:
             return {
-                "no_exceed_limit": True,
+                "no_exceed_limit": False,
                 "user_give": False
             }
 
@@ -79,6 +90,17 @@ class main(panelBase):
         #     "user_give": false // 表示本机当前的时间线下是否领取了体验卷
         # }
         return exp_ltd_info
+
+    # 2025/2/24 10:50 企业版宝塔面板安装标识检测
+    def get_exp_ltd(self, get):
+        '''
+            @name 企业版宝塔面板安装标识检测
+        '''
+        data = {
+            "install_ltd": False if not os.path.exists("data/install_ltd.pl") else True,
+            "exp_ltd": self.check_exp_ltd(),
+        }
+        return data
 
     def get_public_config(self, args):
         """
@@ -92,7 +114,6 @@ class main(panelBase):
         data['task_count'] = public.M('tasks').where("status!=?", ('1',)).count()
         data['get_pd'] = self.get_pd(args)
         data["install_ltd"] = False if not os.path.exists("data/install_ltd.pl") else True
-        data["exp_ltd"] = self.check_exp_ltd()
         data['ipv6'] = ''
         if _config_obj.get_ipv6_listen(None): data['ipv6'] = 'checked'
         data['is_local'] = ''

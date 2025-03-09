@@ -5,16 +5,17 @@ import os
 import re
 import sys
 import time
+import traceback
 
 import psutil
 from datetime import datetime
 from importlib import import_module
-from typing import Tuple, Union, Optional, List
+from typing import Tuple, Union, Optional, List, Dict
 
 from .send_tool import WxAccountMsg, WxAccountLoginMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .mods import PUSH_DATA_PATH, TaskConfig, SenderConfig
-from .util import read_file, DB, write_file, check_site_status,GET_CLASS, ExecShell, get_config_value, public_get_cache_func, \
+from .util import read_file, DB, write_file, check_site_status, GET_CLASS, ExecShell, get_config_value, public_get_cache_func, \
     public_set_cache_func, get_network_ip, public_get_user_info, public_http_post, panel_version
 from mod.base.web_conf import RealSSLManger
 
@@ -23,41 +24,45 @@ class _WebInfo:
 
     def __init__(self):
         self.last_time = 0
-        self._items = None
-        self._items_by_type = None
+        self._site_cache = None
 
-    def __call__(self):
-        if self._items is not None and self.last_time > time.time() - 300:
-            return self._items, self._items_by_type
+    @property
+    def site_list(self) -> List[Dict]:
+        if self._site_cache is not None and time.time() - self.last_time < 300:
+            return self._site_cache
+        try:
+            site_list = DB('sites').field('id,name,project_type,project_config').select()
+            self._site_cache = site_list
+            self.last_time = time.time()
+        except:
+            site_list = []
+
+        return site_list
+
+    def __call__(self, project_types=None, all_type=False) -> Tuple[List[Dict], Dict[str, List[Dict]]]:
+        if project_types is None:
+            project_types = ()
 
         items = []
-        items_by_type = [[], [], [], [], []]
+        items_by_type = {pt: [] for pt in project_types}
 
-        res_list = DB('sites').field('id,name,project_type,project_config').select()
-
-        for i in res_list:
-            # if not check_site_status(i):
-            #     continue
+        for i in self.site_list:
+            if i["project_type"] not in project_types and not all_type:
+                continue
             items.append({
                 "title": i["name"] + "[" + i["project_type"] + "]",
                 "value": i["name"]
             })
 
-            if i["project_type"] == "PHP" or i["project_type"] == "proxy":
-                continue
-            idx: int = ProjectStatusTask._to_project_id(i["project_type"])
-            if idx is None:
-                continue
-            items_by_type[idx].append({
+            items_by_type.setdefault(i["project_type"], []).append({
                 "title": i["name"],
                 "value": i["id"]
             })
 
-        self._items = items
-        self._items_by_type = items_by_type
         return items, items_by_type
 
-web_info = _WebInfo()
+
+web_info_data = _WebInfo()
 
 
 class SSLTask(BaseTask):
@@ -193,7 +198,7 @@ class SSLTask(BaseTask):
         return task_data
 
     def filter_template(self, template) -> dict:
-        items, _ = web_info()
+        items, _ = web_info_data(all_type=True)
         template["field"][0]["items"].extend(items)
         return template
 
@@ -410,7 +415,7 @@ class PanelLoginTask(BaseTask):
 
     def to_sms_msg(self, push_data: dict, push_public_data: dict) -> Tuple[str, dict]:
         return "login_panel|面板登录提醒", {
-            'name': '[' + push_data.get("ip") + ']',
+            'name': push_data.get("ip"),
             'time': time.strftime('%Y-%m-%d %X', time.localtime()),
             'type': '[' + push_data.get("is_type") + ']',
             'user': push_data.get("username")
@@ -695,6 +700,7 @@ class ServicesTask(BaseTask):
                 if os.path.exists(pid_f):
                     try:
                         pid = read_file(pid_f)
+                        print('/www/server/nginx/logs/nginx.pid', pid)
                         return self.check_process(pid)
                     except:
                         pass
@@ -748,11 +754,7 @@ class ServicesTask(BaseTask):
 
     def check_process(self, pid):
         try:
-            if not self.pids:
-                self.pids = psutil.pids()
-            if int(pid) in self.pids:
-                return True
-            return False
+            return psutil.pid_exists(int(pid))
         except Exception as e:
             return False
 
@@ -1058,27 +1060,35 @@ class PanelUpdateTask(BaseTask):
     def get_push_data(self, task_id: str, task_data: dict) -> Optional[dict]:
         # 不在固定时间段内，跳过
         if self.user_can_request_hour() != datetime.now().hour:
-            return
-
-        s_url = 'https://www.bt.cn/api/panel/updateLinux'
-        try:
-            res = json.loads(public_http_post(s_url, {}))
-            if not res:
-                return None
-        except:
             return None
 
-        n_ver = res['version']
-        if res['is_beta']:
-            n_ver = res['beta']['version']
+        try:
+            res = json.loads(read_file('/www/server/panel/data/node_url.pl'))
+            www_url = res['www-node']['url']
+            s_url = 'https://{}/api/panel/get_panel_version_v2'.format(www_url)
+        except:
+            s_url = 'https://wwww.bt.cn/api/panel/get_panel_version_v2'
+        try:
+            res = json.loads(public_http_post(s_url, {}))
+            # print(res)
+            if not res:
+                return None
+            n_ver = res['OfficialVersion']["version"]
+        except:
+            traceback.print_exc()
+            return None
+
+        now_version = panel_version()
+        # 新版本大于当前版本在做后续判断, 否则不推送
+        if not self.version_large(n_ver, now_version):
+            return None
 
         self.new_ver = n_ver
-
         cache_key = "panel_update_cache"
         old_ver = public_get_cache_func(cache_key)['data']
         if old_ver and old_ver != n_ver:
             s_list = [">通知类型：面板版本更新",
-                      ">当前版本：{} ".format(panel_version()),
+                      ">当前版本：{} ".format(now_version),
                       ">最新版本：{}".format(n_ver)]
             return {
                 "msg_list": s_list
@@ -1086,6 +1096,21 @@ class PanelUpdateTask(BaseTask):
         else:
             public_set_cache_func(cache_key, n_ver)
         return None
+
+    @staticmethod
+    def version_large(new_ver: str, old_ver: str) -> bool:
+        if not new_ver or not old_ver:
+            return False
+        new_ver_list = new_ver.split(".")
+        old_ver_list = old_ver.split(".")
+        if len(new_ver_list) < 3:
+            new_ver_list.extend(["0"] * (3 - len(new_ver_list)))
+        if len(old_ver_list) < 3:
+            old_ver_list.extend(["0"] * (3 - len(old_ver_list)))
+        for i in range(3):
+            if int(new_ver_list[i]) > int(old_ver_list[i]):
+                return True
+        return False
 
     def filter_template(self, template: dict) -> Optional[dict]:
         return template
@@ -1119,39 +1144,39 @@ class ProjectStatusTask(BaseTask):
     def _to_project_type(type_id: int):
         if type_id == 1:
             return "Java"
-        if type_id == 2:
+        elif type_id == 2:
             return "Node"
-        if type_id == 3:
+        elif type_id == 3:
             return "Go"
-        if type_id == 4:
+        elif type_id == 4:
             return "Python"
-        if type_id == 5:
+        elif type_id == 5:
             return "Other"
 
     @staticmethod
     def _to_project_id(type_name):
         if type_name == "Java":
             return 0
-        if type_name == "Node":
+        elif type_name == "Node":
             return 1
-        if type_name == "Go":
+        elif type_name == "Go":
             return 2
-        if type_name == "Python":
+        elif type_name == "Python":
             return 3
-        if type_name == "Other":
+        elif type_name == "Other":
             return 4
 
     @staticmethod
     def _to_project_model(type_id: int):
         if type_id == 1:
             return "javaModel"
-        if type_id == 2:
+        elif type_id == 2:
             return "nodejsModel"
-        if type_id == 3:
+        elif type_id == 3:
             return "goModel"
-        if type_id == 4:
+        elif type_id == 4:
             return "pythonModel"
-        if type_id == 5:
+        elif type_id == 5:
             return "otherModel"
 
     def get_title(self, task_data: dict) -> str:
@@ -1174,21 +1199,6 @@ class ProjectStatusTask(BaseTask):
         if not (isinstance(task_data['interval'], int) and task_data['interval'] >= 60):
             return "间隔时间参数错误，至少为60秒"
         return task_data
-
-    def get_web_list(self) -> List:
-        items_by_type = [[], [], [], [], []]
-        res_list = DB('sites').field('id,name,project_type').select()
-        for i in res_list:
-            if i["project_type"] == "PHP" or i["project_type"] == "proxy":
-                continue
-            idx: int = self._to_project_id(i["project_type"])
-            if idx is None:
-                continue
-            items_by_type[idx].append({
-                "title": i["name"],
-                "value": i["id"]
-            })
-        return items_by_type
 
     def get_keyword(self, task_data: dict) -> str:
         return "{}_{}".format(task_data["cycle"], self._get_project_name(task_data["project"]))
@@ -1237,7 +1247,11 @@ class ProjectStatusTask(BaseTask):
         }
 
     def filter_template(self, template: dict) -> Optional[dict]:
-        _, web_by_type = web_info()
+        supported = ("Java", "Node", "Go", "Python", "Other")
+        _, web_by_type_map = web_info_data(project_types=supported)
+        web_by_type = [[] for _ in range(len(supported))]
+        for i, web_list in web_by_type_map.items():
+            web_by_type[self._to_project_id(i)] = web_list
         template["field"][1]["all_items"] = web_by_type
         template["field"][1]["items"] = web_by_type[0]
         if not web_by_type:
@@ -1263,7 +1277,7 @@ class ProjectStatusTask(BaseTask):
         return msg
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
     _FORMAT = {
         "1": (
             lambda x: "<span>剩余时间小于{}天{}</span>".format(
@@ -1306,3 +1320,8 @@ class ViewMsgFormat(object):
         if task["template_id"] in self._FORMAT:
             return self._FORMAT[task["template_id"]](task)
         return None
+
+
+SSLTask.VIEW_MSG = SiteEndTimeTask.VIEW_MSG = PanelPwdEndTimeTask.VIEW_MSG = PanelLoginTask.VIEW_MSG = \
+    SSHLoginErrorTask.VIEW_MSG = ServicesTask.VIEW_MSG = PanelSafePushTask.VIEW_MSG = SSHLoginTask.VIEW_MSG = \
+    PanelUpdateTask.VIEW_MSG = ProjectStatusTask.VIEW_MSG = ViewMsgFormat

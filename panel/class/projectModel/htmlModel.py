@@ -404,6 +404,23 @@ class main(projectBase):
 
         return True
 
+    def get_project_find(self, project_name):
+        '''
+            @name 获取指定项目配置
+            @author hwliang<2021-08-09>
+            @param project_name<string> 项目名称
+            @return dict
+        '''
+        project_info = public.M('sites').where('project_type=? AND name=?', ('html', project_name)).find()
+        if isinstance(project_info, str):
+            raise public.PanelError('数据库查询错误：'+ project_info)
+        if not project_info: return False
+        project_info['project_config'] = json.loads(project_info['project_config'])
+        return project_info
+
+    def set_apache_config(self, project_info):
+        self._apache_set_domain(project_info["id"], project_info["name"], project_info["path"])
+
     def set_apache_conf(self, ports: Iterator[str], domains: List[str], site_name, site_path):
         self.apache_add_ports(port_list=ports)
         try:

@@ -1961,10 +1961,6 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
         force = 0
         if 'force' in get:
             force = get.force
-        try:
-            db_list = [j for i in database.GetDatabaseList(public.to_dict_obj({'id': 0})) for j in i] if not force else []
-        except:
-            db_list = []
         if sys.version_info[0] == 2:
             get.path = get.path.encode('utf-8')
         get.path = public.html_decode(get.path).replace(';', '')
@@ -1983,7 +1979,7 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
 
         tfile = get.path.replace('_bt_', '/').split('_t_')[0]
         if not _ok: return public.returnMsg(False, '从回收站删除文件失败: {}'.format(tfile))
-        if dFile.startswith('BTDB_') and dFile.replace("BTDB_", "").split('_t_')[0] in db_list:
+        if dFile.startswith('BTDB_') and os.path.exists("/www/server/data/" + dFile.replace("BTDB_", "").split('_t_')[0]) and not force:
             return {'status': False, 'msg': "检测到存在同名数据库强制删除会删除同名数据库，如需删除请检查后强制删除", 'tag': 1}
         if not self.CheckDir(filename):
             return public.returnMsg(False, 'FILE_DANGER')
@@ -2023,10 +2019,6 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
             force = 0
             if 'force' in get:
                 force = get.force
-            try:
-                db_list = [j for i in database.GetDatabaseList(public.to_dict_obj({'id': 0})) for j in i] if not force else []
-            except:
-                db_list = []
         recycle_bin_list = public.get_recycle_bin_list()
         fail_list = []
         # 计算大小
@@ -2041,8 +2033,8 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
         for rPath in recycle_bin_list:
             for name in os.listdir(rPath):
                 if name.startswith('BTDB_') and get.type == 'db':
-                    if name.replace("BTDB_", "").split('_t_')[0] in db_list:
-                        fail_list.append(name.split('_')[1])
+                    if os.path.exists("/www/server/data/" + name.replace("BTDB_", "").split('_t_')[0]) and not force:
+                        fail_list.append(name)
                         continue
             try:
                 total_size = int(public.ExecShell(s_shell.format(rPath))[0].split()[0])
@@ -2096,10 +2088,6 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
         force = 0
         if 'force' in get:
             force = get.force
-        try:
-            db_list = [j for i in database.GetDatabaseList(public.to_dict_obj({'id': 0})) for j in i] if not force else []
-        except:
-            db_list = []
         path_lsit = get.path_list.split(',')
         data = {'status': True, 'success': [], 'error': {}}
         filenames = []
@@ -2107,7 +2095,7 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
         tn = 0
         for path in path_lsit:
             if path.startswith('BTDB_'):
-                if path.replace("BTDB_", "").split('_t_')[0] in db_list:
+                if os.path.exists("/www/server/data/" + path.replace("BTDB_", "").split('_t_')[0]) and not force:
                     data['error'].update({path.split('_t_')[0]: "存在同名数据库，删除失败"})
                     continue
             for rPath in public.get_recycle_bin_list():
@@ -2326,6 +2314,7 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
                 tmp['filename'] = fn
                 tmp['size'] = os.path.getsize(filename)
                 tmp['mtime'] = str(int(stat.st_mtime))
+                tmp['is_dir'] = os.path.isdir(filename)
                 data.append(tmp)
         return data
 
@@ -2583,7 +2572,6 @@ session.save_handler = files'''.format(path, sess_path, sess_path)
             return public.returnMsg(False, 'FILE_SAVE_ERR' + str(ex))
 
     def update_cors_config(self, get):
-        public.set_module_logs('跨域访问CORS配置', 'update_cors_config', 1)
         try:
             # 获取原来的文件内容
             original_content = self.GetFileBody(get)['data']
@@ -5677,6 +5665,8 @@ cd %s
             cron_data = public.M('crontab').where('id=?', (get.cron_id,)).field('sName').find()
             cloud_name = backup_file_path.split('|')[1]
             file_name = backup_file_path.split('|')[-1]
+
+            public.set_module_logs("files_download_backup", cloud_name)
 
             import CloudStoraUpload
             c = CloudStoraUpload.CloudStoraUpload()

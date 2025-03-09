@@ -118,6 +118,13 @@ class FileExecuteDeny:
         if not re.match(r"^\w+$",deny_name): return public.returnMsg(False,'规则名称只能是字母、数字、下划线组成!')
         dir = args.dir
         suffix = args.suffix.strip('|')
+        real_suffix_list = []
+        for i in suffix.split('|'):
+            if i.startswith('\.'):
+                real_suffix_list.append(i[2:])
+            else:
+                real_suffix_list.append(i)
+        suffix = '|'.join(real_suffix_list)
         website = args.website
         self._init_conf(website)
         conf = public.readFile(self.ng_website_conf)
@@ -151,7 +158,7 @@ class FileExecuteDeny:
         else:
             new = '''
     #BEGIN_DENY_%s
-    location ~* ^%s.*.(%s)$ {
+    location ~* ^%s.*\.(%s)$ {
         deny all;
     }
     #END_DENY_%s

@@ -70,7 +70,7 @@ class dockerImage(base):
         try:
             return json.loads(public.ExecShell("curl -s --unix-socket {} -X POST http:/{}/images/load -H \"Content-Type: application/x-tar\" --data-binary @{}".format(self._sock, self.get_api_version(), path))[0])
         except Exception as e:
-            return False
+            return {}
 
     # 2024/4/16 上午11:39 获取指定image的inspect信息
     def inspect(self, image):

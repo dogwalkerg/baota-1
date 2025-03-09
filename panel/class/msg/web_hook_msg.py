@@ -13,7 +13,7 @@ import json
 import re
 import copy
 import requests
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from urllib3.util import parse_url
 
 panel_path = "/www/server/panel"
@@ -170,7 +170,7 @@ class RealHook(object):
     def __init__(self, hook_name, name: str = None, config: dict = None):
         if name is not None and config is not None:
             self.name = hook_name
-            self._config = config
+            self._config = copy.deepcopy(config)
             return
 
         if not hook_name:
@@ -180,15 +180,6 @@ class RealHook(object):
 
         self.name = hook_name
         self._config = _cfg[hook_name]
-
-    def _replace_and_parse(self, value, real_data):
-        """替换占位符并递归解析JSON字符串"""
-        if isinstance(value, str):
-            value = value.replace("$1", json.dumps(real_data, ensure_ascii=False))
-        elif isinstance(value, dict):
-            for k, v in value.items():
-                value[k] = self._replace_and_parse(v, real_data)
-        return value
 
     def send_msg(self, msg: str, title, push_type) -> Optional[str]:
         if self._config['status'] is False:
@@ -200,20 +191,11 @@ class RealHook(object):
         if ssl_verify is None:
             ssl_verify = the_url.scheme == "https"
 
-        real_data = {
-            "title": title,
-            "msg": msg,
-            "type": push_type,
-        }
+        custom_parameter = self._config.get("custom_parameter", {})
+        if not isinstance(custom_parameter, dict):
+            custom_parameter = {}  # 如果 custom_parameter 不是字典，则设置为空字典
 
-        # 处理custom_parameter，将$1替换为real_data内容并递归解析
-        custom_data = {}
-        for k, v in self._config.get("custom_parameter", {}).items():
-            custom_data[k] = self._replace_and_parse(v, real_data)
-
-        if custom_data:
-            real_data = custom_data
-
+        real_data = self._build_real_data(msg, title, push_type, custom_parameter)
 
         data = None
         json_data = None
@@ -232,7 +214,7 @@ class RealHook(object):
                 if isinstance(v, str):
                     continue
                 else:
-                    data[k]=json.dumps(v)      
+                    data[k]=json.dumps(v)
         timeout = 5
         for i in range(3):
             try:
@@ -266,6 +248,49 @@ class RealHook(object):
             except:
                 return "发送失败，疑似是系统环境因素导致"
         return None
+
+    @staticmethod
+    def _build_real_data(msg: str, title:str, push_type:str, custom_parameter: dict):
+        default_data = {"title": title, "msg": msg, "type": push_type}
+        _build_by_replace = False
+
+        def _replace(tmp_data: Union[str, list, dict,]):
+            nonlocal _build_by_replace
+            if isinstance(tmp_data, str):
+                if "$1" in tmp_data:
+                    _build_by_replace = True
+                    tmp_data = tmp_data.replace("$1", json.dumps(default_data, ensure_ascii=False))
+                if "$msg" in tmp_data:
+                    _build_by_replace = True
+                    tmp_data = tmp_data.replace("$msg", msg)
+                if "$title" in tmp_data:
+                    _build_by_replace = True
+                    tmp_data = tmp_data.replace("$title", title)
+                if "$type" in tmp_data:
+                    _build_by_replace = True
+                    tmp_data = tmp_data.replace("$type", push_type)
+                return tmp_data
+            elif isinstance(tmp_data, list):
+                new_data = []
+                for i in tmp_data:
+                    new_data.append(_replace(i))
+                return new_data
+            elif isinstance(tmp_data, dict):
+                new_data = {}
+                for k, v in tmp_data.items():
+                    new_data[k] = _replace(v)
+                return new_data
+            else:
+                return tmp_data
+
+        real_data = _replace(custom_parameter)
+        if _build_by_replace:
+            return real_data
+        else:
+            custom_parameter["title"] = title
+            custom_parameter["msg"] = msg
+            custom_parameter["type"] = push_type
+            return custom_parameter
 
 
 class web_hook_msg:

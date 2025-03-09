@@ -348,15 +348,15 @@ class main(sslBase):
                     )
                 if 0 < cert['endDay'] <= 30:
                     will_num += 1
-                elif cert['endDay'] <= 0 and cert['orderStatus'] in ('COMPLETE', "EXPIRED"):
+                elif cert['endDay'] <= 0 and cert['orderStatus'] in ('COMPLETE', "EXPIRED", 5):
                     end_num += 1
-                if status_id == 0 and cert['orderStatus'] not in ("PENDING", ""):
+                if status_id == 0 and cert['orderStatus'] not in ("PENDING", "", None, 0, 1, 2, 3, 4, 9, 10):
                     continue
-                elif status_id == 1 and (cert['endDay'] <= 0 or cert['orderStatus'] != 'COMPLETE'):
+                elif status_id == 1 and (cert['endDay'] <= 0 or cert['orderStatus'] not in ('COMPLETE', 5, 6, 7, 8, 11, 12)):
                     continue
-                elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['orderStatus'] != 'COMPLETE'):
+                elif status_id == 2 and ((cert['endDay'] > 30 or cert['endDay'] <= 0) or cert['orderStatus'] not in ('COMPLETE', 5, 6, 7, 8, 11, 12)):
                     continue
-                elif status_id == 3 and (cert['endDay'] > 0 or cert['orderStatus'] not in ('COMPLETE', "EXPIRED")):
+                elif status_id == 3 and (cert['endDay'] > 0 or cert['orderStatus'] not in ('COMPLETE', "EXPIRED", 5, 6, 7, 8, 11, 12)):
                     continue
 
                 cert['id'] = cert['oid']
@@ -389,9 +389,9 @@ class main(sslBase):
                 cert["use_site"] = use_site_dic.get(str(cert["oid"]), [])
                 cert["ssl_id"] = str(cert["oid"])
                 cert["report_id"] = report_data_dic.get(cert['ssl_id'], "") or ""
-                if cert["orderStatus"] == "":
+                if cert["orderStatus"] in ("", None):
                     cert["sort"] = 99998
-                elif cert["orderStatus"] == "PENDING":
+                elif cert["orderStatus"] in ("PENDING", 0, 1, 2, 3, 4, 9, 10):
                     cert["sort"] = 99999
                 cert['download_status'] = True if cert['orderStatus'] == 'COMPLETE' and cert['status'] == 1 else False
                 # cert["title"] = title
@@ -541,6 +541,20 @@ class main(sslBase):
         page_data = public.get_page(count, p, limit, collback)
         page_data.update({"data": data[start: end], 'search_history': search_history, 'will_num': will_num, 'end_num': end_num})
         return page_data
+
+    def get_cert_list_to_push(self, get):
+        items = [
+            {
+                "title": "{} | {}".format(i["title"], ",".join(i.get("domainName", []) or "无")),
+                "value": i["ssl_id"]
+            }
+            for i in self.get_cert_list(public.to_dict_obj({"status_id": 1}))['data'] if i.get("endDay")
+        ]
+        items.insert(0, {
+              "title": "所有证书",
+              "value": "all"
+            })
+        return items
 
     def remove_cloud_cert(self, get):
         ssl_id = None
@@ -1373,6 +1387,26 @@ class main(sslBase):
         get.id = get.crontab_id
         return cron.DelCrontab(get)
 
+    def get_cert_content(self, get):
+        """
+        获取证书内容
+        """
+        if 'ssl_hash' in get and get.ssl_hash:
+            ssl_hash = get.ssl_hash
+        else:
+            if 'index' in get and get.index:
+                import acme_v2
+                acme = acme_v2.acme_v2()
+                exclude_data = acme.get_exclude_hash(None)
+                ssl_hash = exclude_data.get("exclude_hash_let", {}).get(get.index, "")
+            else:
+                return public.returnMsg(False, '缺少必填参数')
+        if not ssl_hash:
+            return public.returnMsg(False, '未找到证书信息')
+        ssl_info = self.find_ssl_info(ssl_hash=ssl_hash)
+        ssl_info["key"] = public.readFile("/www/server/panel/vhost/ssl_saved/{}/privkey.pem".format(ssl_hash))
+        ssl_info["cert"] = public.readFile("/www/server/panel/vhost/ssl_saved/{}/fullchain.pem".format(ssl_hash))
+        return {"status": True, "msg": "获取成功", "content": ssl_info}
 
 
 

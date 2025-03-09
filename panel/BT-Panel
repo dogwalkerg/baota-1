@@ -14,6 +14,31 @@ import psutil
 _PATH = '/www/server/panel'
 upgrade_flask_time_file = '/www/server/panel/upgrade_flask_time.pl'
 os.chdir(_PATH)
+if not 'class/' in sys.path:
+    sys.path.insert(0,'class/')
+from BTPanel import app, sys, public
+is_debug = os.path.exists('data/debug.pl')
+
+
+# 检查加载器
+def check_plugin_loader():
+    plugin_loader_file = 'class/PluginLoader.so'
+    machine = 'x86_64'
+    try:
+        machine = os.uname().machine
+    except:
+        pass
+    plugin_loader_src_file = "class/PluginLoader.{}.Python3.7.so".format(machine)
+    if machine == 'x86_64':
+        glibc_version = public.get_glibc_version()
+        if glibc_version in ['2.14','2.13','2.12','2.11','2.10']:
+            plugin_loader_src_file = "class/PluginLoader.{}.glibc214.Python3.7.so".format(machine)
+    if os.path.exists(plugin_loader_src_file):
+        os.system("\cp -f {} {}".format(plugin_loader_src_file, plugin_loader_file))
+
+
+check_plugin_loader()
+
 os.system("nohup ./pyenv/bin/python3 class/jobs.py &>/dev/null &")
 
 upgrade_file = 'script/upgrade_flask.sh'
@@ -33,10 +58,6 @@ if is_upgrade and os.path.exists(upgrade_file):
 if os.path.exists('class/flask'):
     os.system('rm -rf class/flask')
 
-if not 'class/' in sys.path:
-    sys.path.insert(0,'class/')
-from BTPanel import app,sys,public
-is_debug = os.path.exists('data/debug.pl')
 
 # 清理临时文件
 public.clear_tmp_file()
@@ -44,24 +65,6 @@ public.clear_tmp_file()
 # 初始化数据库
 if not os.path.exists(_PATH + '/data/db'):
     os.system("nohup ./pyenv/bin/python3 script/init_db.py &>/dev/null &")
-
-# 检查加载器
-def check_plugin_loader():
-    plugin_loader_file = 'class/PluginLoader.so'
-    machine = 'x86_64'
-    try:
-        machine = os.uname().machine
-    except:
-        pass
-    plugin_loader_src_file = "class/PluginLoader.{}.Python3.7.so".format(machine)
-    if machine == 'x86_64':
-        glibc_version = public.get_glibc_version()
-        if glibc_version in ['2.14','2.13','2.12','2.11','2.10']:
-            plugin_loader_src_file = "class/PluginLoader.{}.glibc214.Python3.7.so".format(machine)
-    if os.path.exists(plugin_loader_src_file):
-        os.system("\cp -f {} {}".format(plugin_loader_src_file, plugin_loader_file))
-
-check_plugin_loader()
 
 
 if is_debug:

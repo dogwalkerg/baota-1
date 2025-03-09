@@ -202,6 +202,31 @@ class main(sslBase):
     def set_dns_record_status(self, get):
         return public.returnMsg(False, 'cloudflare不支持设置解析记录状态')
 
+    def get_domain_list(self, get):
+        dns_id = get.dns_id
+        self.__init_data(self.get_dns_data(None)[dns_id])
+
+        url = urljoin(self.CLOUDFLARE_API_BASE_URL, "zones?status=active&per_page=1000")
+        try:
+            response = requests.get(url, headers=self.headers, timeout=self.HTTP_TIMEOUT)
+            data = response.json()
+            local_domain_list = [d['domain'] for d in public.M('ssl_domains').field('domain').select()]
+
+            domain_list = [
+                {
+                    "id": i["id"],
+                    "name": i["name"],
+                    # "remark": i.get("Remark") or "",
+                    # "record_count": i.get("RecordCount") or 0,
+                    "sync": 0 if i["name"] in local_domain_list else 1,
+                }
+                for i in data["result"]
+            ]
+            return {"status": True, "msg": "获取成功", "data": domain_list}
+        except Exception as e:
+            return {"status": False, "msg": self.get_error(str(e)), "data": []}
+
+
     def get_error(self, error):
         if "Record does not exist" in error:
             return "解析记录不存在"

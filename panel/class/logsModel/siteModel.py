@@ -208,7 +208,7 @@ class main(logsBase):
                 res = res[0]['project_type'].lower()
             else:
                 return public.returnMsg(False, "网站不存在")
-            if res == 'php' or res == 'proxy' or res == 'phpmod':
+            if res == 'php' or res == 'proxy' or res == 'phpmod' or res == 'wp2':
                 res = ''
             else:
                 res = res + '_'

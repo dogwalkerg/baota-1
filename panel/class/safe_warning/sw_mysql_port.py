@@ -1,33 +1,34 @@
 #!/usr/bin/python
-#coding: utf-8
+# coding: utf-8
 # -------------------------------------------------------------------
 # 宝塔Linux面板
 # -------------------------------------------------------------------
 # Copyright (c) 2015-2099 宝塔软件(http://bt.cn) All rights reserved.
 # -------------------------------------------------------------------
 # Author: hwliang <hwl@bt.cn>
-#Maintainer:hezhihong <bt_ahong@qq.com>
+# Maintainer:hezhihong <bt_ahong@qq.com>
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # MySQL端口安全检测
 # -------------------------------------------------------------------
 
-import os,re,public,json, psutil
+import os, re, public, json, psutil
 
 _title = 'MySQL端口安全'
-_version = 1.1                              # 版本
-_ps = "检测当前服务器的MySQL端口是否安全"      # 描述
-_level = 2                                  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
-_date = '2022-08-18'                        # 最后更新时间
+_version = 1.1  # 版本
+_ps = "检测当前服务器的MySQL端口是否安全"  # 描述
+_level = 2  # 风险级别： 1.提示(低)  2.警告(中)  3.危险(高)
+_date = '2022-08-18'  # 最后更新时间
 _ignore = os.path.exists("data/warning/ignore/sw_mysql_port.pl")
 _tips = [
     "若非必要，在【安全】页面将MySQL端口的放行删除",
     "通过【系统防火墙】插件修改MySQL端口的放行为限定IP，以增强安全性",
     "使用【Fail2ban防爆破】插件对MySQL服务进行保护"
-    ]
+]
 _help = ''
 _remind = '此方案加强的对MySQL数据库的防护，降低服务器被窃取数据的风险。修复之前要根据业务需求开放可访问IP，确保网站运行正常。'
+
 
 def check_run():
     '''
@@ -50,6 +51,7 @@ def check_run():
     if not datadir:
         return True, '无风险'
     pid_file = "{}/{}.pid".format(datadir, public.get_hostname())
+    # 从pid文件中获取MySQL进程ID
     if os.path.exists(pid_file):
         try:
             pid = int(public.readFile(pid_file))
@@ -64,15 +66,18 @@ def check_run():
             return True, '无风险'
     else:
         return True, '无风险'
+    # 检查防火墙规则
     if mysql_port:
         try:
-            sql = public.M('firewall_new')
-            if sql.where("ports = ? and address = ?", (mysql_port, "")).count() == 0:
-                return True, '无风险'
+            # sql = public.M('firewall_new')
+            # if sql.where("ports = ? and address = ?", (mysql_port, "")).count() == 0:
+            #     public.print_log("|===========开始扫描MySQL端口44444")
+            #     return True, '无风险'
+            pass
         except Exception as e:
-            public.print_log("查询firewall_new数据库报错：{}".format(e))
             return True, '无风险'
-
+    else:
+        return True, '未查询到Mysql端口'
     # mycnf_file = '/etc/my.cnf'
     # if not os.path.exists(mycnf_file):
     #     return True,'未安装MySQL'
@@ -121,6 +126,7 @@ def check_run():
     #                 return True,'无风险'
     #
     # else:return True,'无风险'
+    # 新增fail2ban配置检测
     fail2ban_file = '/www/server/panel/plugin/fail2ban/config.json'
     if os.path.exists(fail2ban_file):
         try:
@@ -129,5 +135,7 @@ def check_run():
                 if fail2ban_config['mysql']['act'] == 'true':
                     # public.print_log("不对")
                     return True, '已开启Fail2ban防爆破'
-        except: pass
+        except:
+            pass
+
     return False, '当前MySQL端口: {}，可被任意服务器访问，这可能导致MySQL被暴力破解，存在安全隐患'.format(mysql_port)

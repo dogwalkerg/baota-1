@@ -227,3 +227,30 @@ class main(sslBase):
             return public.returnMsg(True, "设置成功")
         except Exception as e:
             return public.returnMsg(False, "操作失败:{}".format(e))
+
+    def get_domain_list(self, get):
+        self.__init_data(self.get_dns_data(None)[get.dns_id])
+        url = urljoin(self.DNSPOD_API_BASE_URL, "Domain.List")
+        body = {
+            "login_token": self.DNSPOD_LOGIN,
+            "format": "json",
+        }
+        try:
+            res = requests.post(
+                url, data=body, timeout=self.HTTP_TIMEOUT
+            ).json()
+            local_domain_list = [d['domain'] for d in public.M('ssl_domains').field('domain').select()]
+
+            domain_list = [
+                {
+                    "id": i["id"],
+                    "name": i["name"],
+                    "remark": i.get("remark") or "",
+                    "record_count": i.get("records") or 0,
+                    "sync": 0 if i["name"] in local_domain_list else 1,
+                }
+                for i in res["domains"]
+            ]
+            return {"status": True, "msg": "获取成功", "data": domain_list}
+        except Exception as e:
+            return {"status": False, "msg": self.get_error(str(e)), "data": []}

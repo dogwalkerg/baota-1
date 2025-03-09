@@ -3,20 +3,46 @@ import os
 import time
 from typing import Union, Optional
 
+from .util import debug_log, set_module_logs
 from .mods import TaskTemplateConfig, TaskConfig, SenderConfig, TaskRecordConfig
 from .system import PushSystem
 from mod.base import json_response
 
 import sys
-sys.path.insert(0, "/www/server/panel/class/")
+if "/www/server/panel/class" not in sys.path:
+    sys.path.insert(0, "/www/server/panel/class/")
 import public
 class PushManager:
 
     def __init__(self):
-        self.template_conf = TaskTemplateConfig()
-        self.task_conf = TaskConfig()
-        self.send_config = SenderConfig()
+        self._template_conf: Optional[TaskTemplateConfig] = None
+        self._task_conf: Optional[TaskConfig] = None
+        self._send_config: Optional[SenderConfig] = None
         self._send_conf_cache = {}
+
+    @property
+    def template_conf(self):
+        if isinstance(self._template_conf, TaskTemplateConfig):
+            return self._template_conf
+        else:
+            self._template_conf = TaskTemplateConfig()
+            return self._template_conf
+
+    @property
+    def task_conf(self):
+        if isinstance(self._task_conf, TaskConfig):
+            return self._task_conf
+        else:
+            self._task_conf = TaskConfig()
+            return self._task_conf
+
+    @property
+    def send_config(self):
+        if isinstance(self._send_config, SenderConfig):
+            return self._send_config
+        else:
+            self._send_config = SenderConfig()
+            return self._send_config
 
     def _get_sender_conf(self, sender_id):
         if sender_id in self._send_conf_cache:
@@ -50,7 +76,7 @@ class PushManager:
                 return "已关闭的告警方式:{}".format(sender_conf['data']["title"])
 
         result["sender"] = new_sender
-
+        result["task_data"] = task.get("task_data", {})
         if "default" in template and template["default"]:
             task_data = task.get("task_data", {})
             for k, v in template["default"].items():
@@ -58,9 +84,6 @@ class PushManager:
                     task_data[k] = v
 
             result["task_data"] = task_data
-
-        if "task_data" not in result:
-            result["task_data"] = {}
 
         time_rule = task.get("time_rule", {})
 
@@ -103,14 +126,14 @@ class PushManager:
         return result
 
     def set_task_conf_data(self, push_data: dict) -> Optional[str]:
-        task_id = push_data.get("task_id", None)
+        task_id: Optional[str] = push_data.get("task_id", None)
         template_id = push_data.get("template_id")
         task = push_data.get("task_data")
 
         target_task_conf = None
         if task_id is not None:
             tmp = self.task_conf.get_by_id(task_id)
-            if tmp is None:
+            if tmp is not None:
                 target_task_conf = tmp
 
         template = self.template_conf.get_by_id(template_id)
@@ -151,6 +174,7 @@ class PushManager:
         res["source"] = task_obj.source_name
         res["title"] = task_obj.get_title(task_data)
 
+        set_module_logs("push_type", task_obj.source_name)
         if not target_task_conf:
             tmp = self.task_conf.get_by_keyword(res["source"], res["keyword"])
             if tmp:
@@ -168,12 +192,18 @@ class PushManager:
             res["create_time"] = time.time()
             res["record_time"] = 0
             self.task_conf.config.append(res)
-            task_obj.task_config_create_hook(res)
+            err_data = task_obj.task_config_create_hook(res)
+            if err_data is not None:
+                return err_data
         else:
+            new_task_data = res.pop("task_data")
             target_task_conf.update(res)
+            target_task_conf["task_data"].update(new_task_data)
             target_task_conf["last_check"] = 0
             target_task_conf["number_data"] = {}  # 次数控制数据置空
-            task_obj.task_config_update_hook(target_task_conf)
+            err_data = task_obj.task_config_update_hook(target_task_conf)
+            if err_data is not None:
+                return err_data
 
         self.task_conf.save_config()
 
@@ -217,8 +247,8 @@ class PushManager:
                 task_id = get.task_id.strip()
                 if not task_id:
                     task_id = None
-                else:
-                    self.remove_task_conf(get)
+                # else:
+                #     self.remove_task_conf(get)
             template_id = get.template_id.strip()
             task = json.loads(get.task_data.strip())
         except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
@@ -231,75 +261,6 @@ class PushManager:
         res = self.set_task_conf_data(push_data)
         if res:
             return json_response(status=False, msg=res)
-        # target_task_conf = None
-        # if task_id is not None:
-        #     tmp = self.task_conf.get_by_id(task_id)
-        #     if tmp is None:
-        #         target_task_conf = tmp
-        #
-        # template = self.template_conf.get_by_id(template_id)
-        # if not template:
-        #     return json_response(status=False, msg="为查询到告警模板")
-        #
-        # if template["unique"] and not target_task_conf:
-        #     for i in self.task_conf.config:
-        #         if i["template_id"] == template["id"]:
-        #             target_task_conf = i
-        #             break
-        #
-        # task_obj = PushSystem().get_task_object(template_id, template["load_cls"])
-        # if not task_obj:
-        #     return json_response(status=False, msg="加载任务类型错误，您可以尝试修复面板")
-        #
-        # res = self.normalize_task_config(task, template)
-        # if isinstance(res, str):
-        #     return json_response(status=True, msg=res)
-        #
-        # task_data = task_obj.check_task_data(res["task_data"])
-        # if isinstance(task_data, str):
-        #     return json_response(status=True, msg=task_data)
-        #
-        # number_rule = task_obj.check_num_rule(res["number_rule"])
-        # if isinstance(number_rule, str):
-        #     return json_response(status=True, msg=number_rule)
-        #
-        # time_rule = task_obj.check_time_rule(res["time_rule"])
-        # if isinstance(time_rule, str):
-        #     return json_response(status=True, msg=time_rule)
-        #
-        # res["task_data"] = task_data
-        # res["number_rule"] = number_rule
-        # res["time_rule"] = time_rule
-        #
-        # res["keyword"] = task_obj.get_keyword(task_data)
-        # res["source"] = task_obj.source_name
-        # res["title"] = task_obj.get_title(task_data)
-        #
-        # if not target_task_conf:
-        #     tmp = self.task_conf.get_by_keyword(res["source"], res["keyword"])
-        #     if tmp:
-        #         target_task_conf = tmp
-        #
-        # if not target_task_conf:
-        #     res["id"] = self.task_conf.nwe_id()
-        #     res["template_id"] = template_id
-        #     res["status"] = True
-        #     res["pre_hook"] = {}
-        #     res["after_hook"] = {}
-        #     res["last_check"] = 0
-        #     res["last_send"] = 0
-        #     res["number_data"] = {}
-        #     res["create_time"] = time.time()
-        #     res["record_time"] = 0
-        #     self.task_conf.config.append(res)
-        #     task_obj.task_config_create_hook(res)
-        # else:
-        #     target_task_conf.update(res)
-        #     target_task_conf["last_check"] = 0
-        #     target_task_conf["number_data"] = {}  # 次数控制数据置空
-        #     task_obj.task_config_update_hook(target_task_conf)
-        #
-        # self.task_conf.save_config()
         return json_response(status=True, msg="告警任务保存成功")
 
     def change_task_conf(self, get):
@@ -314,9 +275,19 @@ class PushManager:
 
         tmp = self.task_conf.get_by_id(task_id)
         if tmp is None:
-            return json_response(status=True, msg="未查询到告警任务")
+            return json_response(status=False, msg="未查询到告警任务")
+
+        template = self.template_conf.get_by_id(tmp['template_id'])
+        if not template:
+            return json_response(status=False, msg="未查询到告警模板")
+        task_obj = PushSystem().get_task_object(tmp['template_id'], template["load_cls"])
+        if not task_obj:
+            return json_response(status=False, msg="加载任务类型错误，您可以尝试修复面板")
 
         tmp["status"] = bool(status)  # 将status转换为布尔值并设置
+        res = task_obj.task_config_update_hook(tmp)
+        if res is not None:
+            return json_response(status=False, msg=res)
 
         self.task_conf.save_config()
         return json_response(status=True, msg="操作成功")

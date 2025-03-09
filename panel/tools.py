@@ -115,29 +115,20 @@ mysqld_safe --skip-grant-tables&
 echo '正在修改密码...';
 echo 'The set password...';
 sleep 6
-
-m_version=$(cat /www/server/mysql/version.pl)
-if echo "$m_version" | grep -E "(5\.1\.|5\.5\.|5\.6\.|10\.0\.|10\.1\.)" >/dev/null; then
-    mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${pwd}') WHERE user='root';"
-elif echo "$m_version" | grep -E "(10\.4\.|10\.5\.|10\.6\.|10\.7\.|10\.11\.|11\.3\.|11\.4\.)" >/dev/null; then
-    mysql -uroot -e "
-    FLUSH PRIVILEGES;
-    ALTER USER 'root'@'localhost' IDENTIFIED BY '${pwd}';
-    ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${pwd}';
-    FLUSH PRIVILEGES;
-    "
-elif echo "$m_version" | grep -E "(5\.7\.|8\.[0-9]+\..*|9\.[0-9]+\..*)" >/dev/null; then 
-    mysql -uroot -e "
-    FLUSH PRIVILEGES;
-    update mysql.user set authentication_string='' where user='root' and (host='127.0.0.1' or host='localhost');
-    ALTER USER 'root'@'localhost' IDENTIFIED BY '${pwd}';
-    ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${pwd}';
-    FLUSH PRIVILEGES;
-    "
+m_version=$(cat /www/server/mysql/version.pl|grep -E "(5.1.|5.5.|5.6.|10.0|10.1)")
+m2_version=$(cat /www/server/mysql/version.pl|grep -E "(10.5.|10.4.)")
+if [ "$m_version" != "" ];then
+    mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${pwd}') WHERE user='root'";
+elif [ "$m2_version" != "" ];then
+    mysql -uroot -e "FLUSH PRIVILEGES;alter user 'root'@'localhost' identified by '${pwd}';alter user 'root'@'127.0.0.1' identified by '${pwd}';FLUSH PRIVILEGES;";
 else
-    mysql -uroot -e "UPDATE mysql.user SET authentication_string=PASSWORD('${pwd}') WHERE user='root';"
+    m_version=$(cat /www/server/mysql/version.pl|grep -E "(5\.7\.|8\.[0-9]+\..*)")
+    if [ "$m_version" != "" ];then
+        mysql -uroot -e "FLUSH PRIVILEGES;update mysql.user set authentication_string='' where user='root' and (host='127.0.0.1' or host='localhost');alter user 'root'@'localhost' identified by '${pwd}';alter user 'root'@'127.0.0.1' identified by '${pwd}';FLUSH PRIVILEGES;";
+    else
+        mysql -uroot -e "update mysql.user set authentication_string=password('${pwd}') where user='root';"
+    fi
 fi
-
 mysql -uroot -e "FLUSH PRIVILEGES";
 pkill -9 mysqld_safe
 pkill -9 mysqld
@@ -769,7 +760,7 @@ def create_reverse_proxy(get):
     except Exception as e:
         result = public.M('sites').where("name=?", (get.siteName,)).find()
         if not isinstance(result, dict):
-            return public.returnMsg(False, '添加失败，错误{}!'.format(str(e)))
+            return public.returnResult(False, '添加失败，可能是Nginx配置文件错误，请先检查后再设置！错误详情：{}!'.format(str(e)))
 
         args = public.to_dict_obj({
             "id": result['id'],
@@ -777,7 +768,7 @@ def create_reverse_proxy(get):
             "remove_path": 1,
         })
         pMod.delete(args)
-        return public.returnMsg(False, '添加失败，错误{}!'.format(str(e)))
+        return public.returnResult(False, '添加失败，可能是Nginx配置文件错误，请先检查后再设置！错误详情：{}!'.format(str(e)))
 
 
 # 2024/5/30 上午10:38 设置指定代理的SSL
@@ -896,6 +887,28 @@ def get_reverse_proxy():
         return public.returnMsg(False, '获取失败，错误{}!'.format(str(e)), data={"siteName": site_name})
 
 
+# 2025/2/17 14:29 检测如果磁盘剩余空间是否小于500M，是就返回False
+def check_disk_space():
+    '''
+        @name 检测如果磁盘剩余空间是否小于500M，是就返回False，否则返回True
+        @return bool
+    '''
+    disk_info = public.get_disk_usage("/")
+    if disk_info.free < 500 * 1024 * 1024:
+        print("==========================================================================")
+        # 2025/2/17 14:34 输出格式化后的总磁盘空间和剩余空间
+        os.system("echo -e '\e[31m紧急：根目录(\"/\")磁盘空间不足500M，请先清理磁盘空间后再执行命令！\\e[0m'")
+        print("总磁盘空间：{}，剩余空间：{}".format(public.to_size(disk_info.total), public.to_size(disk_info.free)))
+        print("计算空间由字节转换，请以实际大小为准！")
+        print("")
+        stdout, stderr = public.ExecShell("df -Th")
+        print("系统 df -Th 输出详情如下：")
+        print(stdout)
+        print("==========================================================================")
+        return False
+    return True
+
+
 # 命令行菜单
 def bt_cli(u_input=0):
     raw_tip = "==============================================="
@@ -988,6 +1001,10 @@ def bt_cli(u_input=0):
         if public.get_webserver() != "nginx":
             print("仅支持nginx！")
 
+        if not os.path.exists("/www/server/nginx/sbin/nginx"):
+            print("未安装nginx，无法设置免端口访问面板")
+            return
+
         print(raw_tip)
         print("此功能设置后可免端口访问宝塔面板")
         print("例如，设置域名为：panel.bt.cn")
@@ -1020,13 +1037,6 @@ def bt_cli(u_input=0):
             print()
             print("#### 如需关闭，请输入0 关闭免端口访问面板")
 
-        n_installed = 1
-        if not os.path.exists("/www/server/nginx/sbin/nginx"):
-            n_installed = 0
-
-        if n_installed == 0:
-            print("检测到您未安装nginx，继续设置会自动为您安装nginx服务，过程可能需要等待5-10分钟！")
-
         site_name = input("请输入访问面板的域名或IP：")
 
         if site_name == "":
@@ -1041,19 +1051,6 @@ def bt_cli(u_input=0):
         else:
             if not public.check_ip(site_name) and not public.is_domain(site_name):
                 print("域名或ip格式错误，请重新输入，例如：panel.bt.cn")
-                return
-
-        if n_installed == 0:
-            print("正在安装nginx 1.24，请勿终止此操作！")
-            if os.path.exists('/usr/bin/yum'):
-                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 1 install nginx 1.24")
-            elif os.path.exists('/usr/bin/apt-get'):
-                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 4 install nginx 1.24")
-            else:
-                public.ExecShell("/bin/bash /www/server/panel/install/install_soft.sh 0 install nginx 1.24")
-
-            if not os.path.exists("/www/server/nginx/sbin/nginx"):
-                print("nginx安装失败，请联系宝塔运维处理！")
                 return
 
             print("安装完成，开始设置...")
@@ -1458,6 +1455,8 @@ if __name__ == "__main__":
                 clinum = int(sys.argv[2]) if sys.argv[2][:6] not in ['instal', 'update'] else sys.argv[2]
         except:
             clinum = sys.argv[2]
+        if clinum != 14:
+            if not check_disk_space(): exit(1)
         bt_cli(clinum)
     elif type == 'check_db':
         check_db()  # 面板自动修复

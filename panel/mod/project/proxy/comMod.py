@@ -711,6 +711,9 @@ server {{
         if get.username == "" or get.password == "":
             return public.returnResult(status=False, msg="用户名和密码不能为空！")
 
+        if len(get.password) > 8:
+            return public.returnResult(status=False, msg="密码不能超过8位，超过的部分无法验证！")
+
         get.password = public.hasPwd(get.password)
 
         get.proxy_json_conf = self.read_json_conf(get)
@@ -769,6 +772,8 @@ server {{
         get.password = get.get("password", "")
         if get.password == "":
             return public.returnResult(status=False, msg="password不能为空！")
+        if len(get.password) > 8:
+            return public.returnResult(status=False, msg="密码不能超过8位，超过的部分无法验证！")
 
         get.proxy_json_conf = self.read_json_conf(get)
         if not get.proxy_json_conf:

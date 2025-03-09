@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Tuple, Union, Optional
 
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .mods import PUSH_DATA_PATH, TaskConfig, PANEL_PATH
 from .util import read_file, DB, write_file
 from mod.base.web_conf import RealSSLManger
@@ -56,7 +56,7 @@ class DomainEndTimeTask(BaseTask):
             # 所有域名
             domain_list = sql.select()
             for domain in domain_list:
-                if domain['domain'] in not_push_web:
+                if domain['domain'] in not_push_web or not isinstance(domain['endtime'], str):
                     continue
                 if self.tips.get(task_id, {}).get(domain['domain'], 0) > total:
                     continue
@@ -64,7 +64,6 @@ class DomainEndTimeTask(BaseTask):
                 if int((end_time.timestamp() - time.time()) / 86400) <= task_data['cycle']:
                     self.push_keys.append(domain['domain'])
                     self.domain_list.append(domain)
-                # need_check_list.append(domain['domain'])
 
         else:
             find = sql.where('domain=?', (task_data['project'],)).find()
@@ -281,15 +280,9 @@ class CertEndTimeTask(BaseTask):
         return task_data
 
     def filter_template(self, template) -> dict:
-        from .util import get_cert_list, to_dict_obj
-
-        items = [
-            {"title": "{} | {}".format(i["title"],",".join(i.get("domainName", []) or "无")), "value": i["ssl_id"]}
-            for i in get_cert_list(to_dict_obj({"status_id": 1}))['data']
-            if i.get("endDay")
-        ]
-
-        template["field"][0]["items"].extend(items)
+        template["field"][0]["items"] = {
+            "url": "/ssl/cert/get_cert_list_to_push"
+        }
 
         return template
 
@@ -326,7 +319,8 @@ class CertEndTimeTask(BaseTask):
             self.tips.pop(task["id"])
             self.save_tip()
 
-class ViewMsgFormat(object):
+
+class ViewMsgFormat(BaseTaskViewMsg):
     _FORMAT = {
         "1": (
             lambda x: "<span>剩余时间小于{}天{}</span>".format(
@@ -342,3 +336,5 @@ class ViewMsgFormat(object):
         if task["template_id"] in self._FORMAT:
             return self._FORMAT[task["template_id"]](task)
         return None
+
+DomainEndTimeTask.VIEW_MSG = CertEndTimeTask.VIEW_MSG = ViewMsgFormat

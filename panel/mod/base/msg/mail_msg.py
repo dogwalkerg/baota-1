@@ -66,7 +66,7 @@ class MailMsg:
             test_task.to_mail_msg(test_msg, test_task.the_push_public_data()),
             "消息通道配置提醒"
         )
-        if res or res.find("部分接收者时失败") != -1:
+        if res is True or res.find("部分接收者时失败") != -1:
             return True, data
 
         return False, res

@@ -72,7 +72,13 @@
       "webhook",
       "sms"
     ],
-    "unique": false
+    "unique": false,
+    "tags": [
+      "system",
+      "safe",
+      "common"
+    ],
+    "description": "首页磁盘告警，当磁盘剩余容量低于设定值时，发送告警通知给管理员，帮助管理员及时发现并清理磁盘空间，以避免磁盘空间不足导致的系统崩溃或数据丢失。"
   },
   {
     "id": "21",
@@ -149,7 +155,13 @@
       "webhook",
       "sms"
     ],
-    "unique": true
+    "unique": true,
+    "tags": [
+      "system",
+      "safe",
+      "common"
+    ],
+    "description": "首页CPU告警，当CPU平均使用率超过设定值时，发送告警通知给管理员，帮助管理员及时发现并优化系统负载，以避免CPU资源不足导致的系统崩溃或服务异常。"
   },
   {
     "id": "22",
@@ -226,7 +238,13 @@
       "webhook",
       "sms"
     ],
-    "unique": true
+    "unique": true,
+    "tags": [
+      "system",
+      "safe",
+      "common"
+    ],
+    "description": "首页负载告警，当负载平均值超过设定值时，发送告警通知给管理员，帮助管理员及时发现并优化系统负载，以避免负载过重导致的系统崩溃或服务异常。"
   },
   {
     "id": "23",
@@ -303,6 +321,12 @@
       "webhook",
       "sms"
     ],
-    "unique": true
+    "unique": true,
+    "tags": [
+      "system",
+      "safe",
+      "common"
+    ],
+    "description": "首页内存告警，当内存使用率超过设定值时，发送告警通知给管理员，帮助管理员及时发现并优化系统内存使用情况，以避免内存不足导致的系统崩溃或服务异常。"
   }
 ]

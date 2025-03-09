@@ -354,7 +354,7 @@ echo "[*] shut down"
         except:
             pass
 
-    def set_cron_task(self, get):
+    def set_cron_task(self, get):  # 已不再使用，告警在告警模块中添加
         public.set_module_logs('log_analysis', 'set_cron_task', 1)
         try:
             cron_task_path = '/www/server/panel/data/cron_task_analysis.json'

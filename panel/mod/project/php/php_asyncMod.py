@@ -887,19 +887,22 @@ class main(IpRestrict, RealProcess, Proxy, Redirect):  # 继承并使用同ip黑
             if not project_find:
                 return public.returnResult(False, '指定项目不存在')
             result = []
-            domain_list = json.loads(get.domain)
+            domain_id_list = json.loads(get.domain)
+            remove_list = []
             project_id = public.M('sites').where('name=?', (get.sitename,)).getField('id')
-            for domain in domain_list:
-                if public.M('domain').where('pid=?', (project_id,)).count() == 1:
-                    result.append({'name': domain, 'msg': "项目中至少需要一个域名", "status": False})
-                    continue
-                domain_id = public.M('domain').where('name=? AND pid=?', (domain, project_id)).getField('id')
-                if not domain_id:
+            for domain_id in domain_id_list:
+                domain_info = public.M('domain').where('id=?', (domain_id,)).find()
+                if not domain_info:
                     return public.returnResult(False, '指定域名不存在')
+
+                if public.M('domain').where('pid=?', (project_id,)).count() == 1:
+                    result.append({'domain_id': domain_id, 'name': domain_info["name"], 'msg': "项目中至少需要一个域名", "status": False})
+                    continue
+                remove_list.append(domain_info["name"])
                 public.M('domain').where('id=?', (domain_id,)).delete()
-                public.WriteLog(self._log_name, '从项目：{}，删除域名{}'.format(get.sitename, get.domain))
-                result.append({'name': domain, 'msg': "删除成功", "status": True})
-            domain_list = public.M('domain').where('pid=?', (project_id)).select()
+                public.WriteLog(self._log_name, '从项目：{}，删除域名{}'.format(get.sitename, str(remove_list)))
+                result.append({'domain_id': domain_id, 'name': domain_info["name"], 'msg': "删除成功", "status": True})
+            domain_list = public.M('domain').where('pid=?', (project_id,)).select()
             domain_list = [(domain['name'], str(domain['port'])) for domain in domain_list]
             NginxDomainTool().nginx_set_domain(get.sitename, *domain_list)
             return public.returnResult(True, data=result)
@@ -1223,7 +1226,7 @@ class main(IpRestrict, RealProcess, Proxy, Redirect):  # 继承并使用同ip黑
                     if 'Type=forking' in conf:
                         is_fork = 1
                 realserver = RealServer()
-                realserver.create_daemon(get.sitename, '', get.project_cmd, get.project_path, config['project_config'].get('run_user', 'www'), get.is_power_on,
+                realserver.create_daemon(get.sitename, '', get.project_cmd, get.project_path, user=config['project_config'].get('run_user', 'www'), is_power_on=get.is_power_on,
                                          logs_file=os.path.join(self._phpa_logs, get.sitename + '.log'), is_fork=is_fork)
             if config['ps'] != get.get('ps', '') and get.get('ps', ''):
                 public.M('sites').where('name=?  and project_type=?', (get.sitename, 'PHP')).setField('ps', get.get('ps', ''))

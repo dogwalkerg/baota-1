@@ -57,7 +57,6 @@ class ssh_terminal:
     _s_code = None
     _last_num = 0
     _key_passwd = None
-    _video_addr = ""
     _host_row_id = ""
 
     def __init__(self):
@@ -76,6 +75,8 @@ class ssh_terminal:
                 video_addr TEXT);''')
             sql.execute('CREATE INDEX ssh_login_record ON ssh_login_record (addr);')
         self.time = time.time()
+        self._video_addr = ""
+        self._connect_ua = ""
 
     def record(self, rtype, data):
         if os.path.exists(public.get_panel_path() + "/data/open_ssh_login.pl") and self._video_addr:
@@ -85,6 +86,26 @@ class ssh_terminal:
                     fw.write(json.dumps(data) + '\n')
                     return True
             else:
+                if not os.path.exists(path):
+                    self._host_row_id = public.M('ssh_login_record').add(
+                        'addr,server_ip,ssh_user,user_agent,login_time,video_addr',
+                        (self._client, self._host, self._user, self._connect_ua
+                         , int(self._connect_time),
+                         self._video_addr))
+
+                    self.time = time.time()
+                    with open(path, 'w') as fw:
+                        fw.write(json.dumps({
+                            "version": 1,
+                            "width": 100,
+                            "height": 29,
+                            "timestamp": int(self.time) -1,
+                            "env": {
+                                "TERM": "xterm",
+                                "SHELL": "/bin/bash",
+                            },
+                            "stdout": []
+                        }) + '\n')
                 with open(path, 'r') as fr:
                     content = json.loads(fr.read())
                     stdout = content["stdout"]
@@ -280,11 +301,11 @@ class ssh_terminal:
         if not os.path.exists("/www/server/panel/plugin/jumpserver/static/video/"):
             os.makedirs("/www/server/panel/plugin/jumpserver/static/video/")
         # 如果开启了录像功能
-        user_agent = str(request.headers.get('User-Agent'))
+        self._connect_ua = str(request.headers.get('User-Agent'))
         if os.path.exists(public.get_panel_path() + "/data/open_ssh_login.pl"):
             self._host_row_id = public.M('ssh_login_record').add(
                 'addr,server_ip,ssh_user,user_agent,login_time,video_addr',
-                (self._client, self._host, self._user, user_agent
+                (self._client, self._host, self._user, self._connect_ua
                  , int(self._connect_time),
                  self._video_addr))
 

@@ -14,6 +14,7 @@ import os
 import sys
 import time
 
+
 if "/www/server/panel/class" not in sys.path:
     sys.path.insert(0, "/www/server/panel/class")
 
@@ -23,13 +24,15 @@ import public
 from mod.project.docker.app.appManageMod import AppManage
 from mod.project.docker.runtime.runtimeManage import RuntimeManage
 from mod.project.docker.sites.sitesManage import SitesManage
+from mod.project.docker.app.sub_app.ollamaMod import OllamaMod
 from btdockerModel import dk_public as dp
 
 
-class main(AppManage, RuntimeManage, SitesManage):
+class main(AppManage, RuntimeManage, SitesManage, OllamaMod):
 
     def __init__(self):
         super(main, self).__init__()
+        OllamaMod.__init__(self)
 
     # 2024/6/26 下午5:49 获取所有已部署的项目列表
     def get_project_list(self, get):

@@ -152,7 +152,6 @@ class WeChatAccountMsg:
 
     @staticmethod
     def _save_user_info(user_config_list: List[Dict[str, Any]]):
-        print(user_config_list)
         user_config_dict = {i["hex"]: i for i in user_config_list}
 
         remove_list = []

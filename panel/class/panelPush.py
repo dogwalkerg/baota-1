@@ -289,6 +289,29 @@ class panelPush:
             if skey in pdata:
                 nData[skey] = pdata[skey]
 
+        if isinstance(nData["push_count"], (int, float)):
+            nData["push_count"] = int(nData["push_count"])
+        elif isinstance(nData["push_count"], str):
+            try:
+                nData["push_count"] = int(nData["push_count"])
+            except:
+                nData["push_count"] = 3
+        try:
+            public.set_module_logs('set_push_config', nData['type'])
+        except:pass
+        class_obj = p_list[module]
+        if hasattr(class_obj, 'set_push_config'):
+            get['data'] = json.dumps(nData)
+            result = class_obj.set_push_config(get)
+            if 'status' in result: return result
+
+            data = result
+        else:
+            data = self._get_conf()
+            if not module in data: data[module] = {}
+            data[module][id] = nData
+
+        public.writeFile(self.__conf_path, json.dumps(data))
         # 兼容 负载均衡中的接口
         if module == "load_balance_push":
             try:
@@ -308,7 +331,8 @@ class panelPush:
                         }
                     }
                 }
-                pmgr.set_task_conf_data(push_data)
+                res = pmgr.set_task_conf_data(push_data)
+                public.print_log(res)
             except:
                 pass
 
@@ -335,22 +359,6 @@ class panelPush:
                 pmgr.set_task_conf_data(push_data)
             except:
                 pass
-        try:
-            public.set_module_logs('set_push_config', nData['type'])
-        except:pass
-        class_obj = p_list[module]
-        if hasattr(class_obj, 'set_push_config'):
-            get['data'] = json.dumps(nData)
-            result = class_obj.set_push_config(get)
-            if 'status' in result: return result
-
-            data = result
-        else:
-            data = self._get_conf()
-            if not module in data: data[module] = {}
-            data[module][id] = nData
-
-        public.writeFile(self.__conf_path, json.dumps(data))
         return public.returnMsg(True, '保存成功.')
 
     """
@@ -908,45 +916,22 @@ class panelPush:
             if keyword:
                 where += " and log like '%{}%'".format(keyword)
 
+        if hasattr(get, 'status') and get.status:
+
+            target_status = get.status.strip()
+            if target_status == "true":
+                where += " and log like '%成功</span>%'"
+            elif target_status == "false":
+                where += " and log like '%失败</span>%'"
+
         # 查询数据库记录总数
         count = sql.where(where, ()).count()
         data = public.get_page(count, int(p), int(limit))
         
         # 查询数据
         raw_logs = public.M('logs').where(where, ()).limit('{},{}'.format(data['shift'], data['row'])).order('id desc').select()
-        # 使用正则表达式提取状态并过滤数据
-        filtered_logs = []
-        if hasattr(get, 'status') and get.status:
-
-            target_status = get.status.strip()
-            if target_status == "true":
-                target_status = "成功"
-            elif target_status == "false":
-                target_status = "失败"
-            
-            for entry in raw_logs:
-
-                log = entry['log']
-                status = self.extract_status(log)  # 提取状态
-                if status == target_status:
-                    filtered_logs.append(entry)
-        else:
-            # 如果没有状态过滤，直接返回原始数据
-            filtered_logs = raw_logs
-
-        data['data'] = filtered_logs
+        data['data'] = raw_logs
         return data
-
-    @staticmethod
-    def extract_status(log):
-        import re
-        """
-        使用正则表达式从 log 中提取状态 (成功或失败)
-        """
-        match = re.search(r'<span[^>]*>(成功|失败)</span>', log)
-        if match:
-            return match.group(1)  # 返回提取的状态
-        return None
 
 
     # 兼容旧版本的告警

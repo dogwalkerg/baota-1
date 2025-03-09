@@ -450,6 +450,8 @@ class main:
 
         if len(auth_value) < 3:
             return public.returnMsg(False, '密码不能少于3位')
+        if len(auth_value) > 8:
+            return public.returnMsg(False, '密码不能大于8位，超过8位的部分无法验证。')
         if re.search('\s', auth_value):
             return public.returnMsg(False, '密码不能存在空格')
 

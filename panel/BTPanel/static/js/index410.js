@@ -1,7 +1,1 @@
-import{Z as e,J as a}from"./utils-lib.js?v=1736403705";import{c as r,r as s,e as l,k as t,J as n,p as i,d as m}from"./base-lib.js?v=1736403705";import"./__commonjsHelpers__.js?v=1736403705";const _=r({__name:"index",setup(r){const _=s("safeScan"),o=m((()=>a((()=>import("./index452.js?v=1736403705")),__vite__mapDeps([]),import.meta.url))),{BtTabs:p}=e({type:"card",value:_,options:[{label:"安全扫描",name:"safeScan",lazy:!0,render:()=>l(o,null,null)},{label:"违规词检测",name:"wordDetection",lazy:!0,render:()=>a((()=>import("./index453.js?v=1736403705")),__vite__mapDeps([]),import.meta.url)},{label:"动态查杀",name:"dynamicKilling",lazy:!0,render:()=>a((()=>import("./index454.js?v=1736403705")),__vite__mapDeps([]),import.meta.url)}]});return(e,a)=>(t(),n(i(p)))}});export{_ as default};
-function __vite__mapDeps(indexes) {
-  if (!__vite__mapDeps.viteFileDeps) {
-    __vite__mapDeps.viteFileDeps = []
-  }
-  return indexes.map((i) => __vite__mapDeps.viteFileDeps[i])
-}
+import{_ as t}from"./index.vue_vue_type_script_setup_true_lang21.js?v=1741587506";import"./utils-lib.js?v=1741587506";import"./base-lib.js?v=1741587506";import"./__commonjsHelpers__.js?v=1741587506";import"./column.js?v=1741587506";import"./index97.js?v=1741587506";import"./form-item.js?v=1741587506";import"./validator.js?v=1741587506";import"./useController5.js?v=1741587506";import"./site.js?v=1741587506";import"./useStore5.js?v=1741587506";export{t as default};

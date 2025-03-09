@@ -13,7 +13,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 if "/www/server/panel/class" not in sys.path:
     sys.path.insert(0, "/www/server/panel/class")
@@ -51,6 +51,7 @@ class App(composeMod):
         self.project_path = "/www/dk_project/dk_app"
         if not os.path.exists(self.project_path):
             public.ExecShell("mkdir -p {}".format(self.project_path))
+        self.ollama_online_models_file = "{}/ollama_online_models.json".format(self.project_path)
         self.templates_path = os.path.join(self.project_path, "templates")
         self.app_template_path = None
         self.delete_pl = False
@@ -118,6 +119,7 @@ class App(composeMod):
             "size": int,
         }
         self.backup_json_file = os.path.join(self.backup_path, "backup.json")
+        self.app_scripts = None
 
     def set_up_cmd(self, cmd) -> 'App':
         self.up_cmd = cmd
@@ -328,7 +330,8 @@ class App(composeMod):
         if not os.path.exists(tmp_path):
             public.ExecShell("mkdir -p {}".format(tmp_path))
 
-        public.downloadFile(public.get_url() + '/src/dk_app/apps/dkapp_ico.zip', os.path.join(tmp_path, "dkapp_ico.zip"))
+        public.downloadFile(public.get_url() + '/src/dk_app/apps/dkapp_ico.zip',
+                            os.path.join(tmp_path, "dkapp_ico.zip"))
         public.ExecShell("unzip -o {}/dkapp_ico.zip -d {}".format(tmp_path, zip_ico_path))
         public.ExecShell("cd {} && mv dkapp_ico dkapp".format(zip_ico_path))
 
@@ -596,7 +599,7 @@ class App(composeMod):
 
         if isinstance(result, int):
             public.WriteLog("数据库管理", "添加远程{app_name}服务器[{db_host}:{db_port}]".format(
-                                app_name=self.app_name, db_host=get.db_host, db_port=get.db_port))
+                app_name=self.app_name, db_host=get.db_host, db_port=get.db_port))
             return public.returnMsg(True, "添加成功!")
         return public.returnMsg(False, "添加失败： {result}".format(result=result))
 
@@ -713,7 +716,9 @@ class App(composeMod):
         installed_apps = []
         current_timestamp = int(time.time())
         from btdockerModel import dk_public as dp
+        server_ip = public.GetLocalIp()
         for i in installed_json[app_type]:
+            i["server_ip"] = server_ip
             if not "site_id" in i.keys():
                 i["site_id"] = None
                 i["site_name"] = None
@@ -788,17 +793,20 @@ class App(composeMod):
                     break
             else:
                 if os.path.exists("/tmp/{}.log".format(i["service_name"])):
-                    check_bt_successful = public.ExecShell("cat /tmp/{}.log | grep bt_successful".format(i["service_name"]))[0]
+                    check_bt_successful = \
+                    public.ExecShell("cat /tmp/{}.log | grep bt_successful".format(i["service_name"]))[0]
                     if check_bt_successful == "":
-                        check_bt_failed = public.ExecShell("cat /tmp/{}.log | grep bt_failed".format(i["service_name"]))[0]
+                        check_bt_failed = \
+                        public.ExecShell("cat /tmp/{}.log | grep bt_failed".format(i["service_name"]))[0]
                         if check_bt_failed != "":
                             i["status"] = "exited"
                         else:
                             i["status"] = "initializing"
                     else:
                         if i["appname"] == "sftpgo":
-                            check_started = public.ExecShell("cat /tmp/{}.log | grep Started".format(i["service_name"]))[0]
-                            if check_started =="":
+                            check_started = \
+                            public.ExecShell("cat /tmp/{}.log | grep Started".format(i["service_name"]))[0]
+                            if check_started == "":
                                 i["status"] = "initializing"
                         else:
                             i["status"] = "exited"
@@ -817,11 +825,14 @@ class App(composeMod):
                     pass_key = public.readFile(jenkins_key_file)
 
                 if pass_key == "":
-                    i["appinfo"].append({"fieldKey": "jenkins_pass_key", "fieldTitle": "jenkins密钥", "fieldValue": "请等待Jenkins初始化完毕后刷新已安装页面后获取密钥！"})
+                    i["appinfo"].append({"fieldKey": "jenkins_pass_key", "fieldTitle": "jenkins密钥",
+                                         "fieldValue": "请等待Jenkins初始化完毕后刷新已安装页面后获取密钥！"})
                 else:
-                    i["appinfo"].append({"fieldKey": "jenkins_pass_key", "fieldTitle": "jenkins密钥", "fieldValue": pass_key})
+                    i["appinfo"].append(
+                        {"fieldKey": "jenkins_pass_key", "fieldTitle": "jenkins密钥", "fieldValue": pass_key})
             elif i["appname"] == "nginx_proxy_manager":
-                i["appinfo"].append({"fieldKey": "allow_access", "fieldTitle": "默认邮箱", "fieldValue": "admin@example.com"})
+                i["appinfo"].append(
+                    {"fieldKey": "allow_access", "fieldTitle": "默认邮箱", "fieldValue": "admin@example.com"})
                 i["appinfo"].append({"fieldKey": "allow_access", "fieldTitle": "默认密码", "fieldValue": "changeme"})
             elif i["appname"] == "alist":
                 compose_file = "{}/{}/docker-compose.yml".format(i["path"], i["service_name"])
@@ -860,7 +871,13 @@ class App(composeMod):
                         ),
                     })
             elif i["appname"] == "openvpn":
-                i["appinfo"].append({"fieldKey": "ovpnfile", "fieldTitle": "ovpn文件(导入客户端)", "fieldValue": "{}/{}/{}.ovpn".format(i["path"], i["service_name"], i["service_name"])})
+                i["appinfo"].append({"fieldKey": "ovpnfile", "fieldTitle": "ovpn文件(导入客户端)",
+                                     "fieldValue": "{}/{}/{}.ovpn".format(i["path"], i["service_name"],
+                                                                          i["service_name"])})
+            elif i["appname"] == "rustdesk":
+                secret_key = public.readFile("{}/{}/data/id_ed25519.pub".format(i["path"], i["service_name"]))
+                i["appinfo"].append(
+                    {"fieldKey": "secret_key", "fieldTitle": "密钥(key)", "fieldValue": "{}".format(secret_key)})
 
             allow_access = "是" if i["host_ip"] == "0.0.0.0" else "否" if i["domain"] is None else "是"
             i["appinfo"].append({"fieldKey": "allow_access", "fieldTitle": "允许外部访问", "fieldValue": allow_access})
@@ -1016,6 +1033,10 @@ class App(composeMod):
             public.ExecShell("rm -rf {}".format(self.app_template_path))
 
         app_url = "{}/src/dk_app/apps/templates/{}.zip".format(public.get_url(), get.app_name)
+        # 检查GPU参数，重定向templates路径
+        if get.get('gpu', 'false') == 'true':
+            app_url = "{}/src/dk_app/apps/templates/{}_gpu.zip".format(public.get_url(), get.app_name)
+
         to_file = '/tmp/{}.zip'.format(get.app_name)
         if os.path.exists(to_file):
             public.ExecShell("rm -f {}".format(to_file))
@@ -1042,7 +1063,8 @@ class App(composeMod):
 
         db_sid = self.get_database_sid(get)
         if not db_sid:
-            return public.returnResult(False, "未找到指定数据库应用!")
+            return public.returnResult(False, "未找到指定数据库应用,请前往重建对应数据库或者手动添加远程数据库!")
+
 
         res = public.M("databases").where("name=? and sid=?", (get.app_db, db_sid)).find()
         if res:
@@ -1100,4 +1122,3 @@ class App(composeMod):
         if not create_res["status"]:
             return public.returnResult(False, create_res["msg"])
         return public.returnResult(True, "创建成功!")
-

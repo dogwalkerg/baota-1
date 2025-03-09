@@ -165,7 +165,7 @@ class userlogin:
                     self.__login_error()
                     return public.returnJson(False, "没有找到key,请尝试在命令行关闭谷歌验证后在开启"), json_header
                 t = pyotp.TOTP(secret_key)
-                result = t.verify(post.vcode)
+                result = t.verify(post.vcode, valid_window=1) # 允许验证当前时间窗口的前后各1个窗口（共3个窗口，覆盖90秒）
                 if not result:
                     if public.sync_date(): result = t.verify(post.vcode)
                     if not result:

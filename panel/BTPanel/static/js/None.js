@@ -1,0 +1,1 @@
+import{e as s}from"./utils-lib.js?v=1741587506";import{k as o,l as t,H as e}from"./base-lib.js?v=1741587506";const a={class:"content-none"};const n=s({},[["render",function(s,n){return o(),t("div",a,[e(s.$slots,"default",{},void 0,!0)])}],["__scopeId","data-v-ae2374e0"]]);export{n as N};

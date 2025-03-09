@@ -509,6 +509,8 @@ class system:
                 if disk.mountpoint.startswith('/proc'): continue
                 if disk.device in processed_devices:
                     continue
+                if disk.device.startswith("/dev/loop"):
+                    continue
                 if disk.mountpoint in processed_mountpoints:
                     continue
                 # 根据文件系统类型过滤
@@ -545,6 +547,7 @@ class system:
                 except:
                     inodes_pre = 0
                 tmp = {}
+                tmp['byte_size'] = [disk_total, disk_usage, disk_free]
                 tmp['path'] = disk.mountpoint.replace('/usr/local/lighthouse/softwares/btpanel', '/www')
                 disk_total = self.to_size(disk_total)
                 disk_usage = self.to_size(disk_usage)
@@ -1379,7 +1382,6 @@ class system:
             sUrl = public.GetConfigValue('home') + '/api/panel/get_panel_version_v2'
             try:
                 updateInfo = json.loads(public.httpPost(sUrl, data))
-                public.print_log(updateInfo)
             except:
                 return public.returnMsg(False, "CONNECT_ERR")
 
@@ -1420,21 +1422,36 @@ class system:
 # 例如当前版本是9.3.0，官方最新发布的正式版版本是9.4.0，那么upgrade=2，此时不显示更新小红点，不会显示9.4.0的更新提示，但是点击更新按钮可以获取到9.4.0的更新提示，点击即可更新
 # 例如当前版本已经是9.4.0，官方最新发布的正式版版本是9.4.0，那么upgrade=0，此时不显示更新小红点，点击更新按钮也不会有更新提示，显示当前为最新版正式版
             data['upgrade'] = 0
-            try:
-                cloud_version_list = data['cloud']['OfficialVersion']['version'].split('.')
-                latest_cloud_version_list = data['cloud']['OfficialVersionLatest']['version'].split('.') if "OfficialVersionLatest" in data['cloud'] and data['cloud']['OfficialVersionLatest'] else cloud_version_list
-                local_version_list = data['local']['version'].split('.')
-                if data['cloud']['OfficialVersion']['version'] == data['local']['version']:
-                    data['upgrade'] = 0
-                elif int(cloud_version_list[0]) > int(local_version_list[0]) or int(cloud_version_list[1]) > int(local_version_list[1]) or int(cloud_version_list[2]) > int(local_version_list[2]):
-                    data['upgrade'] = 1
 
-                if data['upgrade'] == 0:
-                    if int(latest_cloud_version_list[0]) > int(local_version_list[0]) or int(latest_cloud_version_list[1]) > int(local_version_list[1]) or int(latest_cloud_version_list[2]) > int(local_version_list[2]):
+            # 当local比cloud版本高时，upgrade=0
+            try:
+                c_version = data['cloud']['OfficialVersion']['version'].split('.')
+                lc_version = data['cloud']['OfficialVersionLatest']['version'].split('.') if 'OfficialVersionLatest' in data['cloud'] and data['cloud']['OfficialVersionLatest'] else data['local']['version'].split('.')
+                l_version = data['local']['version'].split('.')
+                try:
+                    if int(c_version[0]) > int(l_version[0]) or int(c_version[1]) > int(l_version[1]) or int(c_version[2]) > int(l_version[2]):
+                        data['upgrade'] = 1
+                    elif int(lc_version[0]) > int(l_version[0]) or int(lc_version[1]) > int(l_version[1]) or int(lc_version[2]) > int(l_version[2]):
                         data['upgrade'] = 2
+                    else:
+                        data['upgrade'] = 0
+                except:
+                    data['upgrade'] = 1
             except:
-                public.debug_log()
                 data['upgrade'] = 1
+
+            down_url = 'http://download.bt.cn/install/update/LinuxPanel-{}.pl'.format(data['local']['version'])
+            if os.path.exists("/tmp/LinuxPanel-{}.pl".format(data['local']['version'])):
+                os.remove("/tmp/LinuxPanel-{}.pl".format(data['local']['version']))
+            public.downloadFile(down_url, "/tmp/LinuxPanel-{}.pl".format(data['local']['version']))
+            try:
+                pl_info = json.loads(public.readFile("/tmp/LinuxPanel-{}.pl".format(data['local']['version'])))
+                if int(pl_info['update_time']) > int(data['local']['update_time']):
+                    data['cloud']['hash'] = pl_info['hash']
+                    data['cloud']['update_time'] = pl_info['update_time']
+                    data['cloud']['version'] = data['local']['version']
+            except:
+                data['upgrade'] = 0
 
             return data
         else:
@@ -1486,16 +1503,34 @@ class system:
                 return public.returnMsg(False, '获取修复版本失败，可能无法连接【宝塔官网】，请检查网络原因.')
 
             data['upgrade'] = 0
-            try:
-                if int(data['cloud']['update_time']) > int(data['local']['update_time']):
+            if data['cloud']['version'] == data['local']['version']:
+                try:
+                    if int(data['cloud']['update_time']) > int(data['local']['update_time']):
+                        data['upgrade'] = 1
+                except:
                     data['upgrade'] = 1
-            except:
+            else:
+                try:
+                    down_url = 'http://download.bt.cn/install/update/LinuxPanel-{}.pl'.format(data['local']['version'])
+                    if os.path.exists("/tmp/LinuxPanel-{}.pl".format(data['local']['version'])):
+                        os.remove("/tmp/LinuxPanel-{}.pl".format(data['local']['version']))
+                    public.downloadFile(down_url, "/tmp/LinuxPanel-{}.pl".format(data['local']['version']))
+                    try:
+                        pl_info = json.loads(public.readFile("/tmp/LinuxPanel-{}.pl".format(data['local']['version'])))
+                        if int(pl_info['update_time']) > int(data['local']['update_time']):
+                            data['upgrade'] = 1
+                            data['cloud']['hash'] = pl_info['hash']
+                            data['cloud']['update_time'] = pl_info['update_time']
+                            data['cloud']['version'] = data['local']['version']
+                    except:
+                        data['upgrade'] = 0
+                except:
                     data['upgrade'] = 1
 
             return data
         else:
             logPath = '/tmp/upgrade_panel.log'
-            shell = 'nohup {} -u {}/script/upgrade_panel.py repair_panel &>{} &'.format(public.get_python_bin(),public.get_panel_path(),logPath)
+            shell = 'nohup {} -u {}/script/upgrade_panel.py repair_panel {} &>{} &'.format(public.get_python_bin(), public.get_panel_path(), public.version(), logPath)
             public.ExecShell(shell)
 
             return public.returnMsg(True, '面板修复任务已启动，请稍后查看修复结果')

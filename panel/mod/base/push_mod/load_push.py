@@ -3,9 +3,9 @@ import os
 import time
 from typing import Tuple, Union, Optional
 
-from .mods import PUSH_DATA_PATH, TaskTemplateConfig
+from .mods import PUSH_DATA_PATH, TaskTemplateConfig, TaskConfig
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .util import read_file, DB, GET_CLASS, write_file
 
 
@@ -59,12 +59,13 @@ class NginxLoadTask(BaseTask):
             return '没有指定任何错误码，无法设置告警'
 
         task_data["cycle"] = "|".join(cycle)
+        task_data["interval"] = 300
         return task_data
 
     def get_keyword(self, task_data: dict) -> str:
         return task_data["project"]
 
-    def _check_func(self, upstream_name: str, codes: str) -> list:
+    def _check_func(self, upstream_name: str, codes: str, interval:int) -> list:
         import PluginLoader
         get_obj = GET_CLASS()
         get_obj.upstream_name = upstream_name
@@ -81,7 +82,7 @@ class NginxLoadTask(BaseTask):
                     idx = 0
                     for i in self.tip_counter[ping_url]:
                         # 清理超过4分钟的记录
-                        if time.time() - i > 60 * 4:
+                        if time.time() - i > interval * 4:
                             idx += 1
                     self.tip_counter[ping_url] = self.tip_counter[ping_url][idx:]
                     print("self.tip_counter[ping_url]",self.tip_counter[ping_url])
@@ -94,9 +95,8 @@ class NginxLoadTask(BaseTask):
         self.save_tip_counter()
         return res_list
 
-
     def get_push_data(self, task_id: str, task_data: dict) -> Optional[dict]:
-        err_nodes = self._check_func(task_data["project"], task_data["cycle"])
+        err_nodes = self._check_func(task_data["project"], task_data["cycle"], task_data.get("interval", 300))
         if not err_nodes:
             return None
         pj = "负载均衡:【{}】".format(task_data["project"]) if task_data["project"] != "all" else "负载均衡"
@@ -104,7 +104,7 @@ class NginxLoadTask(BaseTask):
         self.title = self.get_title(task_data)
         return {
             "msg_list": [
-                ">通知类型：企业版负载均衡告警",
+                ">通知类型：负载均衡告警",
                 ">告警内容：<font color=#ff0000>{}配置下的节点【{}】出现访问错误，请及时关注节点情况并处理。</font> ".format(
                     pj, nodes),
             ],
@@ -148,7 +148,7 @@ class NginxLoadTask(BaseTask):
         old_data = {
             "push_count": task["number_rule"].get("day_num", 2),
             "cycle": task["task_data"].get("cycle", "200|301|302|403|404"),
-            "interval": task["task_data"].get("interval", 60),
+            "interval": task["task_data"].get("interval", 600),
             "title": task["title"],
             "status": task['status'],
             "module": ",".join(task["sender"])
@@ -178,11 +178,10 @@ class NginxLoadTask(BaseTask):
             if v["project"] != task["task_data"]["project"]
         }
 
+        write_file(old_config_file, json.dumps(old_config))
+
 
 def load_load_template():
-    if TaskTemplateConfig().get_by_id("50"):
-        return None
-
     from .mods import load_task_template_by_config
     load_task_template_by_config(
         [{
@@ -257,16 +256,20 @@ def load_load_template():
                 "weixin",
                 "webhook"
             ],
-            "unique": False
+            "unique": False,
+            "tags": ["plugin"],
+            "description": "每隔一段时间检查负载均衡插件中，设置的节点是否可以正常访问，当访问异常时发送告警通知"
         }]
     )
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
 
-    @staticmethod
-    def get_msg(task: dict) -> Optional[str]:
+    def get_msg(self, task: dict) -> Optional[str]:
         if task["template_id"] == "50":
             return "<span>节点访问异常时，推送告警信息(每日推送{}次后不在推送)<span>".format(
                 task.get("number_rule", {}).get("day_num"))
         return None
+
+
+NginxLoadTask.VIEW_MSG = ViewMsgFormat

@@ -396,7 +396,7 @@ class main(dockerBase):
         @param get:
         @return:
         """
-        public.set_module_logs('编辑容器', 'upgrade_container_{}'.format(getattr(get, "id", "edit")), 1)
+        public.set_module_logs('编辑容器', 'upgrade_container', 1)
         try:
             if "id" not in get:
                 return public.returnMsg(False, "容器ID异常，请刷新页面后重试！")
@@ -1231,63 +1231,69 @@ class main(dockerBase):
         """
         res = {
             "logs": "",
-            'split_status': False,
-            'split_type': 'day',
-            'split_size': 1000,
-            'split_hour': 2,
-            'split_minute': 0,
-            'save': '180'
+            # 'split_status': False,
+            # 'split_type': 'day',
+            # 'split_size': 1000,
+            # 'split_hour': 2,
+            # 'split_minute': 0,
+            # 'save': '180'
         }
 
         try:
-            container = self.docker_client(self._url).containers.get(get.id)
-            if hasattr(get, 'time_search') and get.time_search != '':
-                if not os.path.exists(container.attrs['LogPath']):
+            # 获取容器信息   名称 日志路径  大小
+            container_info = self.docker_client(self._url).containers.get(get.id)
+
+            if not os.path.exists(container_info.attrs['LogPath']):
                     return ""
 
+            since = ""
+            until = ""
+            tail = ""
+            if hasattr(get, 'time_search') and get.time_search != '':
                 time_search = json.loads(str(get.time_search))
                 since = int(time_search[0])
                 until = int(time_search[1])
-                r_logs = container.logs(since=since, until=until).decode()
-
             else:
-                if not os.path.exists(container.attrs['LogPath']):
-                    return ""
-
-                size = os.stat(container.attrs['LogPath']).st_size
+                size = os.stat(container_info.attrs['LogPath']).st_size
                 if size < 1048576:
-                    r_logs = container.logs().decode()
-                else:
                     tail = int(get.tail) if "tail" in get else 3000
-                    r_logs = container.logs(tail=tail).decode()
+            options = {
+                "since": since,
+                "until": until,
+                "tail": tail
+              }
+            from btdockerModel.dockerSock import container
 
+            sk_container = container.dockerContainer()
+            sk_container_logs = sk_container.get_container_logs(get.id,options)
             if hasattr(get, 'search') and get.search != '':
                 if get.search:
-                    r_logs = r_logs.split("\n")
-                    r_logs = [i for i in r_logs if get.search in i]
-                    r_logs = "\n".join(r_logs)
+                    sk_container_logs = sk_container_logs.split("\n")
+                    sk_container_logs = [i for i in sk_container_logs if get.search in i]
+                    sk_container_logs = "\n".join(sk_container_logs)
 
-            res['logs'] = r_logs
+            public.print_log(container)
+            res["logs"] = sk_container_logs
             res['id'] = get.id
-            res['name'] = dp.rename(container.attrs['Name'][1:])
-            res['logs_path'] = container.attrs['LogPath']
-            res['size'] = os.stat(container.attrs['LogPath']).st_size
+            res['name'] = dp.rename(container_info.attrs['Name'][1:])
+            res['logs_path'] = container_info.attrs['LogPath']
+            res['size'] = os.stat(container_info.attrs['LogPath']).st_size
 
-            if public.M('sqlite_master').where('type=? AND name=?', ('table', 'docker_log_split')).count():
-                res['split_status'] = True if public.M('docker_log_split').where('pid=?', (get.id,)).count() else False
-                data = public.M('docker_log_split').where('pid=?', (get.id,)).select()
-                if data:
-                    res['split_type'] = data[0]['split_type']
-                    res['split_size'] = data[0]['split_size']
-                    res['split_hour'] = data[0]['split_hour']
-                    res['split_minute'] = data[0]['split_minute']
-                    res['save'] = data[0]['save']
-                else:
-                    res['split_type'] = 'day'
-                    res['split_size'] = 1000
-                    res['split_hour'] = 2
-                    res['split_minute'] = 0
-                    res['save'] = '180'
+            # if public.M('sqlite_master').where('type=? AND name=?', ('table', 'docker_log_split')).count():
+            # res['split_status'] = True if public.M('docker_log_split').where('pid=?', (get.id,)).count() else False
+            # data = public.M('docker_log_split').where('pid=?', (get.id,)).select()
+            # if data:
+            #     res['split_type'] = data[0]['split_type']
+            #     res['split_size'] = data[0]['split_size']
+            #     res['split_hour'] = data[0]['split_hour']
+            #     res['split_minute'] = data[0]['split_minute']
+            #     res['save'] = data[0]['save']
+            # else:
+            #     res['split_type'] = 'day'
+            #     res['split_size'] = 1000
+            #     res['split_hour'] = 2
+            #     res['split_minute'] = 0
+            #     res['save'] = '180'
 
             return res
 

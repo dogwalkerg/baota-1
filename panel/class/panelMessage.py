@@ -204,7 +204,8 @@ class panelMessage:
             if not os.path.exists('class/msg'): os.makedirs('class/msg')
             panelPath = "/www/server/panel"
 
-            sys.path.insert(0, "{}/class/msg".format(panelPath))
+            if  "{}/class/msg".format(panelPath) not in sys.path:
+                sys.path.insert(0, "{}/class/msg".format(panelPath))
 
             if module in ("dingding", "feishu", "mail", "sms", "weixin", "wx_account"):
                 sfile = 'class/msg/{}_msg.py'.format(module)

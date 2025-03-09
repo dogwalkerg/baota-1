@@ -104,7 +104,7 @@ class acme_v2:
         if not self._can_use_lua:
             return False
 
-        if site_type.lower() in ("php", "proxy"):
+        if site_type.lower() in ("php", "proxy", "wp2"):
             prefix = ""
         else:
             prefix = site_type.lower() + "_"
@@ -132,7 +132,7 @@ class acme_v2:
     # 返回是否能通过if 判断方式做了文件验证处理， 如果返回True，则表示可以
     @staticmethod
     def can_use_if_for_file_check(site_name: str, site_type: str):
-        if site_type.lower() in ("php", "proxy"):
+        if site_type.lower() in ("php", "proxy", "wp2"):
             prefix = ""
         else:
             prefix = site_type.lower() + "_"
@@ -159,7 +159,7 @@ class acme_v2:
     # 返回配置文件是否支持使用普通的文件验证
     @staticmethod
     def can_use_base_file_check(site_name: str, site_type: str):
-        if site_type.lower() in ("php", "proxy"):
+        if site_type.lower() in ("php", "proxy", "wp2"):
             prefix = ""
         else:
             prefix = site_type.lower() + "_"

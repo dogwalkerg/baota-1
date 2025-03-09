@@ -117,18 +117,8 @@ def backup_files(src_folder):
                     else:
                         print(f"|-文件 {file_path} 不存在，跳过")
 
-
-
         except zipfile.BadZipFile as e:
             print(f"|-创建压缩文件失败: {e}")
-            return
-
-        # 保存已备份文件的列表
-        try:
-            with open(os.path.join(dst_folder, 'backup_files.json'), 'w') as f:
-                json.dump(backup_files, f)
-        except OSError as e:
-            print(f"|-无法保存已备份文件的列表: {e}")
             return
         
         # 备份完成提示
@@ -141,6 +131,7 @@ def backup_files(src_folder):
         
         cloud_backup_path = zip_filename  # 初始备份路径为本地路径
         # backup_to="alioss"
+        backup_task_status = True
         # 判断是否需要上传到云存储
         if backup_to and backup_to != 'localhost':
             if backup_to in ["tianyiyun","webdav","minio","dogecloud"]:
@@ -161,8 +152,10 @@ def backup_files(src_folder):
                         print(f"|-文件已成功上传到云存储：{cloud_name_cn}")
                         cloud_backup_path = upload_path + '|' + backup_to + '|' + os.path.basename(zip_filename)  # 更新为云存储路径
                     else:
+                        backup_task_status = False
                         print(f"|-上传到{cloud_name_cn}失败")
                 except Exception as e:
+                    backup_task_status = False
                     print(f"|-上传到{cloud_name_cn}时发生错误: {str(e)}")
             else:
                 from CloudStoraUpload import CloudStoraUpload
@@ -182,17 +175,32 @@ def backup_files(src_folder):
                         print(f"|-已成功上传到{cloud_name_cn}")
                         cloud_backup_path = upload_path + '|' + backup_to + '|' + os.path.basename(zip_filename)  # 更新为云存储路径
                     else:
+                        backup_task_status = False
                         print(f"|-上传到{cloud_name_cn}失败")
                 except Exception as e:
+                    backup_task_status = False
                     print(f"|-上传到{cloud_name_cn}时发生错误: {str(e)}")
             if not save_local:
                 if os.path.exists(zip_filename):
+                    if backup_task_status:
+                        print("|-备份成功，已上传到云端，并删除本地备份文件：{}".format(zip_filename))
+                    else:
+                        print("|-上传云端失败，已删除本地备份文件：{}".format(zip_filename))
                     os.remove(zip_filename)
 
-        
-        # 将备份记录插入 `backup` 表，filename 字段使用云存储路径或本地路径
-        public.M('backup_site_file').add('cron_id, type, name, filename, size, addtime,src_folder,backupTo', 
-                            (cron_id, backup_type, zip_filename,cloud_backup_path, zip_size, public.format_date(),src_folder,backup_to))
+        # 如果备份任务成功，则插入数据库， 并保存已备份文件的列表， 否则由于没有备份文件，则不插入数据库，也不更新已备份文件的列表
+        if backup_task_status:
+            # 将备份记录插入 `backup` 表，filename 字段使用云存储路径或本地路径
+            public.M('backup_site_file').add('cron_id, type, name, filename, size, addtime,src_folder,backupTo',
+                                (cron_id, backup_type, zip_filename,cloud_backup_path, zip_size, public.format_date(),src_folder,backup_to))
+
+            # 保存已备份文件的列表
+            try:
+                with open(os.path.join(dst_folder, 'backup_files.json'), 'w') as f:
+                    json.dump(backup_files, f)
+            except OSError as e:
+                print(f"|-无法保存已备份文件的列表: {e}")
+                return
 
     except Exception as e:
         import traceback

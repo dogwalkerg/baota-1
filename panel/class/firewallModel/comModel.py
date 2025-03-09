@@ -38,6 +38,7 @@ class main(Base):
         data['ip'] = len(self.firewall.list_address())
         data['trans'] = len(self.firewall.list_port_forward())
         data['country'] = public.M('firewall_country').count()
+        data['banned'] = public.M('firewall_malicious_ip').count()
         data['type'] = "firewalld" if self._isFirewalld else "ufw" if self._isUfw else "iptables"
         if not "m_time_file" in self.__dict__:
             self.m_time_file = "/www/server/panel/data/firewall/geoip_mtime.pl"
@@ -261,6 +262,8 @@ class main(Base):
                     if get.query in sort_data[j]['Port'] or get.query in sort_data[j]['brief'] or get.query in \
                             sort_data[j]['Address']:
                         new_list.append(sort_data[j])
+                elif "Chain" not in sort_data[j]:
+                    new_list.append(sort_data[j])
                 elif get.chain != "ALL" and sort_data[j]['Chain'] == get.chain:
                     new_list.append(sort_data[j])
 

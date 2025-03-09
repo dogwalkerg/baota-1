@@ -65,7 +65,8 @@ class WxAccountLoginMsg(WxAccountMsgBase):
             self._server_name = "服务器IP{}".format(server_ip)
 
     def _get_server_name(self):
-        data = get_config_value("title")  # 若获得别名，则使用别名
+        data = get_config_value("title")  # 若获得别名，则使用别名.
+
         if data != "":
             self._server_name = data
 

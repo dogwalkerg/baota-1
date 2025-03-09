@@ -392,7 +392,8 @@ class main():
         # public.ExecShell(cmd)
 
         # 下载更新脚本
-        download_url = "https://www.aapanel.com/script/Multi-user_install.sh"
+        # download_url = "https://www.aapanel.com/script/Multi-user_install.sh"
+        download_url = "{}/install/Multi-user_install.sh".format(panel_public.get_url())
         install_path = "{}/panel/install".format(public.get_setup_path())
         install_file = install_path + "/vhost_virtual.sh"
         if os.path.exists(install_file):
@@ -400,7 +401,7 @@ class main():
         public.ExecShell("wget -O " + install_file + " " + download_url + " --no-check-certificate")
 
         # 执行更新脚本
-        cmd = 'cd /www/server/panel/install && /bin/bash vhost_virtual.sh'
+        cmd = 'cd /www/server/panel/install && /bin/bash vhost_virtual.sh install'
         public.ExecShell(cmd)
 
         return public.return_message(0, 0, public.lang('The upgrade was successful'))

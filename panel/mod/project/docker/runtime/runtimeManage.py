@@ -217,10 +217,23 @@ class RuntimeManage(Runtime):
         public.ExecShell("sed -i 's/^REPO_URL=.*/REPO_URL={}/' {}/.env".format(get.repo_url, self.project_path))
         public.ExecShell("sed -i 's,^SITE_PATH=.*,SITE_PATH={},' {}/.env".format(get.site_path, self.project_path))
 
-        public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
         public.ExecShell("sed -i 's/btpython:/{}/g' {}/*.yml".format(get.runtime_name, self.project_path))
         port_conf = self.handle_ports(get.ports)
         public.ExecShell("sed -i 's,:BTPORT_CONF:,{},g' {}/*.yml".format(port_conf, self.project_path))
+
+        try:
+            import yaml
+            import glob
+            yaml_files = glob.glob("{}/*.yml".format(self.project_path))
+            for yf in yaml_files:
+                data = public.readFile(yf)
+                if data:
+                    data = yaml.safe_load(data)
+                    public.print_log(data)
+                    data["services"]["{}-python3".format(get.runtime_name)]["environment"][1] = "COMMAND={}".format(get.command)
+                    public.writeFile(yf, yaml.dump(data))
+        except:
+            public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
 
         cmd = ("nohup echo '正在创建【{runtime_name}】,可能需要等待1-5分钟以上...' >> {build_log};"
                "docker-compose -f {compose_file} up -d >> {build_log} 2>&1 && "
@@ -258,10 +271,23 @@ class RuntimeManage(Runtime):
         public.ExecShell("sed -i 's/^VERSION=.*/VERSION={}/' {}/.env".format(get.runtime_version, self.project_path))
         public.ExecShell("sed -i 's,^SITE_PATH=.*,SITE_PATH={},' {}/.env".format(get.site_path, self.project_path))
 
-        public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
         public.ExecShell("sed -i 's/btgo:/{}/g' {}/*.yml".format(get.runtime_name, self.project_path))
         port_conf = self.handle_ports(get.ports)
         public.ExecShell("sed -i 's,:BTPORT_CONF:,{},g' {}/*.yml".format(port_conf, self.project_path))
+
+        try:
+            import yaml
+            import glob
+            yaml_files = glob.glob("{}/*.yml".format(self.project_path))
+            for yf in yaml_files:
+                data = public.readFile(yf)
+                if data:
+                    data = yaml.safe_load(data)
+                    public.print_log(data)
+                    data["services"]["{}-python3".format(get.runtime_name)]["environment"][1] = "COMMAND={}".format(get.command)
+                    public.writeFile(yf, yaml.dump(data))
+        except:
+            public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
 
         cmd = ("nohup echo '正在创建【{runtime_name}】,可能需要等待1-5分钟以上...' >> {build_log};"
                "docker-compose -f {compose_file} up -d >> {build_log} 2>&1 && "
@@ -299,10 +325,23 @@ class RuntimeManage(Runtime):
         public.ExecShell("sed -i 's/^VERSION=.*/VERSION={}/' {}/.env".format(get.runtime_version, self.project_path))
         public.ExecShell("sed -i 's,^SITE_PATH=.*,SITE_PATH={},' {}/.env".format(get.site_path, self.project_path))
 
-        public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
         public.ExecShell("sed -i 's/btjava:/{}/g' {}/*.yml".format(get.runtime_name, self.project_path))
         port_conf = self.handle_ports(get.ports)
         public.ExecShell("sed -i 's,:BTPORT_CONF:,{},g' {}/*.yml".format(port_conf, self.project_path))
+
+        try:
+            import yaml
+            import glob
+            yaml_files = glob.glob("{}/*.yml".format(self.project_path))
+            for yf in yaml_files:
+                data = public.readFile(yf)
+                if data:
+                    data = yaml.safe_load(data)
+                    public.print_log(data)
+                    data["services"]["{}-python3".format(get.runtime_name)]["environment"][1] = "COMMAND={}".format(get.command)
+                    public.writeFile(yf, yaml.dump(data))
+        except:
+            public.ExecShell("sed -i 's/:COMMAND:/{}/g' {}/*.yml".format(get.command, self.project_path))
 
         cmd = ("nohup echo '正在创建【{runtime_name}】,可能需要等待1-5分钟以上...' >> {build_log};"
                "docker-compose -f {compose_file} up -d >> {build_log} 2>&1 && "
@@ -384,6 +423,10 @@ class RuntimeManage(Runtime):
 
         if not os.path.exists(self.exts_file):
             self.check_templates(get)
+
+        from mod.project.docker.app.base import App
+        cbnet = App().check_baota_net()
+        if not cbnet["status"]: return cbnet
 
         if get.runtime_type == "all":
             all_runtime_list = dp.sql('runtime').order('addtime desc').select()

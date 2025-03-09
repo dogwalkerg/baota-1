@@ -198,6 +198,11 @@ class main(sslBase):
             record_type = get.record_type
         if record_type == 'TXT':
             domain_dns_value = "\"{}\"".format(domain_dns_value)
+        if get.record_type == 'MX':
+            if not get.get('mx'):
+                return public.returnMsg(False, 'MX记录类型必须填写MX值')
+            mx = get.mx
+            domain_dns_value = "{} {}".format(mx, domain_dns_value)
 
         root_domain, sub_domain, _ = self.extract_zone(domain_name)
         if sub_domain == "@":
@@ -224,7 +229,7 @@ class main(sslBase):
     def delete_dns_record(self, get):
         domain_name = get.domain_name
         RecordId = get.RecordId
-        root_domain, _, sub_domain = self.extract_zone(domain_name)
+        root_domain, sub_domain, _ = self.extract_zone(domain_name)
 
         zone_dic = self.get_zoneid_dict(get.dns_id)
         zone_id = zone_dic[root_domain]
@@ -250,7 +255,7 @@ class main(sslBase):
 
     def get_dns_record(self, get):
         domain_name = get.domain_name
-        root_domain, _, sub_domain = self.extract_zone(domain_name)
+        root_domain, sub_domain, _ = self.extract_zone(domain_name)
         data = {}
         try:
             zone_dic = self.get_zoneid_dict(get.dns_id)
@@ -288,12 +293,12 @@ class main(sslBase):
                 {
                     "RecordId": i["id"],
                     "name": i["name"][:-1],
-                    "value": '\r\n'.join(i["records"]) if i["type"] != "TXT" else '\r\n'.join([j.replace('"', '') for j in i["records"]]),
+                    "value":'\r\n'.join(i["records"]).split(' ')[-1] if i["type"] == "MX" else '\r\n'.join(i["records"]).replace('"', '') if i["type"] == "TXT" else '\r\n'.join(i["records"]),
                     "line": line_type_dict.get(i["line"], "其它"),
                     "ttl": i["ttl"],
                     "type": i["type"],
                     "status": "启用"if i["status"] == "ACTIVE" else "暂停" if i["status"] == "DISABLE" else i["status"],
-                    "mx": "",
+                    "mx": '\r\n'.join(i["records"]).split(' ')[0],
                     "updated_on": i.get("update_at", ""),
                     "remark": i.get("description") or "",
                 }
@@ -313,10 +318,15 @@ class main(sslBase):
         record_type = get.record_type
         remark = get.get("remark", "")
         domain_dns_value = get.domain_dns_value
-        root_domain, _, sub_domain = self.extract_zone(domain_name)
+        root_domain, sub_domain, _ = self.extract_zone(domain_name)
 
         if sub_domain == "@":
             domain_name = root_domain
+        if get.record_type == 'MX':
+            if not get.get('mx'):
+                return public.returnMsg(False, 'MX记录类型必须填写MX值')
+            mx = get.mx
+            domain_dns_value = "{} {}".format(mx, domain_dns_value)
         if record_type == 'TXT':
             domain_dns_value = "\"{}\"".format(domain_dns_value)
 
@@ -354,6 +364,28 @@ class main(sslBase):
             return public.returnMsg(True, '设置成功')
         except Exception as e:
             return public.returnMsg(False, self.get_error(str(e)))
+
+    def get_domain_list(self, get):
+        try:
+            res = self.sign_to_response(get.dns_id, "GET", "/v2/zones")
+            if res.status_code != 200:
+                return public.returnMsg(False, self.get_error(res.text))
+            response = res.json()
+            local_domain_list = [d['domain'] for d in public.M('ssl_domains').field('domain').select()]
+
+            domain_list = [
+                {
+                    "id": i["id"],
+                    "name": i["name"][:-1],
+                    "remark": i.get("description") or "",
+                    "record_count": i.get("record_num") or 0,
+                    "sync": 0 if i["name"][:-1] in local_domain_list else 1,
+                }
+                for i in response["zones"]
+            ]
+            return {"status": True, "msg": "获取成功！","data": domain_list}
+        except Exception as e:
+            return {"status": False, "msg": self.get_error(str(e)), "data": []}
 
     def get_error(self, error):
         if "DNS.0317" in error:

@@ -336,8 +336,11 @@ class main(projectBase):
             except:
                 result['primary_ip'] = ''
             return result
+        except requests.exceptions.SSLError:
+            print("|-请求失败，请证书是否匹配且可用！")
+            return public.returnMsg(False, "请求失败，请检查证书是否匹配且可用！")
         except:
-            # print(traceback.format_exc())
+            # public.print_log(traceback.format_exc())
             print("|-请求失败，请检查域名是否可用！")
             return public.returnMsg(False, "请求失败，请检查域名是否可用！")
 

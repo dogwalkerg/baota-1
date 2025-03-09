@@ -240,6 +240,27 @@ class main(sslBase):
         except Exception as e:
             return public.returnMsg(False, self.get_error(str(e)))
 
+    def get_domain_list(self, get):
+        try:
+            response = self.sign_to_response(get.dns_id, "DescribeDomains", {})
+            if response.status_code != 200:
+                return public.returnMsg(False, self.get_error(response.text))
+            data = response.json()
+            local_domain_list = [d['domain'] for d in public.M('ssl_domains').field('domain').select()]
+            domain_list = [
+                {
+                    "id": i["DomainId"],
+                    "name": i["DomainName"],
+                    "remark": i.get("Remark") or "",
+                    "record_count": i.get("RecordCount") or 0,
+                    "sync": 0 if i["DomainName"] in local_domain_list else 1,
+                }
+                for i in data["Domains"]["Domain"]
+            ]
+            return {"status": True, "msg": "获取成功", "data": domain_list}
+        except Exception as e:
+            return {"status": False, "msg": self.get_error(str(e)), "data": []}
+
     def get_error(self, error):
         if "DomainRecordConflict" in error:
             return "与其他记录冲突，不能添加"

@@ -114,26 +114,9 @@ cache.set('p_token', 'bmac_' + public.Md5(public.get_mac_address()))
 admin_path_file = 'data/admin_path.pl'
 admin_path = '/'
 bind_pl = 'data/bind.pl'
-menu_dict = {'memua': '/',
-             'memuasite': '/site',
-             'memuaftp': '/ftp',
-             'memuadatabase': '/database',
-             'memudocker': '/docker',
-             'memuacontrol': '/control',
-             'memuafirewall': '/firewall',
-             'memu_btwaf': '/btwaf',
-             'memu_total': '/total',
-             'memuafiles': '/files',
-             'memualogs': '/logs',
-             'memuAssl': '/ssl',
-             'memuaxterm': '/xterm',
-             'memuAmail': '/mail',
-             'memuAvhost': '/vhost',
-             'memuAwp': '/wp',
-             'memuacrontab': '/crontab',
-             'memuasoft': '/soft',
-             'memuaconfig': '/config',
-             'dologin': '/login'}
+
+menu_dict = {i["id"].lower(): i["href"] for i in public.get_menu()}
+
 if os.path.exists(admin_path_file):
     admin_path = public.readFile(admin_path_file).strip()
 admin_path_checks = [
@@ -947,7 +930,7 @@ def panel_warning(pdata=None):
                 pass
         return result
 
-    defs = ('get_list', 'set_ignore', 'check_find', 'check_cve', 'set_vuln_ignore', 'get_scan_bar', 'get_tmp_result',
+    defs = ('get_list', 'set_ignore', 'get_result', 'check_find', 'check_cve', 'set_vuln_ignore', 'get_scan_bar', 'get_tmp_result',
             'kill_get_list')
     if get.action in ['set_ignore', 'check_find', 'set_vuln_ignore']:
         cache.delete(ikey)
@@ -1389,6 +1372,13 @@ def ssl(action=None,pdata=None):
     result = publicObject(toObject, defs, get.action, get)
     return result
 
+@app.route('/mailUnsubscribe', methods=method_all)
+def mailUnsubscribe():
+    g.is_aes = False
+    import mailUnsubscribe
+    reg = mailUnsubscribe.mailUnsubscribe()
+    defs = ('Unsubscribe', 'Subscribe')
+    return publicObject(reg, defs, None, None)
 
 @app.route('/task', methods=method_all)
 def task(pdata=None):

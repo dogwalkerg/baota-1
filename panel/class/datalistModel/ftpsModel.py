@@ -123,12 +123,21 @@ class main(dataBase):
             wheres.append("type_id = {}".format(type_id))         
         return wheres
 
-    # 获取fto到期时间
+    # 获取ftp到期时间
     def get_all_ftp_end_time(self, ids):
         config_path = '/www/server/panel/data/ftp_push_config.json'
         if not os.path.exists(config_path):
             return {i: "0" for i in ids}
-        config = json.loads(public.readFile(config_path))
+
+        config = {}
+        try:
+            config = json.loads(public.readFile(config_path))
+        except json.decoder.JSONDecodeError:
+            if os.path.exists(config_path):
+                import shutil
+                shutil.copy(config_path, "{}.bak".format(config_path))
+                public.writeFile(config_path, json.dumps({'0': [], '1': [], '2': [], '3': [], 'channel': ''}))
+
         content = {}
         for _, i in config.items():
             if _ == 'channel':

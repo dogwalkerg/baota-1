@@ -28,9 +28,9 @@ class main(dockerBase):
         """
         check_docker_compose = self.check_docker_compose_service()
         try:
-            installing = public.M('tasks').where('name=? and status=?', ("Install Docker Service", "-1")).count()
+            installing = public.M('tasks').where('name=? and status=?', ("安装[Docker服务]", "-1")).count()
             if not installing:
-                installing = public.M('tasks').where('name=? and status=?', ("Install Docker Service", "-1")).count()
+                installing = public.M('tasks').where('name=? and status=?', ("安装[Docker服务]", "-1")).count()
         except:
             installing = 0
 
@@ -124,6 +124,20 @@ class main(dockerBase):
 
     def get_service_status(self):
         sock = '/var/run/docker.pid'
+
+        # Nas镜像标识文件
+        tagfile = "/www/server/panel/data/o.pl"
+        if os.path.exists(tagfile) and self.check_docker_service():
+            try:
+                if public.cache_get(tagfile):
+                    return True
+                content = public.readFile(tagfile).strip()
+                if content == "docker_bt_nas":
+                    public.cache_set(tagfile, 1, 86400)
+                    return True
+            except:
+                pass
+
         if os.path.exists(sock):
             try:
                 client = dp.docker_client()
@@ -590,10 +604,11 @@ fi
                     url = url_body.strip() if url_body else ""
 
         # 2024/3/28 上午 10:36 检测是否已存在安装任务
-        if public.M('tasks').where('name=? and status=?', ("Install Docker Service", "-1")).count():
+        if public.M('tasks').where('name=? and status=?', ("安装[Docker服务]", "-1")).count():
             return public.returnMsg(False, "已存在安装任务，请勿重复添加！")
 
         mmsg = "安装[Docker服务]"
+
         if type == 0 and url == "":
             # 默认安装
             execstr = ("wget -O /tmp/docker_install.sh {}/install/0/docker_install.sh && bash /tmp/docker_install.sh install").format(public.get_url())
@@ -719,24 +734,28 @@ fi
         if not os.path.exists("/etc/docker"): public.ExecShell("mkdir -p /etc/docker")
         ipv6_file = "/etc/docker/daemon.json"
 
+        try:
+            data = json.loads(public.readFile(ipv6_file))
+        except Exception as e:
+            return public.returnMsg(False, "全局配置文件有误，请检查{}！".format(str(e)))
+
         if status == 1:
+            data["ipv6"] = True
             if ipaddr == "":
                 subnet = self.random_ipv6_subnet()
-                public.writeFile(ipv6_file, json.dumps({"ipv6": True, "fixed-cidr-v6": subnet}, indent=2))
+                data["fixed-cidr-v6"] = subnet
+                public.writeFile(ipv6_file, json.dumps(data, indent=2))
             else:
                 if not self.is_valid_ipv6_subnet(ipaddr):
                     return public.returnMsg(False, "请输入正确的IPv6地址！")
-                public.writeFile(ipv6_file, json.dumps({"ipv6": True, "fixed-cidr-v6": ipaddr}, indent=2))
+                data["fixed-cidr-v6"] = ipaddr
+                public.writeFile(ipv6_file, json.dumps(data, indent=2))
         else:
-            try:
-                data = json.loads(public.readFile(ipv6_file))
-                if "ipv6" in data and data["ipv6"]:
-                    del data["ipv6"]
-                if "fixed-cidr-v6" in data and data["fixed-cidr-v6"]:
-                    del data["fixed-cidr-v6"]
-                public.writeFile(ipv6_file, json.dumps(data))
-            except:
-                pass
+            if "ipv6" in data and data["ipv6"]:
+                del data["ipv6"]
+            if "fixed-cidr-v6" in data and data["fixed-cidr-v6"]:
+                del data["fixed-cidr-v6"]
+            public.writeFile(ipv6_file, json.dumps(data, indent=2))
 
         #  重启docker服务
         get.act = "restart"

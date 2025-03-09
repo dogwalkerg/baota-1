@@ -5,18 +5,23 @@ import traceback
 
 os.chdir('/www/server/panel')
 sys.path.insert(0, "class/")
+sys.path.insert(0, '/www/server/panel')
 import crontab
 import public
 
+from mod.base.push_mod import push_by_task_keyword
+from mod.base.push_mod.web_log_push import WEBLogTask
 
-def run(path):
-    msg = ''
+
+def run(path) -> list:
     from log_analysis import log_analysis
     log_analysis = log_analysis()
     get = public.dict_obj()
     get.action = 'log_analysis'
     get.path = path
-    log_analysis.log_analysis(get)
+    res = log_analysis.log_analysis(get)
+    if res['status'] is False:
+        return [res["msg"]]
     get.action = 'speed_log'
     start_time = time.time()
     while True:
@@ -30,13 +35,23 @@ def run(path):
     get.action = 'get_result'
     res = log_analysis.get_result(get)
     data = res['data'][0]
+    msg_list = []
     if data['is_status']:
-        all = data['php'] + data['san'] + data['sql'] + data['xss']
-        if all > 0:
-            msg = '【异常】，发现{}条异常日志'.format(all)
+        all_num = data['php'] + data['san'] + data['sql'] + data['xss']
+        if all_num > 0:
+            msg_list.append('【异常】，共发现{}条异常日志。'.format(all_num))
+            if data['php'] > 0:
+                msg_list.append('PHP攻击{}条。'.format(data['php']))
+            if data['san'] > 0:
+                msg_list.append('恶意扫描{}条。'.format(data['san']))
+            if data['sql'] > 0:
+                msg_list.append('SQL注入攻击{}条。'.format(data['sql']))
+            if data['xss'] > 0:
+                msg_list.append('XSS攻击{}条。'.format(data['xss']))
         else:
-            msg = '【安全】，未发现异常日志'
-    return msg
+            msg_list.append('【安全】，未发现异常日志。')
+    return msg_list
+
 
 def send_notification(title, msg, channels):
     data = public.get_push_info(title, msg)
@@ -60,17 +75,27 @@ if __name__ == '__main__':
         p.DelCrontab(args)
         exit()
     data = json.loads(public.ReadFile(cron_task_path))
-    channel = data['channel']
+    web_log_map = WEBLogTask.all_web_log_scan()
     for path, config in data.items():
         if path == 'channel':
             continue
-        name = path.split('/')[-1].split('.')
-        name = '.'.join(name[:-1])
         try:
-            msg = run(path)
-            resource.append('网站【{}】：{}'.format(name, msg))
+            msg_list = run(path)
         except:
-            resource.append('网站【{}】：{}'.format(name, '检测失败'))
-    if resource:
-        send_notification('网站日志检测', resource, channel)
-    print('网站日志检测：\n{}'.format('  \n'.join(resource)))
+            msg_list = []
+            traceback.print_exc()
+            continue
+        try:
+            name = os.path.basename(path).rsplit(".", 1)[0]
+        except:
+            name = path
+        if msg_list:
+            print('网站【{}】日志检测：{}'.format(name, ','.join(msg_list)))
+        else:
+            print('网站【{}】日志检测：检测中报错了。'.format(name))
+        if path in web_log_map and msg_list:
+            msg_list.insert(0, '网站【{}】日志检测：'.format(web_log_map[path]))
+            push_by_task_keyword('web_log_scan', "web_log_scan_{}".format(path), push_data={"msg_list": msg_list})
+    # if resource:
+    #     send_notification('网站日志检测', resource, channel)
+    # print('网站日志检测：\n{}'.format('  \n'.join(resource)))

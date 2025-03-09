@@ -1380,7 +1380,12 @@ SetLink
         """
         try:
             if not os.path.exists(self._MYSQLDUMP_BIN):
-                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
+                if os.path.exists("/usr/bin/yum"):
+                    return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL, 或终端执行以下命令安装备份工具：yum install mariadb")
+                elif os.path.exists("/usr/bin/apt-get"):
+                    return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL, 或终端执行以下命令安装备份工具：apt-get install mariadb-client")
+                else:
+                    return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
 
             if not hasattr(get, "id"):
                 return public.returnMsg(False, "缺少参数！id")
@@ -1706,7 +1711,12 @@ SetLink
         public.ExecShell("echo '' >> /tmp/import_sql.log")
         public.ExecShell("echo '=====================================================' >> /tmp/import_sql.log")
         if not os.path.exists(self._MYSQL_BIN):
-            return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
+            if os.path.exists("/usr/bin/yum"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：yum install mariadb")
+            elif os.path.exists("/usr/bin/apt-get"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：apt-get install mariadb-client")
+            else:
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
 
         if not hasattr(get, "name"):
             return public.returnMsg(False, "缺少参数！name")
@@ -2201,7 +2211,10 @@ SetLink
                     break
             if b: continue
             host = self.get_db_host_by_db_name(int(sid))
-            if sql.where("name=? AND LOWER(type)=LOWER('mysql') AND accept=?", (value[0], host)).count(): continue
+            if db_type == 0:
+                if sql.where("name=? AND LOWER(type)=LOWER('mysql')", (value[0])).count(): continue
+            else:
+                if sql.where("name=? AND LOWER(type)=LOWER('mysql') AND accept=?", (value[0], host)).count(): continue
             # host = '127.0.0.1'
             # for user in users:
             #     if value[0] == user[0]:
@@ -3013,7 +3026,12 @@ SetLink
         csv /www/server/mysql/bin/mysql -uroot -padmin test5 -e "select * from test1;" --default-character-set=gbk | sed 's/\t/","/g;s/^/"/;s/$/"/;s/\n//g' > /www/backup/database/mysql/test.csv
         """
         if not os.path.exists(self._MYSQLDUMP_BIN):
-            return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
+            if os.path.exists("/usr/bin/yum"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：yum install mariadb")
+            elif os.path.exists("/usr/bin/apt-get"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：apt-get install mariadb-client")
+            else:
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
 
         if not hasattr(get, "sid"):
             return public.returnMsg(False, "缺少参数！sid")
@@ -3106,7 +3124,12 @@ USE \`{db_name}\`;
     # 导入
     def InputSqlAll(self, get):
         if not os.path.exists(self._MYSQL_BIN):
-            return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
+            if os.path.exists("/usr/bin/yum"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：yum install mariadb")
+            elif os.path.exists("/usr/bin/apt-get"):
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL,或终端执行以下命令安装备份工具：apt-get install mariadb-client")
+            else:
+                return public.returnMsg(False, "缺少备份工具，请先通过软件管理安装MySQL!")
 
         if not hasattr(get, "file"):
             return public.returnMsg(False, "缺少参数！file")
@@ -3528,6 +3551,8 @@ USE \`{db_name}\`;
         mysql_obj = public.get_mysql_obj_by_sid(get.sid)
         if not mysql_obj: return public.returnMsg(False, '连接指定数据库失败')
         m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
+        if not m_version:
+            m_version = mysql_obj.query('select version();')[0][0]
 
         if m_version.find('5.7') != -1 or m_version.find('8.0') != -1:
             # mysql_obj.execute("update mysql.user set authentication_string='' where User='" + username + "'")
@@ -4074,7 +4099,7 @@ USE \`{db_name}\`;
         for g in gets:
             mysql_obj.execute("set global {}={};".format(g,get[g]))
 
-                    
+        public.set_module_logs('mysql设置密码复杂度', 'SetValidatePasswordConfig', 1)                    
         return public.ReturnMsg(True,"设置成功！")
     
     def GetLoginFailed(self,get=None):
@@ -4113,6 +4138,9 @@ USE \`{db_name}\`;
         m_version = public.readFile(public.GetConfigValue('setup_path') + '/mysql/version.pl')
         data = self.map_to_list(panelMysql.panelMysql().query('show variables'))
 
+        if not any(mysql_version in m_version for mysql_version in ['5.7','8.0', '8.4', '9.0']):
+            return public.ReturnMsg(False,"当时数据库版本不支持此功能，请使用Mysql-5.7/8.0/8.4")
+
         if any(mysql_version in m_version for mysql_version in ['8.0', '8.4', '9.0']):
             key_name=['wait_timeout','interactive_timeout','default_password_lifetime','binlog_expire_logs_seconds']
         else:
@@ -4127,6 +4155,9 @@ USE \`{db_name}\`;
         if "binlog_expire_logs_seconds" in result:
             result['expire_logs_days']=str(int(int(result['binlog_expire_logs_seconds'])/86400)) 
 
+        if not "default_password_lifetime" in result:
+            result['default_password_lifetime']=None
+
         return result
 
     def SetTimeOut(self,get=None):
@@ -4139,7 +4170,9 @@ USE \`{db_name}\`;
                 mysql_obj.execute("set global binlog_expire_logs_seconds={};".format(logs_seconds))
             else:
                 mysql_obj.execute("set global {}={};".format(g,get[g]))
+                
 
+        public.set_module_logs('mysql超时设置', 'SetTimeOut', 1)
         return public.ReturnMsg(True,"设置成功！")
 
         
@@ -4191,7 +4224,7 @@ USE \`{db_name}\`;
             mysql_obj.execute("set global {}={};".format(g,get[g]))
             public.ExecShell("sed -i '/datadir/a\{} = {}' /etc/my.cnf".format(g,get[g]))
 
-                    
+        public.set_module_logs('mysqlAuditLog', 'SetAuditLogConfig', 1)
         return public.ReturnMsg(True,"设置成功！")
 
     def GeUserHostList(self,get=None):
@@ -4252,3 +4285,4 @@ USE \`{db_name}\`;
         if not os.path.exists(path): return public.returnMsg(False, '日志文件不存在!')
         return public.returnMsg(True, public.xsssec(public.GetNumLines(path, 100)))
         
+

@@ -35,28 +35,9 @@ class config:
     __dingding_config = '/www/server/panel/data/dingding.json'
     __mail_list = []
     __weixin_user = []
-    __menu_dict = {
-        "memuA": "/",
-        "memuAsite": "/site",
-        "memuAftp": "/ftp",
-        "memuAdatabase": "/database",
-        "memuDocker": "/docker",
-        "memuAcontrol": "/control",
-        "memuAfirewall": "/firewall",
-        "memu_btwaf": "/waf",
-        "memuAfiles": "/files",
-        "memuAlogs": "/logs",
-        "memuAssl": "/ssl",
-        "memuAwp": "/wp",
-        "memuAmail": "/mail",
-        "memuAvhost": "/vhost",
-        "memuAxterm": "/xterm",
-        "memuAcrontab": "/crontab",
-        "memuAsoft": "/soft",
-        "memuAconfig": "/config",
-        "dologin": "/login",
-        "memu_total": "/total",
-    }
+
+    __menu_dict = {i["id"]: i["href"] for i in public.get_menu()}
+
 
     def __init__(self):
         try:
@@ -1271,9 +1252,6 @@ class config:
     # 设置面板SSL
     def SetPanelSSL(self, get):
         if hasattr(get, "email"):
-            rep_mail = r"[\w!#$%&'*+/=?^_`{|}~-]+(?:\.[\w!#$%&'*+/=?^_`{|}~-]+)*@(?:[\w](?:[\w-]*[\w])?\.)+[\w](?:[\w-]*[\w])?"
-            if not re.search(rep_mail, get.email):
-                return public.returnMsg(False, '邮箱格式不合法')
             import setPanelLets
             sp = setPanelLets.setPanelLets()
             sps = sp.set_lets(get)
@@ -2339,7 +2317,7 @@ class config:
         return public.returnMsg(True, '设置成功!')
 
     # 获取菜单列表
-    def get_menu_list(self, get):
+    def get_menu_list_old(self, get):
         '''
             @name 获取菜单列表
             @author hwliang<2020-08-31>
@@ -2348,7 +2326,7 @@ class config:
         '''
         try:
             menu_file = '/www/server/panel/config/menu.json'
-            menu_data = json.loads(public.ReadFile(menu_file))
+            menu_data = json.loads(public.ReadFile(menu_file))["menu"]
             hide_menu_file = '/www/server/panel/config/hide_menu.json'
             show_menu_file = '/www/server/panel/config/show_menu.json'
             default_data = ["memuA", "memuAsite", "memuAdatabase", 'memuDocker', "memuAcontrol", "memuAfirewall", "memuAfiles", "memuAlogs", "memuAxterm", "memuAcrontab", "memuAsoft", "memuAconfig", "dologin", "memu_btwaf"]
@@ -2438,6 +2416,70 @@ class config:
         except:
             print(traceback.format_exc())
 
+
+    # 新增菜单需要
+    # 在 menu.json 中添加
+    # 在 init.py 中添加入口
+    # 前端添加一条相同菜单
+    def update_menu_show(self, menu_data, show_menu_data):
+        show_menu_data = {i["id"]: i for i in show_menu_data} if show_menu_data else {}
+        for menu in menu_data:
+            if menu['id'] in show_menu_data.keys():
+                menu['show'] = show_menu_data[menu['id']]['show']
+                if menu['children']:
+                    menu['children'] = self.update_menu_show(menu['children'], show_menu_data[menu['id']].get("children", []))
+        return menu_data
+
+    def get_menu_list(self, get):
+        default_path = '/www/server/panel/config/menu.json'
+        local_menu_path = '/www/server/panel/config/local_menu.json'
+
+        if not os.path.exists(local_menu_path):
+            if not os.path.exists("/www/server/panel/config/show_menu.json"):
+                menu_data = {}
+            else:
+                menu_data = {"version": "", "menu": self.get_menu_list_old(None)}
+        else:
+            try:
+                menu_data = json.loads(public.readFile(local_menu_path))
+            except:
+                menu_data = {}
+        default_data = json.loads(public.readFile(default_path))
+
+        if menu_data:
+            if menu_data['version'] != default_data['version']:
+                menu_data["menu"] = self.update_menu_show(default_data['menu'], menu_data['menu'])
+                menu_data['version'] = default_data['version']
+                public.writeFile(local_menu_path, json.dumps(menu_data))
+        else:
+            menu_data = default_data
+            public.writeFile(local_menu_path, json.dumps(menu_data))
+        if get == "local":
+            return menu_data
+
+        uid = session.get('uid')
+        if uid != 1 and uid:
+            return self.get_menu_list_old(None)
+
+        return menu_data['menu']
+
+    def set_hide_menu_list(self, get):
+        hide_list = json.loads(get.hide_list)
+
+        menu_data = self.get_menu_list("local")
+        menu_data['menu'] = self._edit_menu(menu_data['menu'], hide_list)
+        public.writeFile('/www/server/panel/config/local_menu.json', json.dumps(menu_data))
+        return public.returnMsg(True, '设置成功')
+
+    def _edit_menu(self, menu_data, hide_list):
+        for menu in menu_data:
+            if menu['id'] in hide_list:
+                menu['show'] = not menu['show']
+                menu['update_time'] = int(time.time())
+            if menu['children']:
+                menu['children'] = self._edit_menu(menu['children'], hide_list)
+        return menu_data
+
     # 数据解密
     def _decrypt(self, data):
         if not isinstance(data, str): return data
@@ -2477,7 +2519,7 @@ class config:
         return public.returnMsg(True, "设置成功")
 
     # 设置隐藏菜单列表
-    def set_hide_menu_list(self, get):
+    def set_hide_menu_list_old(self, get):
         '''
             @name 设置隐藏菜单列表
             @author hwliang<2020-08-31>

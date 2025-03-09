@@ -153,6 +153,8 @@ class main(NodeJs):
                         get.domains list 域名列表 ["www.bt.cn", "bt.cn", ...] 非必传
                         get.project_ps string 备注 ps 非必传
         '''
+        public.set_module_logs('node_site_{}'.format(get.get("project_type", None)), 'create_app', 1)
+        public.set_module_logs('node_site', 'create_app', 1)
         self.set_self_get(get)
         self.set_def_name(get.def_name)
         get.project_type = get.get("project_type", None)
@@ -167,6 +169,9 @@ class main(NodeJs):
                 self.ws_err_exit(False,
                                  '指定端口已被其它应用占用，请修改您的项目配置使用其它端口, 端口: {}'.format(get.port),
                                  code=2)
+
+        if public.M('sites').where('name=?',(get.project_name.strip(),)).count():
+            self.ws_err_exit(False, '指定项目名称已存在: {}'.format(get.project_name), code=2)
 
         get.domains = get.get("domains", [])
         if type(get.domains) == str:

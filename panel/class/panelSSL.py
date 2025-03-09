@@ -125,7 +125,7 @@ class panelSSL:
         if 'p_type' in get: p_type = get.p_type
 
 
-        result = self.request('get_product_list_v2?p_type={}'.format(p_type))
+        result = self.request('get_product_list_v3?p_type={}'.format(p_type))
         return result
 
     def get_cert_oid(self,get):
@@ -184,9 +184,11 @@ class panelSSL:
             if len(result):
                 result.sort(key = lambda item: (item['sort']),reverse=True)
         return result
+
+    # TODO 修改接口后重构
     #获取商业证书订单列表
     def get_order_list(self,get):
-        result = self.request('get_order_list')
+        result = self.request('get_bt_ssl_list')
         return self.get_cert_sort(get,result)
 
     def soft_release(self, get):
@@ -217,6 +219,10 @@ class panelSSL:
     def download_cert(self,get):
         self.__PDATA['data']['oid'] = get.oid
         result = self.request('download_cert')
+        if not result.get('data'):
+            self.__PDATA['data'] = json.loads(self.__PDATA['data'])
+            result = self.request_v2("cert_ssl/compat_download")
+            return result['res']
         return result
 
     #部署指定商业证书
@@ -289,9 +295,11 @@ class panelSSL:
         except : pass
         return False
 
+    # TODO 修改接口后重构
     #检查商业证书支付状态
     def get_pay_status(self,args):
         self.__PDATA['data']['oid'] = args.oid
+        self.__PDATA['data']['pid'] = args.pid
         result = self.request('get_pay_status')
         return result
 
@@ -437,62 +445,101 @@ class panelSSL:
 
     #更换验证方式
     def again_verify(self,args):
-        self.__PDATA['data']['oid'] = args.oid
-        self.__PDATA['data']['dcvMethod'] = args.dcvMethod
-        result = self.request('again_verify')
-        return result
+        if "cert_ssl_type" not in args or args.cert_ssl_type == '0':
+            self.__PDATA['data']['oid'] = args.oid
+            self.__PDATA['data']['dcvMethod'] = args.dcvMethod
+            result = self.request('again_verify')
+            return result
+        else:
+            self.__PDATA['data']['oid'] = args.oid
+            self.__PDATA['data']['pid'] = args.pid
+            if args.dcvMethod in ['HTTP_CSR_HASH','HTTPS_CSR_HASH']:
+                verification = 'file'
+            else:
+                verification = 'dns'
+            self.__PDATA['data']['verification'] = verification
+            result = self.request_v2('cert_ssl/update_ca_verification')
+            if not result['success']: return public.returnMsg(False,result['res'])
+            return public.returnMsg(True, result)
 
+    # TODO 修改接口后重构
     #获取商业证书验证结果
     def get_verify_result(self,args):
         self.__PDATA['data']['oid'] = args.oid
-        verify_info = self.request('get_verify_result')
-        if verify_info['status'] in ['COMPLETE',False]: return verify_info
-        is_file_verify = 'CNAME_CSR_HASH' != verify_info['data']['dcvList'][0]['dcvMethod']
-        verify_info['paths'] = []
-        verify_info['hosts'] = []
-
-        if not 'application' in verify_info['data'] :
-            return public.returnMsg(False,'订单出现问题，请联系人工客服.')
-
-        if verify_info['data']['application']['status'] == 'ongoing':
-            return public.returnMsg(False,'订单出现问题，CA正在人工验证，若24小时内依然出现此提示，请联系宝塔')
-        for dinfo in verify_info['data']['dcvList']:
-            is_https = dinfo['dcvMethod'] == 'HTTPS_CSR_HASH'
-            if is_https:
-                is_https = 's'
-            else:
-                is_https = ''
-            domain = dinfo['domainName']
-            if domain[:2] == '*.': domain = domain[2:]
-            dinfo['domainName'] = domain
-            if is_file_verify:
-                #判断是否是Springboot 项目
-                if public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Java' or public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Go' or public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Other':
-                    siteRunPath='/www/wwwroot/java_node_ssl'
+        self.__PDATA['data']['pid'] = args.pid
+        if "cert_ssl_type" not in args or args.cert_ssl_type == '0':
+            verify_info = self.request('get_verify_result')
+            if verify_info['status'] in ['COMPLETE',False]: return verify_info
+            is_file_verify = 'CNAME_CSR_HASH' != verify_info['data']['dcvList'][0]['dcvMethod']
+            verify_info['paths'] = []
+            verify_info['hosts'] = []
+            if not 'application' in verify_info['data'] :
+                return public.returnMsg(False,'订单出现问题，请联系人工客服.')
+            if verify_info['data']['application']['status'] == 'ongoing':
+                return public.returnMsg(False,'订单出现问题，CA正在人工验证，若24小时内依然出现此提示，请联系宝塔')
+            for dinfo in verify_info['data']['dcvList']:
+                is_https = dinfo['dcvMethod'] == 'HTTPS_CSR_HASH'
+                if is_https:
+                    is_https = 's'
                 else:
-                    siteRunPath = self.get_domain_run_path(domain)
-                #if domain[:4] == 'www.': domain = domain[4:]
-                status = 0
-                url = 'http'+ is_https +'://'+ domain +'/.well-known/pki-validation/' + verify_info['data']['DCVfileName']
+                    is_https = ''
+                domain = dinfo['domainName']
+                if domain[:2] == '*.': domain = domain[2:]
+                dinfo['domainName'] = domain
+                if is_file_verify:
+                    #判断是否是Springboot 项目
+                    if public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Java' or public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Go' or public.M('sites').where('id=?',(public.M('domain').where('name=?',(dinfo['domainName'])).getField('pid'),)).getField('project_type') == 'Other':
+                        siteRunPath='/www/wwwroot/java_node_ssl'
+                    else:
+                        siteRunPath = self.get_domain_run_path(domain)
+                    #if domain[:4] == 'www.': domain = domain[4:]
+                    status = 0
+                    url = 'http'+ is_https +'://'+ domain +'/.well-known/pki-validation/' + verify_info['data']['DCVfileName']
+                    get = public.dict_obj()
+                    get.url = url
+                    get.content = verify_info['data']['DCVfileContent']
+                    status = self.check_url_txt(get)
+                    verify_info['paths'].append({'url':url,'status':status})
+                    if not siteRunPath: continue
+                    verify_path = siteRunPath + '/.well-known/pki-validation'
+                    if not os.path.exists(verify_path):
+                        os.makedirs(verify_path)
+                    verify_file = verify_path + '/' + verify_info['data']['DCVfileName']
+                    if os.path.exists(verify_file): continue
+                    public.writeFile(verify_file,verify_info['data']['DCVfileContent'])
+                else:
+                    #if domain[:4] == 'www.': domain = domain[4:]
+                    domain,subb = public.get_root_domain(domain)
+                    dinfo['domainName'] = domain
+                    verify_info['hosts'].append(verify_info['data']['DCVdnsHost'] + '.' + domain)
+        else:
+            verify_info = self.request_v2('cert_ssl/ssl_check')
+            if not verify_info['success'] or not verify_info['res'].get('list'): return public.returnMsg(False,verify_info['res'])
+            status = "PENDING"
+            if verify_info['res']['list'][0]['state'] == 2:
+                status = "COMPLETE"
+
+            verify_info['data'] = {}
+            if verify_info['res']['list'][0]['verification'] == 'file':
+                verify_info['data']['dcvList'] = [{"dcvEmail": "", "dcvMethod": "HTTP_CSR_HASH",
+                                                      "domainName": verify_info['res']['list'][0]['domain']}]
+                verify_info['data']['DCVfileName'] = os.path.basename(verify_info['res']['list'][0]['file_name'])
+                verify_info['data']['DCVfileContent'] = os.path.basename(verify_info['res']['list'][0]['value'])
+                verify_info['data']['DCVfilePath'] = "http://example.com"+verify_info['res']['list'][0]['file_name']
+                url = 'http://'+ verify_info['res']['list'][0]['domain'] + verify_info['res']['list'][0]['file_name']
                 get = public.dict_obj()
                 get.url = url
                 get.content = verify_info['data']['DCVfileContent']
-                status = self.check_url_txt(get)
-
-                verify_info['paths'].append({'url':url,'status':status})
-                if not siteRunPath: continue
-
-                verify_path = siteRunPath + '/.well-known/pki-validation'
-                if not os.path.exists(verify_path):
-                    os.makedirs(verify_path)
-                verify_file = verify_path + '/' + verify_info['data']['DCVfileName']
-                if os.path.exists(verify_file): continue
-                public.writeFile(verify_file,verify_info['data']['DCVfileContent'])
+                verify_info['certStatus'] = verify_info['status'] = status
+                verify_info['paths'] = [{"url": url,"status": self.check_url_txt(get)}]
             else:
-                #if domain[:4] == 'www.': domain = domain[4:]
-                domain,subb = public.get_root_domain(domain)
-                dinfo['domainName'] = domain
-                verify_info['hosts'].append(verify_info['data']['DCVdnsHost'] + '.' + domain)
+                verify_info['data']['dcvList'] = [{"dcvEmail": "", "dcvMethod": "CNAME_CSR_HASH",
+                                                   "domainName": verify_info['res']['list'][0]['domain']}]
+                verify_info['data']['DCVdnsHost'] = os.path.basename(verify_info['res']['list'][0]['file_name'])
+                verify_info['data']['DCVdnsType'] = "CNAME"
+                verify_info['data']['DCVdnsValue'] = os.path.basename(verify_info['res']['list'][0]['value'])
+                verify_info['certStatus'] = verify_info['status'] = status
+
 
         return verify_info
 
@@ -673,6 +720,7 @@ class panelSSL:
 
         return result
 
+    # TODO 修改接口后重构
     #完善资料CA(先支付接口)
     def apply_order_ca(self,args):
         pdata = json.loads(args.pdata)
@@ -681,16 +729,38 @@ class panelSSL:
         result = self.check_ssl_caa(pdata['domains'])
         if result:  return result
 
-        self.__PDATA['data'] = pdata
-        result = self.request('apply_cert_ca')
-        if result['status'] == True:
-            self.__PDATA['data'] = {}
-            args['oid'] = pdata['oid']
-            if 'auth_to' in pdata:
-                args['auth_to'] = pdata['auth_to']
-            result['verify_info'] = self.get_verify_info(args)
-        return result
+        if "cert_ssl_type" not in pdata or pdata['cert_ssl_type'] == 0:
+            self.__PDATA['data'] = pdata
+            result = self.request('apply_cert_ca')
+            if result['status'] == True:
+                self.__PDATA['data'] = {}
+                args['oid'] = pdata['oid']
+                if 'auth_to' in pdata:
+                    args['auth_to'] = pdata['auth_to']
+                result['verify_info'] = self.get_verify_info(args)
+            return result
+        else:
+            data = {}
+            data["pid"] = str(pdata["pid"])
+            data["oid"] = str(pdata["oid"])
+            data["administrator"] = {
+                "name": pdata["Administrator"]["lastName"],
+                "email": pdata["Administrator"]["email"],
+                "zip_code": pdata["Administrator"]["postCode"],
+                "country": pdata["Administrator"]["country"],
+                "city": pdata["Administrator"]["city"],
+                "telephone": pdata["Administrator"]["mobile"],
+                "state": pdata["Administrator"]["state"],
+            }
+            data["verification"] = "file" if pdata["dcvMethod"] == "HTTP_CSR_HASH" else "dns"
+            data["verification_type"] = "1"
+            data["domains"] = pdata["domains"]
+            self.__PDATA['data'] = data
 
+            result = self.request_v2('cert_ssl/submit_ssl_order')
+            if not result['success']:
+                return public.returnMsg(False,result['res'])
+            return public.returnMsg(True,'提交成功')
 
 
 
@@ -1723,9 +1793,13 @@ class panelSSL:
         if 'code' in get: data['code'] = get.code
         if 'token' in get: data['token'] = get.token
 
-        o_code = public.readFile('data/o.pl')
-        if not o_code: o_code = ''
-        data['o'] = o_code.strip()
+        if os.path.exists("data/install_ltd.pl"):
+            data['o'] = 'install_ltd'
+            public.writeFile('data/o.pl', 'install_ltd')
+        else:
+            o_code = public.readFile('data/o.pl')
+            if not o_code: o_code = ''
+            data['o'] = o_code.strip()
 
         pdata = {}
         pdata['data'] = self.De_Code(data)

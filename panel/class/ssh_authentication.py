@@ -43,7 +43,9 @@ class ssh_authentication:
             else:
                 public.ExecShell("/etc/init.d/sshd " + act)
         else:
-            public.ExecShell("/etc/init.d/sshd " + act)
+            # public.ExecShell("/etc/init.d/sshd " + act)
+
+            public.ExecShell("systemctl {} sshd".format(act))
 
     #查找PAM目录
     def get_pam_dir(self):

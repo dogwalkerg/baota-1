@@ -215,6 +215,8 @@ class dingding_msg:
         @data 消息内容
             {"module":"mail","title":"标题","msg":"内容","to_email":"xx@qq.com","sm_type":"","sm_args":{}}
         """
+        if not isinstance(data, dict):
+            return self.send_msg(data)
         return self.send_msg(data['msg'])
 
     def __get_default_channel(self):

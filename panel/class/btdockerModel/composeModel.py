@@ -332,8 +332,7 @@ class main(dockerBase):
         dp.sql("templates").where("id=?", (get.templates_id,)).update(pdata)
 
     def create_project_in_path(self, name, path):
-        shell = "cd {} && /usr/bin/docker-compose -p {} up -d &> {}".format("/".join(path.split("/")[:-1]), name,
-                                                                            self._log_path)
+        shell = "/usr/bin/docker-compose -f {} -p {} up -d &> {}".format(path, name, self._log_path)
         public.ExecShell(shell)
 
     def create_project_in_file(self, project_name, file):

@@ -84,6 +84,10 @@ panel_version = public.version
 
 get_webserver = public.get_webserver
 
+random_string: Callable[[int], str] = public.GetRandomString
+
+set_module_logs: Callable[[str, str], None] = public.set_module_logs
+
 # 获取证书列表
 get_cert_list = certModel.main().get_cert_list
 to_dict_obj = public.to_dict_obj
@@ -103,6 +107,15 @@ class _DB:
 
 
 DB = _DB()
+
+
+def get_db_by_file(file: str):
+    import db
+    if not os.path.exists(file):
+        return None
+    db_obj = db.Sql()
+    db_obj._Sql__DB_FILE = file
+    return db_obj
 
 
 def check_site_status(web):

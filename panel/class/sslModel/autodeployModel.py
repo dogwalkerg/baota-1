@@ -211,7 +211,7 @@ class main(sslBase):
     def edit_task(self, get):
         task_id = get.task_id
         task_name = get.task_name
-        cloud_id = get.cloud_id
+        cloud_id = int(get.cloud_id)
         private_key = get.private_key
         sites = get.sites
         # cycle = get.cycle

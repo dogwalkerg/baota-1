@@ -11,7 +11,7 @@ from typing import Tuple, Union, Optional, List, Dict
 import psutil
 
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .mods import PUSH_DATA_PATH
 from .util import read_file, write_file, get_config_value, ExecShell
 
@@ -513,7 +513,7 @@ class PanelSysMEMTask(BaseTask, _NextThing):
         return msg
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
     _FORMAT = {
         "20": (
             lambda x: "<span>挂载在{}上的磁盘{}触发</span>".format(
@@ -545,3 +545,6 @@ class ViewMsgFormat(object):
         if task["template_id"] in self._FORMAT:
             return self._FORMAT[task["template_id"]](task["task_data"])
         return None
+
+
+PanelSysDiskTask.VIEW_MSG = PanelSysCPUTask.VIEW_MSG = PanelSysLoadTask.VIEW_MSG = PanelSysMEMTask.VIEW_MSG = ViewMsgFormat

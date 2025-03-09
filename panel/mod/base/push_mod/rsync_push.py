@@ -1,13 +1,14 @@
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta
 from typing import Tuple, Union, Optional, Iterator
 
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
-from .mods import TaskTemplateConfig
-from .util import read_file
+from .base_task import BaseTask, BaseTaskViewMsg
+from .mods import TaskTemplateConfig, SenderConfig
+from .util import read_file, write_file
 
 
 def rsync_ver_is_38() -> Optional[bool]:
@@ -103,6 +104,55 @@ class Rsync38Task(BaseTask):
         msg.msg = "同步执行出错了，请及时关注同步情况"
         return msg
 
+    def task_config_create_hook(self, task: dict) -> Optional[str]:
+        return self.task_config_update_hook(task)
+
+    def task_config_update_hook(self, task: dict) -> Optional[str]:
+        old_file = "/www/server/panel/class/push/push.json"
+        try:
+            data = json.loads(read_file(old_file))
+        except:
+            data = {}
+
+        sc = SenderConfig()
+        module = set()
+        for i in task.get("sender", []):
+            tmp = sc.get_by_id(i)
+            if tmp and tmp["sender_type"] != "webhook":
+                module.add(tmp["sender_type"])
+            if tmp and tmp["sender_type"] == "webhook":
+                module.add(tmp["data"].get("title", "webhook"))
+
+        old_id_list = list(data.get("rsync_push", {}).keys())
+        old_id = old_id_list[0] if len(old_id_list) > 0 else str(int(time.time()))
+
+        data["rsync_push"] = {
+            old_id: {
+                "key": "",
+                "type": "",
+                "cycle": 1,
+                "count": 1,
+                "interval": task.get("interval", 600),
+                "module": ",".join(module),
+                "push_count": task.get("number_rule", {}).get("day_num", 3),
+                "title": "文件同步告警",
+                "status": task["status"],
+                "project": "rsync_all"
+            }
+        }
+        write_file(old_file, json.dumps(data))
+        return
+
+    def task_config_remove_hook(self, task: dict) -> None:
+        old_file = "/www/server/panel/class/push/push.json"
+        try:
+            data = json.loads(read_file(old_file))
+        except:
+            data = {}
+        data["rsync_push"] = {}
+        write_file(old_file, json.dumps(data))
+        return
+
 
 class Rsync39Task(BaseTask):
 
@@ -154,6 +204,55 @@ class Rsync39Task(BaseTask):
         else:
             msg.msg = "同步执行出错了，请及时关注同步情况"
         return msg
+
+    def task_config_create_hook(self, task: dict) -> Optional[str]:
+        return self.task_config_update_hook(task)
+
+    def task_config_update_hook(self, task: dict) -> Optional[str]:
+        old_file = "/www/server/panel/class/push/push.json"
+        try:
+            data = json.loads(read_file(old_file))
+        except:
+            data = {}
+
+        sc = SenderConfig()
+        module = set()
+        for i in task.get("sender", []):
+            tmp = sc.get_by_id(i)
+            if tmp and tmp["sender_type"] != "webhook":
+                module.add(tmp["sender_type"])
+            if tmp and tmp["sender_type"] == "webhook":
+                module.add(tmp["data"].get("title", "webhook"))
+
+        old_id_list = list(data.get("rsync_push", {}).keys())
+        old_id = old_id_list[0] if len(old_id_list) > 0 else str(int(time.time()))
+
+        data["rsync_push"] = {
+            old_id: {
+                "key": "",
+                "type": "",
+                "cycle": 1,
+                "count": 1,
+                "interval": task.get("interval", 600),
+                "module": ",".join(module),
+                "push_count": task.get("number_rule", {}).get("day_num", 3),
+                "title": "文件同步告警",
+                "status": task["status"],
+                "project": "rsync_all"
+            }
+        }
+        write_file(old_file, json.dumps(data))
+        return
+
+    def task_config_remove_hook(self, task: dict) -> None:
+        old_file = "/www/server/panel/class/push/push.json"
+        try:
+            data = json.loads(read_file(old_file))
+        except:
+            data = {}
+        data["rsync_push"] = {}
+        write_file(old_file, json.dumps(data))
+        return
 
 
 class LogChecker:
@@ -231,8 +330,6 @@ def load_rsync_template():
     """
     加载rsync模板
     """
-    if TaskTemplateConfig().get_by_id("40"):
-        return None
     from .mods import load_task_template_by_config
     load_task_template_by_config(
         [{
@@ -267,7 +364,9 @@ def load_rsync_template():
                 "weixin",
                 "webhook"
             ],
-            "unique": True
+            "unique": True,
+            "tags": ["plugin"],
+            "description": "当文件同步工具执行同步任务出错时，发送告警通知，帮助管理员快速知晓文件同步情况"
         }]
     )
 
@@ -291,11 +390,13 @@ def push_rsync_by_task_name(task_name: str):
     push_by_task_keyword("rsync_push", "rsync_push", push_data=push_data)
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
 
-    @staticmethod
-    def get_msg(task: dict) -> Optional[str]:
+    def get_msg(self, task: dict) -> Optional[str]:
         if task["template_id"] == "40":
             return "<span>文件同步出现异常时，推送告警信息(每日推送{}次后不在推送)<span>".format(
                 task.get("number_rule", {}).get("day_num"))
         return None
+
+
+RsyncTask.VIEW_MSG = ViewMsgFormat

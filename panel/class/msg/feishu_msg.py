@@ -206,6 +206,8 @@ class feishu_msg:
         return ret
 
     def push_data(self,data):
+        if not isinstance(data, dict):
+            return self.send_msg(data)
         return self.send_msg(data['msg'])
 
     def uninstall(self):

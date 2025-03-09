@@ -14,7 +14,8 @@ import json
 import os.path
 import sys
 import time
-import traceback
+
+from mod.project.docker.app.gpu.tools import GPUTool
 
 if "/www/server/panel/class" not in sys.path:
     sys.path.append('/www/server/panel/class')
@@ -61,7 +62,12 @@ class AppManage(App):
         self.set_app_name(get.app_name)
         self.get_app_json()
         self.set_app_type()
-        self.set_app_template_path(self.app_name)
+
+        if get.get('gpu', 'false') == 'true':
+            self.set_app_template_path("{}_gpu".format(self.app_name))
+        else:
+            self.set_app_template_path(self.app_name)
+
         self.check_app_template(get)
         from btdockerModel import setupModel as ds
         if not ds.main().get_service_status():
@@ -91,15 +97,18 @@ class AppManage(App):
                             return public.returnResult(False, "已存在相同服务名称: {},请更换其他名称".format(
                                 self.service_name))
 
-                        if app["appname"] in depend_app["appname"] and app["m_version"] in tuple(depend_app["appversion"]):
+                        if app["appname"] in depend_app["appname"] and app["m_version"] in tuple(
+                                depend_app["appversion"]):
                             check_len += 1
                             break
 
                 if check_len != depend_len:
-                    return public.returnResult(False, "请先安装依赖应用: {}".format(",".join(["{}:{}".format(i["appname"], "/".join(i["appversion"])) for i in self.app_json["depend"]])))
+                    return public.returnResult(False, "请先安装依赖应用: {}".format(",".join(
+                        ["{}:{}".format(i["appname"], "/".join(i["appversion"])) for i in self.app_json["depend"]])))
         else:
             if not self.app_json["depend"] is None:
-                return public.returnResult(False, "请先安装依赖应用: {}".format(",".join(["{}:{}".format(i["appname"], "/".join(i["appversion"])) for i in self.app_json["depend"]])))
+                return public.returnResult(False, "请先安装依赖应用: {}".format(",".join(
+                    ["{}:{}".format(i["appname"], "/".join(i["appversion"])) for i in self.app_json["depend"]])))
 
         if len(get.site_domains) > 0:
             for domain in get.site_domains:
@@ -118,12 +127,15 @@ class AppManage(App):
         get.app_path = self.app_path
         self.set_service_path()
         self.set_cmd_log()
+        if "scripts" in self.app_json.keys():
+            self.app_scripts = self.app_json["scripts"]
 
         cbnet = self.check_baota_net()
         if not cbnet["status"]: return cbnet
 
         if not self.check_yml():
-            return public.returnResult(False, "初始化{}失败,检测到docker-compose.yml文件不存在,请卸载重装后再试".format(self.app_name))
+            return public.returnResult(False, "初始化{}失败,检测到docker-compose.yml文件不存在,请卸载重装后再试".format(
+                self.app_name))
         self.set_compose_file()
         public.ExecShell("chmod -R 755 {}".format(self.app_path))
         public.ExecShell("echo -n > {}".format(self.app_cmd_log))
@@ -158,6 +170,16 @@ class AppManage(App):
             app_cmd_log=self.app_cmd_log,
             compose_file=self.compose_file,
         ))
+        if get.get('gpu', 'false') == 'true' and not GPUTool.is_install_ctk():
+            cmd = ("nohup echo '正在启动,可能需要等待1-5分钟以上...' >> {app_cmd_log};"
+                   "{install_ctk};"
+                   "docker-compose -f {compose_file} up -d >> {app_cmd_log} 2>&1 && "
+                   "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &"
+            .format(
+                app_cmd_log=self.app_cmd_log,
+                install_ctk=GPUTool.ctk_install_cmd(self.app_cmd_log),
+                compose_file=self.compose_file,
+            ))
         self.set_up_cmd(cmd)
 
         # 2024/8/7 上午11:05 处理复杂一些的应用程序配置
@@ -169,6 +191,11 @@ class AppManage(App):
             "fieldKey": "installed_log",
             "fieldTitle": "安装日志",
             "fieldValue": self.app_cmd_log,
+        })
+        get.app_info.append({
+            "fieldKey": "gpu",
+            "fieldTitle": "是否开启GPU",
+            "fieldValue": True if get.get('gpu', 'false') == 'true' else False
         })
 
         # 2023/12/5 上午 9:48 启动应用
@@ -189,7 +216,8 @@ class AppManage(App):
         public.set_module_logs('dkapp', 'create_app', 1)
 
         if not create_result["status"]:
-            return public.returnResult(True, "应用创建成功,反向代理创建失败,请处理错误后手动创建,错误详情: {}".format(create_result["msg"]))
+            return public.returnResult(True, "应用创建成功,反向代理创建失败,请处理错误后手动创建,错误详情: {}".format(
+                create_result["msg"]))
 
         return public.returnResult(True, "应用创建成功,请耐心等待应用初始化,可能需要等待1-5分钟...")
 
@@ -243,8 +271,9 @@ class AppManage(App):
 
                     for installed in self.installed_apps["data"]:
                         if get.c_port in installed["port"]:
-                            return public.returnResult(False, "端口【{}】已被【{}】使用,请更换其他端口".format(get.c_port, installed["service_name"]))
-
+                            return public.returnResult(False, "端口【{}】已被【{}】使用,请更换其他端口".format(get.c_port,
+                                                                                                           installed[
+                                                                                                               "service_name"]))
                     cpres = self.check_port(get)
                     if not cpres["status"]: return cpres
                     get.port_list.append(get.c_port)
@@ -333,7 +362,8 @@ class AppManage(App):
                     else:
                         setattr(get, ap_json["key"], public.GetLocalIp())
                 elif ap_json["type"] == "server_ip":
-                    if not hasattr(get, ap_json["key"]) or getattr(get, ap_json["key"]) is None or getattr(get, ap_json["key"]) == "":
+                    if not hasattr(get, ap_json["key"]) or getattr(get, ap_json["key"]) is None or getattr(get, ap_json[
+                        "key"]) == "":
                         setattr(get, ap_json["key"], public.GetLocalIp())
 
                 if ap_json["key"] == "app_path":
@@ -346,10 +376,11 @@ class AppManage(App):
                         get_parm=getattr(get, ap_json["key"]),
                         service_path=self.service_path))
                 elif ap_json["key"] == "memory_limit":
-                    public.ExecShell("sed -i 's/^{field_attr}=.*/{field_attr}={get_parm}MB/' {service_path}/.env".format(
-                        field_attr=ap_json["key"].upper(),
-                        get_parm=getattr(get, ap_json["key"]),
-                        service_path=self.service_path))
+                    public.ExecShell(
+                        "sed -i 's/^{field_attr}=.*/{field_attr}={get_parm}MB/' {service_path}/.env".format(
+                            field_attr=ap_json["key"].upper(),
+                            get_parm=getattr(get, ap_json["key"]),
+                            service_path=self.service_path))
                 else:
                     public.ExecShell("sed -i 's/^{field_attr}=.*/{field_attr}={get_parm}/' {service_path}/.env".format(
                         field_attr=ap_json["key"].upper(),
@@ -373,27 +404,33 @@ class AppManage(App):
             for volume in self.app_json["volumes"].keys():
                 if self.app_json["volumes"][volume]["type"] == "path":
                     if os.path.exists(os.path.join(self.app_template_path, volume)):
-                        public.ExecShell("cp -r {}/{} {}/{}".format(self.app_template_path, volume, self.service_path, volume))
+                        public.ExecShell(
+                            "cp -r {}/{} {}/{}".format(self.app_template_path, volume, self.service_path, volume))
                     else:
                         public.ExecShell("mkdir -p {}".format(self.service_path + "/{}".format(volume)))
                     public.ExecShell("chmod -R 777 {}".format(self.service_path + "/{}".format(volume)))
                 if self.app_json["volumes"][volume]["type"] == "file":
-                    public.ExecShell("\cp -r {}/{} {}/{}".format(self.app_template_path, volume, self.service_path, volume))
+                    public.ExecShell(
+                        "\cp -r {}/{} {}/{}".format(self.app_template_path, volume, self.service_path, volume))
 
             if self.app_json["appname"] == "mysql":
                 if get.m_version == "5":
                     command = "--character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --explicit_defaults_for_timestamp=true --lower_case_table_names=1"
+                    if "5" in get.s_version: command = "--character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --lower_case_table_names=1"
                     if not os.path.exists(os.path.join(self.service_path, "my.cnf")):
-                        public.ExecShell("\cp -r {}/my5.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
+                        public.ExecShell(
+                            "\cp -r {}/my5.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
                 elif get.m_version == "9":
                     command = ""
                     if not os.path.exists(os.path.join(self.service_path, "my.cnf")):
-                        public.ExecShell("\cp -r {}/my9.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
+                        public.ExecShell(
+                            "\cp -r {}/my9.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
                 else:
                     command = "--default-authentication-plugin=mysql_native_password"
                     if get.m_version == "8" and "4" in get.s_version: command = ""
                     if not os.path.exists(os.path.join(self.service_path, "my.cnf")):
-                        public.ExecShell("\cp -r {}/my8.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
+                        public.ExecShell(
+                            "\cp -r {}/my8.cnf {}/my.cnf".format(self.app_template_path, self.service_path))
                 public.ExecShell("sed -i 's/^COMMAND=.*/COMMAND={}/' {}/.env".format(command, self.service_path))
 
             public.ExecShell("sed -i 's/BT_SERVICE_NAME6/{}/g' {}/*.yml".format(self.service_name, self.service_path))
@@ -413,8 +450,62 @@ class AppManage(App):
             return self.set_homeassistant_conf(get)
         elif self.app_name == "openvpn":
             return self.set_openvpn_conf(get)
+        elif self.app_name == "deepseek_r1":
+            if self.app_scripts is None:
+                return public.returnResult(False, "未找到deepseek_r1的脚本文件")
+
+            # 2025/2/8 10:07 获取当前内存大小，如果剩余可用内存不足1550mb，就不能部署
+            import psutil
+            memory = psutil.virtual_memory()
+            if memory.available < 1550 * 1024 * 1024:
+                return public.returnResult(False, "内存不足1550MB，无法部署deepseek_r1")
+
+            return self.set_deepseek_r1_conf(get)
 
         return public.returnResult(True, "无需处理")
+
+    # 2025/2/5 17:22 处理deepseek_r1的配置
+    def set_deepseek_r1_conf(self, get):
+        '''
+            @name 处理deepseek_r1的配置
+        '''
+        command = self.app_scripts["command"].format(get.version)
+        if get.get('gpu', 'false') == 'true' and not GPUTool.is_install_ctk():
+            cmd = ("nohup echo '正在启动,可能需要等待1-5分钟以上...' >> {app_cmd_log};"
+                   "{ctk_install_cmd};"
+                   "docker-compose -f {compose_file} up -d >> {app_cmd_log} 2>&1 && "
+                   "echo '等待 Ollama 服务启动...' >> {app_cmd_log} && "
+                   "until curl -sSf http://localhost:{ollama_port}/api/tags; do sleep 2; done && "
+                   "echo '启动模型 deepseek-r1...' >> {app_cmd_log} && "
+                   "docker-compose -f {compose_file} exec -it ollama {command} >> {app_cmd_log} 2>&1 && "
+                   "docker-compose -f {compose_file} restart >> {app_cmd_log} 2>&1 && "
+                   "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &"
+            .format(
+                app_cmd_log=self.app_cmd_log,
+                ctk_install_cmd=GPUTool.ctk_install_cmd(self.app_cmd_log),
+                compose_file=self.compose_file,
+                ollama_port=get.ollama_port,
+                command=command,
+            ))
+            public.print_log(cmd)
+        else:
+            cmd = ("nohup echo '正在启动,可能需要等待1-5分钟以上...' >> {app_cmd_log};"
+                   "docker-compose -f {compose_file} up -d >> {app_cmd_log} 2>&1 && "
+                   "echo '等待 Ollama 服务启动...' >> {app_cmd_log} && "
+                   "until curl -sSf http://localhost:{ollama_port}/api/tags; do sleep 2; done && "
+                   "echo '启动模型 deepseek-r1...' >> {app_cmd_log} && "
+                   "docker-compose -f {compose_file} exec -it ollama {command} >> {app_cmd_log} 2>&1 && "
+                   "docker-compose -f {compose_file} restart >> {app_cmd_log} 2>&1 && "
+                   "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &"
+            .format(
+                app_cmd_log=self.app_cmd_log,
+                compose_file=self.compose_file,
+                ollama_port=get.ollama_port,
+                command=command,
+            ))
+        self.set_up_cmd(cmd)
+
+        return public.returnResult(True, "deepseek_r1配置成功")
 
     # 2024/8/7 上午11:06 处理frp/s/c配置的更新
     def set_frp_conf(self, get):
@@ -444,17 +535,27 @@ class AppManage(App):
         frp_conf_content = public.readFile(frp_conf)
         if self.app_name == "frps":
             frp_conf_content = frp_conf_content.replace("bindPort = 7000", "bindPort = {}".format(get.frps_server_port))
-            frp_conf_content = frp_conf_content.replace("vhostHTTPPort = 40800", "vhostHTTPPort = {}".format(get.frps_http_port))
-            frp_conf_content = frp_conf_content.replace("vhostHTTPSPort = 40443", "vhostHTTPSPort = {}".format(get.frps_https_port))
-            frp_conf_content = frp_conf_content.replace("webServer.port = 7500", "webServer.port = {}".format(get.frps_web_port))
-            frp_conf_content = frp_conf_content.replace("webServer.user = \"\"", "webServer.user = \"{}\"".format(get.frps_user))
-            frp_conf_content = frp_conf_content.replace("webServer.password = \"\"", "webServer.password = \"{}\"".format(get.frps_password))
+            frp_conf_content = frp_conf_content.replace("vhostHTTPPort = 40800",
+                                                        "vhostHTTPPort = {}".format(get.frps_http_port))
+            frp_conf_content = frp_conf_content.replace("vhostHTTPSPort = 40443",
+                                                        "vhostHTTPSPort = {}".format(get.frps_https_port))
+            frp_conf_content = frp_conf_content.replace("webServer.port = 7500",
+                                                        "webServer.port = {}".format(get.frps_web_port))
+            frp_conf_content = frp_conf_content.replace("webServer.user = \"\"",
+                                                        "webServer.user = \"{}\"".format(get.frps_user))
+            frp_conf_content = frp_conf_content.replace("webServer.password = \"\"",
+                                                        "webServer.password = \"{}\"".format(get.frps_password))
         else:
-            frp_conf_content = frp_conf_content.replace("serverPort = 7000", "serverPort = {}".format(get.frps_server_port))
-            frp_conf_content = frp_conf_content.replace("serverAddr = \"127.0.0.1\"", "serverAddr = \"{}\"".format(get.frps_server_ip))
-            frp_conf_content = frp_conf_content.replace("webServer.port = 7400", "webServer.port = {}".format(get.frpc_web_port))
-            frp_conf_content = frp_conf_content.replace("webServer.user = \"\"", "webServer.user = \"{}\"".format(get.frpc_user))
-            frp_conf_content = frp_conf_content.replace("webServer.password = \"\"", "webServer.password = \"{}\"".format(get.frpc_password))
+            frp_conf_content = frp_conf_content.replace("serverPort = 7000",
+                                                        "serverPort = {}".format(get.frps_server_port))
+            frp_conf_content = frp_conf_content.replace("serverAddr = \"127.0.0.1\"",
+                                                        "serverAddr = \"{}\"".format(get.frps_server_ip))
+            frp_conf_content = frp_conf_content.replace("webServer.port = 7400",
+                                                        "webServer.port = {}".format(get.frpc_web_port))
+            frp_conf_content = frp_conf_content.replace("webServer.user = \"\"",
+                                                        "webServer.user = \"{}\"".format(get.frpc_user))
+            frp_conf_content = frp_conf_content.replace("webServer.password = \"\"",
+                                                        "webServer.password = \"{}\"".format(get.frpc_password))
 
         public.writeFile(frp_conf, frp_conf_content)
 
@@ -579,14 +680,14 @@ class AppManage(App):
             @name
         '''
         cmd = ("nohup echo '正在启动,可能需要等待1-5分钟以上...' >> {app_cmd_log};"
-                  "docker pull kylemanna/openvpn >> {app_cmd_log} 2>&1;"
-                  "docker run -v {service_path}/openvpn:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://{server_ip} >> {app_cmd_log} 2>&1;"
-                  "docker run -v {service_path}/openvpn:/etc/openvpn --rm -e EASYRSA_BATCH=1 -e EASYRSA_REQ_CN=OpenVPN_Server kylemanna/openvpn ovpn_initpki nopass >> {app_cmd_log} 2>&1;"
-                  "docker run -v {service_path}/openvpn:/etc/openvpn --rm -e EASYRSA_BATCH=1 -e EASYRSA_REQ_CN=OpenVPN_Server kylemanna/openvpn easyrsa build-client-full {service_name} nopass >> {app_cmd_log} 2>&1;"
-                  "docker run -v {service_path}/openvpn:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient {service_name} > {service_path}/{service_name}.ovpn;"
-                  "docker-compose -f {compose_file} up -d >> {app_cmd_log} 2>&1 && "
-                  "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &"
-                  ).format(
+               "docker pull kylemanna/openvpn >> {app_cmd_log} 2>&1;"
+               "docker run -v {service_path}/openvpn:/etc/openvpn --rm kylemanna/openvpn ovpn_genconfig -u udp://{server_ip} >> {app_cmd_log} 2>&1;"
+               "docker run -v {service_path}/openvpn:/etc/openvpn --rm -e EASYRSA_BATCH=1 -e EASYRSA_REQ_CN=OpenVPN_Server kylemanna/openvpn ovpn_initpki nopass >> {app_cmd_log} 2>&1;"
+               "docker run -v {service_path}/openvpn:/etc/openvpn --rm -e EASYRSA_BATCH=1 -e EASYRSA_REQ_CN=OpenVPN_Server kylemanna/openvpn easyrsa build-client-full {service_name} nopass >> {app_cmd_log} 2>&1;"
+               "docker run -v {service_path}/openvpn:/etc/openvpn --rm kylemanna/openvpn ovpn_getclient {service_name} > {service_path}/{service_name}.ovpn;"
+               "docker-compose -f {compose_file} up -d >> {app_cmd_log} 2>&1 && "
+               "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &"
+               ).format(
             service_path=self.service_path,
             server_ip=get.ovpn_server_url,
             service_name=self.service_name,
@@ -596,6 +697,39 @@ class AppManage(App):
 
         self.set_up_cmd(cmd)
         return public.returnResult(True, "更新Openvpn配置成功")
+
+    def rebuild_mysql_database(self, get):
+        try:
+            get.db_host = get.service_name
+            get.c_port = None
+            get.mysql_root_password = None
+            get.type = "mysql"
+            # 获取已安装的mysql应用信息
+            installed_json = self.read_json(self.installed_json_file)
+
+            # 直接找到符合条件的 MySQL 应用
+            target_app = next(
+                (i for app_list in installed_json.values() for i in app_list
+                 if i["service_name"] == get.service_name and i["appname"] == "mysql"),
+                None
+            )
+
+            if target_app:
+                # 找到 MySQL 应用
+                # 获取端口
+                get.c_port = target_app["port"][0]
+
+                # 直接获取 mysql_root_password
+                get.mysql_root_password = next(
+                    (info["fieldValue"] for info in target_app["appinfo"] if info["fieldKey"] == "mysql_root_password"),
+                    None
+                )
+
+            db_sid = self.get_database_sid(get)
+            if not db_sid:
+                self.apply_database_to_panel(get)
+        except Exception as e:
+            public.print_log(str(e))
 
     # 2024/8/1 下午10:12 重建指定app
     def rebuild_app(self, get):
@@ -618,6 +752,11 @@ class AppManage(App):
         public.ExecShell(command)
         command = self.set_type(0).set_path(self.compose_file).get_compose_up_remove_orphans()
         public.ExecShell(command)
+
+        # 处理数据库容器,点击重建    解决远程数据库不存在的问题
+        if get.app_name == "mysql":
+            self.rebuild_mysql_database(get)
+
         return public.returnResult(True, "重建成功!")
 
     # 2024/8/2 上午11:40 获取指定app支持升级的版本
@@ -637,10 +776,10 @@ class AppManage(App):
         canupdate_version = []
         for app_type in installed_json.keys():
             for i in installed_json[app_type]:
-                if i["m_version"] in ("main", "latest"):
-                    return public.returnResult(True, "暂无可升级版本!", data=[])
 
                 if i["id"] == get.id:
+                    if i["m_version"] in ("main", "latest"):
+                        return public.returnResult(True, "暂无可升级版本!", data=[])
                     for app in self.apps_json:
                         if app["appname"] == i["appname"]:
                             for version in app["appversion"]:
@@ -668,6 +807,62 @@ class AppManage(App):
                                     return public.returnResult(True, data=canupdate_version)
 
         return public.returnResult(False, "未找到指定应用!")
+
+    # def update_mysql_pwd(self, get):
+    #     get.id = get.get("id", None)
+    #     if get.id is None:
+    #         return public.returnResult(False, "参数错误,请传id参数!")
+    #
+    #     get.mysql_pwd = get.get("mysql_pwd", None)
+    #     if get.mysql_pwd is None:
+    #         return public.returnResult(False, "参数错误,请传mysql_pwd参数!")
+    #     re_list = re.findall("[，。？！；：“”‘’（）【】《》￥&\u4e00-\u9fa5]+", get.mysql_pwd)
+    #     if re_list: return public.returnMsg(False, f'数据库密码不能包含中文和特殊字符 {" ".join(re_list)}')
+    #
+    #     if len(get.mysql_pwd) < 8:
+    #         return public.returnResult(False, "密码长度不能小于8位!")
+    #
+    #     get.mysql_path = get.get("mysql_path",None)
+    #     if get.mysql_path is None:
+    #         return public.returnResult(False, "参数错误,请传mysql_path参数!")
+    #
+    #     # 更新密码返回
+    #     installed_json = self.read_json(self.installed_json_file)
+    #     for app_type in installed_json.keys():
+    #         for i in installed_json[app_type]:
+    #             if i["id"] == get.id and i["appname"] == "mysql":
+    # # # 更新my.cnf配置文件
+    # if i["m_version"] == "5":
+    #     command = "--character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --explicit_defaults_for_timestamp=true --lower_case_table_names=1"
+    #     if not os.path.exists(os.path.join(get.mysql_path, "my.cnf")):
+    #         public.ExecShell("\cp -r {}/my5.cnf {}/my.cnf".format(self.app_template_path, get.mysql_path))
+    # elif i["m_version"] == "9":
+    #     command = ""
+    #     if not os.path.exists(os.path.join(get.mysql_path, "my.cnf")):
+    #         public.ExecShell("\cp -r {}/my9.cnf {}/my.cnf".format(self.app_template_path, get.mysql_path))
+    # else:
+    #     command = "--default-authentication-plugin=mysql_native_password"
+    #     if i["m_version"] == "8" and "4" in i["s_version"]: command = ""
+    #     if not os.path.exists(os.path.join(get.mysql_path, "my.cnf")):
+    #         public.ExecShell("\cp -r {}/my8.cnf {}/my.cnf".format(self.app_template_path, get.mysql_path))
+    # public.ExecShell("sed -i 's/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD={}/' {}/.env".format(get.mysql_pwd, get.mysql_path))
+    # public.ExecShell("sed -i 's/^COMMAND=.*/COMMAND={}/' {}/.env".format(command, get.mysql_path))
+    # 更新 appinfo 中 mysql_root_password 的值
+    #             for info in i["appinfo"]:
+    #                 if info["fieldKey"] == "mysql_root_password":
+    #                     info["fieldValue"] = get.mysql_pwd
+    #                     self.write_json(self.installed_json_file, installed_json)
+    # app_cmd_log = "/tmp/{}".format(os.path.basename(get.mysql_path))
+    # cmd = (
+    #                  "nohup echo '正在启动123123123123123,可能需要等待1-5分钟以上...' >> {app_cmd_log};"
+    #                  "docker-compose -f {mysql_path}/docker-compose.yml down && "
+    #                  "docker-compose -f {mysql_path}/docker-compose.yml up -d --force-recreate >> {app_cmd_log} 2>&1 && "
+    #                  "echo 'bt_successful' >> {app_cmd_log} || echo 'bt_failed' >> {app_cmd_log} &".format(mysql_path=get.mysql_path,app_cmd_log=app_cmd_log))
+    #
+    # self.set_up_cmd(cmd)
+    # self.up_app()
+    #
+    # return public.returnResult(True, "修改成功!")
 
     # 2024/8/1 下午4:20 更新指定app
     def update_app(self, get):
@@ -725,7 +920,8 @@ class AppManage(App):
                     get.pull = get.get("pull", False)
                     if get.pull: self.pull_app()
 
-                    public.ExecShell("sed -i 's/^VERSION=.*/VERSION={}/' {}/.env".format(self.app_version, self.service_path))
+                    public.ExecShell(
+                        "sed -i 's/^VERSION=.*/VERSION={}/' {}/.env".format(self.app_version, self.service_path))
                     command = self.set_type(0).set_path(self.compose_file).get_compose_up_remove_orphans()
                     public.ExecShell(command)
 
@@ -845,7 +1041,8 @@ class AppManage(App):
                     if not os.path.exists(self.service_backup_path):
                         os.makedirs(self.service_backup_path, exist_ok=True, mode=0o755)
 
-                    public.ExecShell("cp -r {} {}".format(os.path.join(i["path"], i["service_name"]), self.service_backup_path))
+                    public.ExecShell(
+                        "cp -r {} {}".format(os.path.join(i["path"], i["service_name"]), self.service_backup_path))
                     public.ExecShell("cd {service_backup_path} && tar -zcf {file_name} {i_name} ".format(
                         service_backup_path=self.service_backup_path,
                         file_name=backup_conf["file_name"],
@@ -853,14 +1050,16 @@ class AppManage(App):
 
                     if os.path.exists("{}/{}".format(self.service_backup_path, backup_conf["file_name"])):
                         if (os.path.getsize("{}/{}".format(self.service_backup_path, backup_conf["file_name"])) == 0 or
-                                os.path.getsize("{}/{}".format(self.service_backup_path, backup_conf["file_name"])) < 10):
+                                os.path.getsize(
+                                    "{}/{}".format(self.service_backup_path, backup_conf["file_name"])) < 10):
                             public.ExecShell("rm -f {}/{}".format(self.service_backup_path, backup_conf["file_name"]))
                             return public.returnResult(False, "备份失败!")
                     else:
                         return public.returnResult(False, "备份失败!")
 
                     public.ExecShell("rm -rf {}".format(os.path.join(self.service_backup_path, i["service_name"])))
-                    backup_conf["size"] = os.path.getsize("{}/{}".format(self.service_backup_path, backup_conf["file_name"]))
+                    backup_conf["size"] = os.path.getsize(
+                        "{}/{}".format(self.service_backup_path, backup_conf["file_name"]))
 
                     backup_json = self.read_json(self.backup_json_file)
                     if backup_json:
@@ -1133,7 +1332,7 @@ class AppManage(App):
                         if not i["depDataBase"] is None:
                             if i["depDataBase"]["type"] in ("mysql", "mariadb"):
                                 self.delete_database_for_app(i["depDataBase"]["db"])
-                            elif i["depDataBase"]["type"] in ("postgresql", ):
+                            elif i["depDataBase"]["type"] in ("postgresql",):
                                 self.delete_pgsql_database_for_app(i["depDataBase"]["db"])
 
                     if i["appname"] in ("mysql", "mariadb", "postgresql"):
@@ -1241,11 +1440,16 @@ class AppManage(App):
             public.ExecShell("rm -f {}".format(self.apps_json_file))
             public.ExecShell("rm -f {}".format(self.app_tags_file))
             public.ExecShell("rm -rf {}".format(self.templates_path))
+            public.ExecShell("rm -f {}".format(self.ollama_online_models_file))
             self.download_apps_json()
             self.update_ico()
         self.get_apps_json()
         if self.apps_json is None:
             return public.returnResult(False, "应用分类获取失败，请点击右上角【更新应用列表】")
+
+        from mod.project.docker.app.base import App
+        cbnet = App().check_baota_net()
+        if not cbnet["status"]: return cbnet
 
         get.app_type = get.get("app_type", "all")
         # if get.app_type != "all" and not get.app_type in self.types:
@@ -1259,6 +1463,9 @@ class AppManage(App):
         for app in self.apps_json:
             if app["appstatus"] == 0: continue
             app["installedCount"] = 0
+            if get.app_type == "AI":
+                GPUTool.register_app_gpu_option(app)
+
             if get.app_type == "all":
                 if not get.query is None:
                     if (not get.query in app["appname"] and not get.query in app["apptitle"] and

@@ -87,7 +87,7 @@ class main(sslBase):
         record_type = 'TXT'
         if 'record_type' in get:
             record_type = get.record_type
-        mx = 0
+        mx = 10
         if record_type == 'MX':
             if not get.get('mx'):
                 return public.returnMsg(False, 'MX记录类型必须填写MX值')
@@ -129,7 +129,7 @@ class main(sslBase):
     def update_dns_record(self, get):
         # 不能修改主机记录和类型
         domain_name, sub_domain, _ = self.extract_zone(get.domain_name)
-        mx = 0
+        mx = 10
         if get.record_type == 'MX':
             if not get.get('mx'):
                 return public.returnMsg(False, 'MX记录类型必须填写MX值')
@@ -167,6 +167,9 @@ class main(sslBase):
             return public.returnMsg(True, "设置成功")
         except Exception as e:
             return public.returnMsg(False, '修改失败：{}'.format(e))
+
+    def get_domain_list(self, get):
+        return {"status": False, "msg": "暂不支持", "data": []}
 
 
 

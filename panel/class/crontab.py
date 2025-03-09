@@ -34,7 +34,7 @@ class crontab:
             cront = public.M('crontab').order("id desc").field(self.field).select()
         except Exception as e:
             try:
-               public.check_database_field("crontab.db", "crontab")
+                public.check_database_field("crontab.db", "crontab")
             except Exception as e:
                 pass
         
@@ -71,27 +71,27 @@ class crontab:
         #     public.M('crontab').execute("ALTER TABLE 'crontab' ADD 'version' TEXT DEFAULT ''", ())
         #     public.M('crontab').execute("ALTER TABLE 'crontab' ADD 'table_list' TEXT DEFAULT ''", ())
         #     cront = public.M('crontab').order("id desc").field(self.field).select()
-
+        
         public.check_table('crontab_types',
                            '''CREATE TABLE "crontab_types" (
                                             "id" INTEGER PRIMARY KEY AUTOINCREMENT,
                                             "name" VARCHAR DEFAULT '',
                                             "ps" VARCHAR DEFAULT '');''')
-
+        
         # try:
         #     self.check_crontab_service()
         #     # self.check_and_delete_mysql_backup_task()
         # except:
         #     pass
-
-    def check_and_delete_mysql_backup_task(self):      
+    
+    def check_and_delete_mysql_backup_task(self):
         import subprocess
         # 标记文件路径
         flag_file = '{}/data/mysql_backup_check.flag'.format(public.get_panel_path())
         # 检查标记文件是否存在，如果存在则不执行任务
         if os.path.exists(flag_file):
-            return 
-
+            return
+        
         try:
             # 查找数据库中名为 '自动备份mysql数据库[所有]' 的任务
             task_name = '自动备份mysql数据库[所有]'
@@ -100,8 +100,8 @@ class crontab:
             crontab_task = public.M('crontab').where('name=?', (task_name,)).find()
             # 如果没有找到此任务，返回消息
             if not crontab_task:
-                return 
-            # 如果找到任务，检查其 status 是否为 0
+                return
+                # 如果找到任务，检查其 status 是否为 0
             if crontab_task['status'] == 0:
                 # 检查系统中是否存在该任务的 echo 值
                 result = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
@@ -112,12 +112,12 @@ class crontab:
             # 创建标记文件，防止任务重复执行
             with open(flag_file, 'w') as f:
                 f.write('')
-            return 
-
+            return
+        
         except Exception as e:
             # print(e)
-            return 
-
+            return
+    
     def get_zone(self, get):
         try:
             try:
@@ -144,7 +144,7 @@ class crontab:
             return areadict
         except:
             return public.returnMsg(False, '获取时区失败!')
-
+    
     # 获取所有domain
     def get_domain(self, get=None):
         try:
@@ -153,7 +153,7 @@ class crontab:
             return domains
         except:
             return traceback.format_exc()
-
+    
     # 设置置顶
     def set_task_top(self, get=None):
         """
@@ -172,7 +172,7 @@ class crontab:
             public.writeFile(cron_task_top_path, json.dumps(task_top))
             return public.returnMsg(True, '设置置顶成功！')
         return task_top
-
+    
     # 取消置顶
     def cancel_top(self, get):
         """
@@ -194,24 +194,24 @@ class crontab:
                 return public.returnMsg(False, '该计划任务已不在置顶列表中，请刷新页面确认最新状态。')
         else:
             return public.returnMsg(False, '请传入取消置顶ID！')
-
+    
     # 取计划任务列表
     def GetCrontab(self, get):
         try:
             self.check_crontab_service()
             self.check_and_delete_mysql_backup_task()
             self.checkBackup()
-            self.__clean_log()           
+            self.__clean_log()
             type_id = get.type_id if (hasattr(get, 'type_id') and get.type_id is not None) else ""
             db_obj = public.M('crontab')
             query = db_obj.order("id desc").field(self.field)
             
             if type_id:
                 query=self._filter_by_type_id(query,type_id)
-                    
+            
             # 获取所有任务数据
             all_tasks = query.select()
-
+            
             # 获取置顶任务列表
             top_list = self.set_task_top()['list']
             top_data, other_data = self._partition_tasks(all_tasks, top_list)
@@ -219,23 +219,23 @@ class crontab:
             other_data=self._sort_tasks(other_data,get)
             # 重新组织任务顺序
             data = top_data + other_data
-
+            
             # 搜索过滤
             if hasattr(get, 'search') and get.search:
                 data = self.search_tasks(data, get.search)
             
             # 应用分页
-            paged_data, page_data = self._paginate(data, get)       
+            paged_data, page_data = self._paginate(data, get)
             # 格式化任务数据
-            self._format_task(paged_data, top_list)        
+            self._format_task(paged_data, top_list)
             result = self._construct_result(db_obj, page_data, paged_data)
             return result
-    
+        
         except Exception as e:
             # print(traceback.format_exc())
             return public.returnMsg(False, '查询失败: ' + str(e))
-
-
+    
+    
     def _filter_by_type_id(self,query,type_id):
         filters={
             '-1':('name like ?','%勿删%'),
@@ -246,9 +246,9 @@ class crontab:
         if type_id in filters:
             return query.where(*filters[type_id])
         return query.where('type_id=?',type_id)
-
-
-
+    
+    
+    
     def _partition_tasks(self, all_tasks, top_list):
         # 使用 set 加速查找
         top_set = set(top_list)
@@ -259,12 +259,12 @@ class crontab:
         # 获取 other_data
         other_data = [task for task in all_tasks if str(task['id']) not in top_set]
         return top_data, other_data
-
+    
     def get_type_name(self, task):
         rname = task.get('rname', '')
         type_id = task.get('type_id', '')
         type_names = []
-
+        
         # if '勿删' in rname:
         #     type_names.append('系统任务')
         if  type_id == 0:
@@ -275,27 +275,27 @@ class crontab:
         type_name = public.M('crontab_types').where("id=?", (type_id,)).getField('name')
         if type_name:
             type_names.append(type_name)
-
+        
         return ', '.join(type_names)
-
+    
     def _sort_tasks(self,tasks,get):
         order_param=getattr(get,'order_param',None)
         if order_param:
-            sort_key,order=order_param.split(' ') 
+            sort_key,order=order_param.split(' ')
             reverse_order=order=='desc'
             if "rname" in order_param:
-                    for task in tasks:
-                        if not task.get('rname'):
-                            task['rname'] = task['name']  # 将没有值的 rname 设置为 name 的值
+                for task in tasks:
+                    if not task.get('rname'):
+                        task['rname'] = task['name']  # 将没有值的 rname 设置为 name 的值
             if "addtime" in order_param:
                 for task in tasks:
                     task['addtime']=self.get_addtime(task)
                     task['addtime_calculated'] = True
             return sorted(tasks,key=lambda x:x[sort_key],reverse=reverse_order)
-        return tasks   
-
+        return tasks
+    
     def _paginate(self,data,get):
-
+        
         total_count=len(data)
         p=int(get.p) if hasattr(get,'p')else None
         count=int(get.count) if hasattr(get,'count')else None
@@ -308,7 +308,7 @@ class crontab:
             page_data=None
             paged_data=data
         return paged_data,page_data
-
+    
     def _format_task(self,paged_data,top_list):
         top_set=set(top_list)
         for task in paged_data:
@@ -336,7 +336,7 @@ class crontab:
             if save>=0:
                 task['save']=save
             else:
-                save=""  
+                save=""
     def get_log_path(self,get):
         id = get['id']
         echo = public.M('crontab').where("id=?", (id,)).getField('echo')
@@ -352,7 +352,7 @@ class crontab:
             p = math.pow(1024, i)
             s = round(size_bytes / p, 2)
             return "{} {}".format(s,size_name[i])
-
+        
         cronPath = public.GetConfigValue('setup_path') + '/cron'
         log_path = cronPath + '/' + echo + '.log'
         if os.path.exists(log_path):
@@ -364,9 +364,9 @@ class crontab:
         # return log_path, size
         data={"log_path":log_path,"size":size}
         return public.returnMsg(True, data)
-        
+    
     def _get_task_type_zh(self,task):
-        if task['type'] == "day":                        
+        if task['type'] == "day":
             return public.getMsg('CRONTAB_TODAY')
         elif task['type'] == "day-n":
             return public.getMsg('CRONTAB_N_TODAY', (str(task['where1']),))
@@ -374,7 +374,7 @@ class crontab:
             return public.getMsg('CRONTAB_HOUR')
         elif task['type'] == "hour-n":
             return public.getMsg('CRONTAB_N_HOUR', (str(task['where1']),))
-        elif task['type'] == "minute-n":           
+        elif task['type'] == "minute-n":
             if task['second']:
                 task['type'] ="second-n"
                 return public.getMsg('CRONTAB_N_SECOND', (str(task['where1']),))
@@ -385,20 +385,20 @@ class crontab:
             return task['type_zh']
         elif task['type'] == "month":
             return public.getMsg('CRONTAB_MONTH')
-
+    
     def get_addtime(self,task):
         log_file='/www/server/cron/{}.log'.format(task['echo'])
         if os.path.exists(log_file):
             return self.get_last_exec_time(log_file)
         else:
-            return " "        
+            return " "
     def search_tasks(self, data, search_term):
         return [item for item in data if search_term in item['name'] or search_term in item['sName'] or search_term in item['addtime'] or search_term in item['echo']]
-
+    
     def generate_cycle(self, type, where1, where_hour, where_minute,sType,second:None):
         try:
-            if where1: 
-               where1 = int(where1)
+            if where1:
+                where1 = int(where1)
             cycle = ""
             week_days = ["一", "二", "三", "四", "五", "六", "日"]
             
@@ -429,7 +429,7 @@ class crontab:
         except:
             # print(traceback.format_exc())
             pass
-
+    
     def parse_user_from_sbody(self,sBody):
         if isinstance(sBody, str):
             # 使用正则表达式提取 sudo -u 后面的用户名
@@ -437,7 +437,7 @@ class crontab:
             return match.group(1) if match else 'root'
         else:
             return 'root'
-
+    
     def format_cycle(self,item):
         week_str = ''
         if item['time_type'] in ['sweek', 'sday', 'smonth']:
@@ -449,7 +449,7 @@ class crontab:
             item['cycle'] = cycle_prefix + item['special_time'] + "执行"
         elif item['sType'] == 'site_restart':
             item['cycle'] = "每天" + item['special_time'] + "执行"
-
+    
     def toweek(self, days):
         week_days = {
             '1': '周一',
@@ -468,14 +468,14 @@ class crontab:
         return ','.join(week_days[day] for day in day_list)
     def _construct_result(self, db_obj, page_data, paged_data):
         if page_data:
-            result =  {'page': page_data, 'data': paged_data} 
+            result =  {'page': page_data, 'data': paged_data}
             if db_obj.ERR_INFO:
-                    result['error']=db_obj.ERR_INFO
+                result['error']=db_obj.ERR_INFO
         else:
             result =paged_data
             if db_obj.ERR_INFO:
-                    return []
-        return result   
+                return []
+        return result
     def get_backup_list(self, args):
         '''
             @name 获取指定备份任务的备份文件列表
@@ -491,7 +491,7 @@ class crontab:
                 data<list> 数据列表
             }
         '''
-
+        
         p = args.get('p/d', 1)
         rows = args.get('rows/d', 10)
         tojs = args.get('tojs/s', '')
@@ -506,9 +506,9 @@ class crontab:
             data = self.get_backup_data('mysql_increment_backup', cron_id, p, rows, callback)
         else:
             data = self.get_backup_data('backup', cron_id, p, rows, callback)
-
+        
         return data
-
+    
     def get_backup_data(self, table, cron_id, p, rows, callback):
         count = public.M(table).where('cron_id=?', (cron_id,)).count()
         data = public.get_page(count, p, rows, callback)
@@ -517,8 +517,8 @@ class crontab:
             # 更新filename字段
             if data['data']:
                 cloud_storage_fields = [
-                    'localhost', 'ftp', 'alioss', 'txcos', 'qiniu', 
-                    'aws_s3', 'upyun', 'obs', 'bos', 'gcloud_storage', 
+                    'localhost', 'ftp', 'alioss', 'txcos', 'qiniu',
+                    'aws_s3', 'upyun', 'obs', 'bos', 'gcloud_storage',
                     'gdrive', 'msonedrive', 'jdcloud',"tianyiyun","webdav","minio","dogecloud"
                 ]
                 for i in data['data']:
@@ -527,7 +527,7 @@ class crontab:
                             i['filename'] = i[field]
                             break
         return data
-
+    
     def get_last_exec_time(self, log_file):
         '''
             @name 获取上次执行时间
@@ -548,13 +548,13 @@ class crontab:
         #             exec_date = date_list[-1].split(']')[0].split('[')[1]
         # except:
         #     pass
-
+        
         # finally:
         if not exec_date:
             exec_date = public.format_date(times=int(os.path.getmtime(log_file)))
         return exec_date
-
-
+    
+    
     # 清理日志
     def __clean_log(self):
         if cache.get('__clean_log'): return None
@@ -571,7 +571,7 @@ class crontab:
             cache.set('__clean_log', True, 3600)
         except:
             pass
-
+    
     # 转换大写星期
     def toWeek(self, num):
         wheres = {
@@ -587,7 +587,7 @@ class crontab:
             return wheres[num]
         except:
             return ''
-
+    
     def check_crontab_service(self):
         # 检查缓存中是否有结果
         if cache.get('check_crontab_service'): return None
@@ -599,7 +599,7 @@ class crontab:
             cache.set('check_crontab_service', True, 3600)
         except:
             pass
-
+    
     def get_crontab_service(self,get):
         status=1
         try:
@@ -610,18 +610,18 @@ class crontab:
             status=1
         data={'status':status}
         return {"status":True,"msg":"","data":data}
-
+    
     def repair_crontab_service(self, get):
         if '_ws' not in get:
             return False
-
+        
         exec_result = public.ExecShell("nohup stdbuf -oL btpython /www/server/panel/script/crontab_repair.py > /tmp/repair_crontab.txt 2>&1 &")
         
         if exec_result:  # 假设ExecShell返回的第一个元素是成功与否的标志
             # 以只读模式打开日志文件，并移动到文件末尾
             if not os.path.exists("/tmp/repair_crontab.txt"):
                 public.writeFile("/tmp/repair_crontab.txt","")
-
+            
             with open("/tmp/repair_crontab.txt", "r") as log_file:
                 while True:
                     line = log_file.readline()
@@ -629,8 +629,8 @@ class crontab:
                         time.sleep(0.1)  # 如果没有新内容，则稍等片刻再尝试读取
                         continue
                     get._ws.send(public.getJson({
-                    "callback":"repair_crontab_service",
-                    "result":line.strip()                    
+                        "callback":"repair_crontab_service",
+                        "result":line.strip()
                         
                     }))
                     if line.strip() == "服务修复完成！":
@@ -639,17 +639,17 @@ class crontab:
         else:
             get._ws.send("脚本执行失败")
             return False
-
-            
+    
+    
     # 检查环境
     def checkBackup(self):
         if cache.get('check_backup'): return None
-
+        
         # 检查备份表是否正确
         if not public.M('sqlite_master').where('type=? AND name=? AND sql LIKE ?',
                                                ('table', 'backup', '%cron_id%')).count():
             public.M('backup').execute("ALTER TABLE 'backup' ADD 'cron_id' INTEGER DEFAULT 0", ())
-
+        
         # 检查备份脚本是否存在
         filePath = public.GetConfigValue('setup_path') + '/panel/script/backup'
         if not os.path.exists(filePath):
@@ -668,7 +668,7 @@ class crontab:
         elif os.path.exists('/usr/lib/systemd/system/crond.service'):
             if not public.process_exists('crond'): public.ExecShell('systemctl start crond')
         cache.set('check_backup', True, 3600)
-
+    
     # 设置计划任务状态
     def set_cron_status(self, get):
         id = get['id']
@@ -687,7 +687,7 @@ class crontab:
             sync_res=self.sync_to_crond(cronInfo)
             if not sync_res['status']:
                 return public.returnMsg(False, sync_res['msg'])
-
+        
         public.M('crontab').where('id=?', (id,)).setField('status', status)
         public.WriteLog('计划任务', '修改计划任务[' + cronInfo['name'] + ']状态为[' + status_msg[status] + ']')
         cronPath = '/www/server/cron'
@@ -696,7 +696,7 @@ class crontab:
         if if_stop:
             self.stop_cron_task(cronPath, cronName, if_stop)
         return public.returnMsg(True, '设置成功')
-
+    
     def set_cron_status_all(self, get):
         """
         批量设置计划任务状态
@@ -772,20 +772,20 @@ class crontab:
                     pass
                 data.append({name: "执行{}".format("成功" if res['status'] else "失败"), 'status': res['status']})
             return data
-
+    
     # 修改计划任务
     def modify_crond(self, get):
         try:
             # if get['sType'] == 'startup_services':
             #     return self.ensure_execute_commands_script(get)  # 检查并创建脚本
             if get['name']=="[勿删]切割计划任务日志":
-               return public.returnMsg(False, "此处不支持直接修改该条计划任务,请到日志切割处进行修改！")
+                return public.returnMsg(False, "此处不支持直接修改该条计划任务,请到日志切割处进行修改！")
             if "拔测" in get['name'] and "/www/server/panel/class/monitorModel/boceModel.py" in get['sBody']:
                 if get['type']=="minute-n":
                     if int(get['where1'])<10:
                         return public.returnMsg(False, "拔测周期最短不能少于10分钟！")
                 if get['type']=="second-n":
-                        return public.returnMsg(False, "网站拔测任务不支持设置为秒级任务！")
+                    return public.returnMsg(False, "网站拔测任务不支持设置为秒级任务！")
             if re.search('<.*?>', get['name']):
                 return public.returnMsg(False, "分类名称不能包含HTML语句")
             if get['sType'] == 'toShell':
@@ -802,20 +802,20 @@ class crontab:
                 return public.returnMsg(False, 'CRONTAB_TASKNAME_EMPTY')
             id = get['id']
             cronInfo = public.M('crontab').where('id=?', (id,)).field(self.field).find()
-
-
+            
+            
             if get['type']=='sweek':
-                self.modify_values(cronInfo['echo'],get['time_type'],get['special_time'],get['time_set']) 
+                self.modify_values(cronInfo['echo'],get['time_type'],get['special_time'],get['time_set'])
                 get['type']='minute-n'
-
+            
             if get['type']=="second-n":
                 get['type']="minute-n"
                 get['where1']= "1"
                 get['hour']=1
                 get['minute']=1
                 get['flock']=0
-            cuonConfig, get, name = self.GetCrondCycle(get)            
-
+            cuonConfig, get, name = self.GetCrondCycle(get)
+            
             projectlog = self.modify_project_log_split(cronInfo, get)
             if projectlog.modify():
                 return public.returnMsg(projectlog.flag, projectlog.msg)
@@ -857,7 +857,10 @@ class crontab:
                 if not remove_res['status']:
                     return public.returnMsg(False, remove_res['msg'])
                 if cronInfo['status'] == 0: return public.returnMsg(False, '当前任务处于停止状态,请开启任务后再修改!')
-
+                if get.get("post_param", ""):
+                    cronInfo["post_param"] = get["post_param"]
+                if get.get("user_agent", ""):
+                    cronInfo["user_agent"] = get["user_agent"]
                 sync_res=self.sync_to_crond(cronInfo)
                 if not sync_res['status']:
                     return public.returnMsg(False, sync_res['msg'])
@@ -865,15 +868,15 @@ class crontab:
             public.WriteLog('计划任务', '修改计划任务[' + cronInfo['name'] + ']成功')
             return public.returnMsg(True, '修改成功')
         except:
-             print(traceback.format_exc())
-             return public.returnMsg(False,traceback.format_exc())
-
+            print(traceback.format_exc())
+            return public.returnMsg(False,traceback.format_exc())
+    
     # 获取指定任务数据
     def get_crond_find(self, get):
         id = int(get.id)
         data = public.M('crontab').where('id=?', (id,)).field(self.field).find()
         return data
-
+    
     # 同步到crond
     def sync_to_crond(self, cronInfo):
         if not 'status' in cronInfo: return False
@@ -886,7 +889,7 @@ class crontab:
         cronName = self.GetShell(cronInfo)
         if type(cronName) == dict: return cronName
         cuonConfig += ' ' + cronPath + '/' + cronName + ' >> ' + cronPath + '/' + cronName + '.log 2>&1'
-
+        
         # 移除flock模式，与部分系统不兼容，会导致任务无法执行
         # if int(cronInfo.get('flock', 0)) == 1:
         #     flock_name = cronPath + '/' + cronName + '.lock'
@@ -899,12 +902,12 @@ class crontab:
         if not wRes['status'] : return wRes
         self.CrondReload()
         return public.returnMsg(True, '迁移成功!')
-
+    
     def ensure_execute_commands_script(self,get):
         cronName = public.md5(public.md5(str(time.time()) + '_bt'))
         script_path = '/etc/init.d/execute_commands'
         systemd_service_path = '/etc/systemd/system/execute_commands.service'
-
+        
         # For systemd systems
         if os.path.exists('/bin/systemctl') or os.path.exists('/usr/bin/systemctl'):
             if not os.path.exists(systemd_service_path):
@@ -922,12 +925,12 @@ class crontab:
     WantedBy=multi-user.target
     """
                     service_file.write(service_content)
-
+                
                 os.system('systemctl daemon-reload')
                 os.system('systemctl start execute_commands.service')
                 os.system('systemctl enable execute_commands.service')
                 print("Systemd service created and enabled successfully.")
-
+        
         # For SysVinit systems
         else:
             if not os.path.exists(script_path):
@@ -999,7 +1002,7 @@ class crontab:
                 if os.path.exists('/usr/sbin/update-rc.d'):
                     os.system('update-rc.d -f execute_commands defaults')
                 print("Service configured for SysVinit successfully.")
-
+        
         db_backup_path = public.M('config').where("id=?", ('1',)).getField('backup_path')
         if get.get('db_backup_path') == db_backup_path:
             db_backup_path = ""
@@ -1031,17 +1034,17 @@ class crontab:
             result['id'] = addData
             return result
         return public.returnMsg(False, 'ADD_ERROR')
-
+    
     # 添加计划任务
     def AddCrontab(self, get):
-
+        
         try:
             if "拔测" in get['name'] and "/www/server/panel/class/monitorModel/boceModel.py" in get['sBody']:
                 if get['type']=="minute-n":
                     if int(get['where1'])<10:
                         return public.returnMsg(False, "拔测周期最短不能少于10分钟！")
                 if get['type']=="second-n":
-                        return public.returnMsg(False, "网站拔测任务不支持设置为秒级任务！")
+                    return public.returnMsg(False, "网站拔测任务不支持设置为秒级任务！")
             if get['name']=="[勿删]切割计划任务日志":
                 if public.M('crontab').where("name=?", ('[勿删]切割计划任务日志',)).select():
                     return public.returnMsg(False, '该任务不支持直接复制！')
@@ -1062,19 +1065,19 @@ class crontab:
                 user = get.get('user', 'root')
                 if user and user!='root':
                     get['sBody'] = "sudo -u {0} bash -c '{1}'".format(user, get['sBody'])
-            # 如果get中有version键，就替换sBody中的版本号占位符
+                # 如果get中有version键，就替换sBody中的版本号占位符
                 if get.get('version',''):
                     version = get['version'].replace(".", "")
                     get['sBody'] = get['sBody'].replace("${1/./}", version)
             if get['sType'] == 'startup_services':
                 return self.ensure_execute_commands_script(get)  # 检查并创建脚本
-                
+            
             if get['type']=='sweek':
-               get['type']='minute-n'
+                get['type']='minute-n'
             cuonConfig, get, name = self.GetCrondCycle(get)
             cronPath = public.GetConfigValue('setup_path') + '/cron'
             cronName = self.GetShell(get)
-
+            
             if type(cronName) == dict: return cronName
             # 移除flock模式，与部分系统不兼容，会导致任务无法执行
             # if int(get.get('flock', 0)) == 1:
@@ -1087,7 +1090,7 @@ class crontab:
             wRes = self.WriteShell(cuonConfig)
             if not wRes['status']: return wRes
             self.CrondReload()
-
+            
             db_backup_path = public.M('config').where("id=?", ('1',)).getField('backup_path')
             if get.get('db_backup_path') == db_backup_path:
                 db_backup_path=""
@@ -1096,16 +1099,16 @@ class crontab:
             columns = 'name,type,where1,where_hour,where_minute,echo,addtime,\
                     status,save,backupTo,sType,sName,sBody,urladdress,db_type,split_type,split_value,keyword,post_param,flock,time_set,backup_mode,db_backup_path,time_type,special_time,log_cut_path,user_agent,version,table_list,result,second,stop_site'
             values = (public.xssencode2(get['name']), get['type'], get['where1'], get['hour'],
-                    get['minute'], cronName, time.strftime('%Y-%m-%d %X', time.localtime()),
-                    1, get['save'], get['backupTo'], get['sType'], get['sName'], get['sBody'],
-                    get['urladdress'], get.get("db_type"), get.get("split_type"), get.get("split_value"), get.get('keyword', ''), get.get('post_param', ''), get.get('flock', 0),get.get('time_set', ''),get.get('backup_mode',''),db_backup_path,get.get('time_type',''),get.get('special_time',''),get.get('log_cut_path',''),get.get('user_agent',''),get.get('verison',''),get.get('table_list',''),get.get('result',1),get.get('second',''),get.get('stop_site',''))
+                      get['minute'], cronName, time.strftime('%Y-%m-%d %X', time.localtime()),
+                      1, get['save'], get['backupTo'], get['sType'], get['sName'], get['sBody'],
+                      get['urladdress'], get.get("db_type"), get.get("split_type"), get.get("split_value"), get.get('keyword', ''), get.get('post_param', ''), get.get('flock', 0),get.get('time_set', ''),get.get('backup_mode',''),db_backup_path,get.get('time_type',''),get.get('special_time',''),get.get('log_cut_path',''),get.get('user_agent',''),get.get('verison',''),get.get('table_list',''),get.get('result',1),get.get('second',''),get.get('stop_site',''))
             if "save_local" in get:
                 columns += ",save_local,notice,notice_channel"
                 values = (public.xssencode2(get['name']), get['type'], get['where1'], get['hour'],
-                        get['minute'], cronName, time.strftime('%Y-%m-%d %X', time.localtime()),
-                        1, get['save'], get['backupTo'], get['sType'], get['sName'], get['sBody'],
-                        get['urladdress'], get.get("db_type"), get.get("split_type"), get.get("split_value"), get.get('keyword', ''), get.get('post_param', ''), get.get('flock', 0),get.get('time_set', ''),get.get('backup_mode', ''),db_backup_path,get.get('time_type',''),get.get('special_time',''),get.get('log_cut_path',''),get.get('user_agent',''),get.get('verison',''),get.get('table_list',''),get.get('result',1),get.get('second',''),get.get('stop_site',''),
-                        get["save_local"], get['notice'], get['notice_channel'])
+                          get['minute'], cronName, time.strftime('%Y-%m-%d %X', time.localtime()),
+                          1, get['save'], get['backupTo'], get['sType'], get['sName'], get['sBody'],
+                          get['urladdress'], get.get("db_type"), get.get("split_type"), get.get("split_value"), get.get('keyword', ''), get.get('post_param', ''), get.get('flock', 0),get.get('time_set', ''),get.get('backup_mode', ''),db_backup_path,get.get('time_type',''),get.get('special_time',''),get.get('log_cut_path',''),get.get('user_agent',''),get.get('verison',''),get.get('table_list',''),get.get('result',1),get.get('second',''),get.get('stop_site',''),
+                          get["save_local"], get['notice'], get['notice_channel'])
             addData = public.M('crontab').add(columns, values)
             public.add_security_logs('计划任务', '添加计划任务[' + get['name'] + ']成功' + str(values))
             if type(addData) == str:
@@ -1118,7 +1121,7 @@ class crontab:
             return public.returnMsg(False, 'ADD_ERROR')
         except Exception as e:
             return public.returnMsg(False, str(e))
-
+    
     # 构造周期
     def GetCrondCycle(self, params):
         cuonConfig = ""
@@ -1143,42 +1146,42 @@ class crontab:
         elif params['type'] == "month":
             cuonConfig = self.Month(params)
         return cuonConfig, params, name
-
+    
     # 取任务构造Day
     def GetDay(self, param):
         cuonConfig = "{0} {1} * * * ".format(param['minute'], param['hour'])
         return cuonConfig
-
+    
     # 取任务构造Day_n
     def GetDay_N(self, param):
         cuonConfig = "{0} {1} */{2} * * ".format(param['minute'], param['hour'], param['where1'])
         return cuonConfig
-
+    
     # 取任务构造Hour
     def GetHour(self, param):
         cuonConfig = "{0} * * * * ".format(param['minute'])
         return cuonConfig
-
+    
     # 取任务构造Hour-N
     def GetHour_N(self, param):
         cuonConfig = "{0} */{1} * * * ".format(param['minute'], param['where1'])
         return cuonConfig
-
+    
     # 取任务构造Minute-N
     def Minute_N(self, param):
         cuonConfig = "*/{0} * * * * ".format(param['where1'])
         return cuonConfig
-
+    
     # 取任务构造week
     def Week(self, param):
         cuonConfig = "{0} {1} * * {2}".format(param['minute'], param['hour'], param['week'])
         return cuonConfig
-
+    
     # 取任务构造Month
     def Month(self, param):
         cuonConfig = "{0} {1} {2} * * ".format(param['minute'], param['hour'], param['where1'])
         return cuonConfig
-
+    
     # 取数据列表
     def GetDataList(self, get):
         data = {}
@@ -1203,7 +1206,7 @@ class crontab:
         for lib in libs:
             if not 'opt' in lib: continue
             filename = 'plugin/{}'.format(lib['opt'])
-            if not os.path.exists(filename): 
+            if not os.path.exists(filename):
                 continue
             else:
                 plugin_path = '/www/server/panel/plugin/{}/aes_status'.format(lib['opt'])
@@ -1212,9 +1215,9 @@ class crontab:
                     with open(plugin_path, 'r') as f:
                         status_content = f.read().strip()
                         if status_content.lower() == 'true':
-                            status = 1  # 如果 aes_status 文件内容为 'True' 则设置为1  
+                            status = 1  # 如果 aes_status 文件内容为 'True' 则设置为1
                 if lib['opt']=="msonedrive":
-                    status = 1           
+                    status = 1
             tmp = {}
             tmp['name'] = lib['name']
             tmp['value'] = lib['opt']
@@ -1223,13 +1226,13 @@ class crontab:
                 configured.append(tmp)
             else:
                 not_configured.append(tmp)
-
+        
         # 先添加已配置的，再添加未配置的
         data['orderOpt'].extend(configured)
         data['orderOpt'].extend(not_configured)
-
+        
         return data
-
+    
     # 取任务日志
     def GetLogs(self, get):
         id = get['id']
@@ -1242,7 +1245,7 @@ class crontab:
         if not start_timestamp and end_timestamp:
             # 如果任务类型是 'webshell'，处理特定类型的任务日志
             if sType == 'webshell':
-                try:                
+                try:
                     logs = self.GetWebShellLogs(get)
                     return logs
                 except Exception as e:
@@ -1259,7 +1262,7 @@ class crontab:
         
         if not os.path.exists(logFile):
             return public.returnMsg(False, 'CRONTAB_TASKLOG_EMPTY')
-            
+        
         # 正则表达式匹配时间戳格式
         timestamp_pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
         # 如果有时间戳，根据时间戳筛选日志内容
@@ -1271,7 +1274,7 @@ class crontab:
             # within_range = False
             # with open(logFile, 'r', encoding='utf-8', errors='ignore') as f:  # 使用 errors='ignore' 避免解码错误
             #     for line in f:
-
+            
             #         # print(line)
             #         # 查找日志行中的时间戳
             #         match = timestamp_pattern.search(line)
@@ -1283,7 +1286,7 @@ class crontab:
             #                 within_range = True
             #             else:
             #                 within_range = False
-                    
+            
             #         if within_range:
             #             filtered_logs.append(line)
             
@@ -1291,7 +1294,7 @@ class crontab:
         else:
             # 如果没有时间戳，读取最后 8196字节
             log = self.ReadLastBytesByChunks(logFile, 8196)
-    
+        
         return public.returnMsg(True, public.xsssec(log))
     def ReadLogsByTime(self, path, start_timestamp, end_timestamp):
         """
@@ -1299,16 +1302,16 @@ class crontab:
         """
         if not os.path.exists(path):
             return ""
-
+        
         timestamp_pattern = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
         filtered_logs = []
         extra_logs = []  # 用于保存补充读取的内容
-
+        
         try:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 within_range = False
                 all_lines = f.readlines()  # 读取所有行
-
+            
             # 正向遍历所有行，查找符合时间范围的日志
             for index, line in enumerate(all_lines):
                 match = timestamp_pattern.search(line)
@@ -1316,13 +1319,13 @@ class crontab:
                     log_time_str = match.group()
                     log_time = time.strptime(log_time_str, '%Y-%m-%d %H:%M:%S')
                     log_timestamp = time.mktime(log_time)
-
+                    
                     # 检查时间范围
                     within_range = start_timestamp <= log_timestamp <= end_timestamp
-
+                
                 if within_range:
                     filtered_logs.append(line)
-
+            
             # 检查起始行前一行是否包含 `Successful`
             if filtered_logs:
                 first_line_index = all_lines.index(filtered_logs[0])
@@ -1332,12 +1335,12 @@ class crontab:
                     filtered_logs.insert(0, previous_line)
                     if "Successful" in previous_line:
                         break
-
+            
             return ''.join(filtered_logs)
-
+        
         except Exception as e:
             return "日志读取失败: {}".format(e)
-        
+    
     def ReadLastBytesByChunks(self, path, buffer_size=8196):
         """
         按字节读取日志文件的最后 buffer_size 字节内容
@@ -1347,7 +1350,7 @@ class crontab:
         """
         if not os.path.exists(path):
             return ""
-
+        
         try:
             # 打开文件进行按字节读取
             with open(path, 'rb') as f:
@@ -1358,13 +1361,13 @@ class crontab:
                 # 移动文件指针，读取最后 buffer_size 字节
                 f.seek(file_size - remaining_bytes, os.SEEK_SET)
                 buffer = f.read(remaining_bytes)
-
+                
                 # 将读取的字节转为字符串，并返回
                 return buffer.decode('utf-8', errors='ignore')
         
         except Exception as e:
             return ""
-
+    
     # 清理任务日志
     def DelLogs(self, get):
         try:
@@ -1376,13 +1379,13 @@ class crontab:
             return public.returnMsg(True, 'CRONTAB_TASKLOG_CLOSE')
         except:
             return public.returnMsg(False, 'CRONTAB_TASKLOG_CLOSE_ERR')
-
+    
     # 删除计划任务
     def DelCrontab(self, get):
         try:
             id = get['id']
             # 尝试删除数据库备份表中的数据
-
+            
             public.M("mysql_increment_settings").where("cron_id=?", (id)).delete()
             find = public.M('crontab').where("id=?", (id,)).field('name,echo').find()
             if not find: return public.returnMsg(False, '指定任务不存在!')
@@ -1392,18 +1395,18 @@ class crontab:
             if os.path.exists(sfile): os.remove(sfile)
             sfile = cronPath + '/' + find['echo'] + '.log'
             if os.path.exists(sfile): os.remove(sfile)
-
+            
             public.M('crontab').where("id=?", (id,)).delete()
             public.add_security_logs("删除计划任务", "删除计划任务:" + find['name'])
             public.WriteLog('TYPE_CRON', 'CRONTAB_DEL', (find['name'],))
             return public.returnMsg(True, 'DEL_SUCCESS')
         except:
             return public.returnMsg(False, 'DEL_ERROR')
-
+    
     # 从crond删除
     def remove_for_crond(self, echo):
         try:
- 
+            
             # if not self.is_cron_installed():
             #     print(3333333333)
             #     return public.returnMsg(False, '检测到cron服务异常，请先修复cron服务！')
@@ -1411,13 +1414,13 @@ class crontab:
             if not os.path.exists(file):
                 return self.check_cron_file_status(file)
             conf = public.readFile(file)
-            if not conf: 
-                return self.check_cron_file_status(file)    
+            if not conf:
+                return self.check_cron_file_status(file)
             if conf.find(str(echo)) == -1: return public.returnMsg(True, '文件写入成功')
             rep = ".+" + str(echo) + ".+\n"
             conf = re.sub(rep, "", conf)
             try:
-                if not public.writeFile(file, conf): 
+                if not public.writeFile(file, conf):
                     return self.check_cron_file_status(file)
             except Exception as e:
                 print(e)
@@ -1426,7 +1429,7 @@ class crontab:
             return public.returnMsg(True, '文件写入成功')
         except Exception as e:
             print(e)
-
+    
     # 取执行脚本
     def GetShell(self, param):
         type = param['sType']
@@ -1437,11 +1440,11 @@ class crontab:
         if type == 'toFile':
             shell = param.sFile
         else:
-            cronPath = '/www/server/cron'  
+            cronPath = '/www/server/cron'
             cronFile = '{}/{}.pl'.format(cronPath,cronName)
             head = "#!/bin/bash\nPATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin\nexport PATH\n"
             head += "echo $$ > " + cronFile + "\n"  # 将PID保存到文件中
-
+            
             second = param.get('second', "")
             time_type=param['type']
             if second:
@@ -1452,11 +1455,11 @@ class crontab:
                 head += 'fi\n'
             public.ExecShell("chmod +x /www/server/panel/script/modify_second_cron.sh")
             public.ExecShell("nohup /www/server/panel/script/modify_second_cron.sh {} {} {} &".format(time_type,second,cronName) )
-                
+            
             time_type = param.get('time_type', '')
             if time_type:
                 time_list=param.get('time_set', '')
-                special_time=param.get('special_time', '')           
+                special_time=param.get('special_time', '')
                 # if time_type == "sweek":
                 # 调用 Python 脚本进行时间检查
                 head += 'if [[ $1 != "start" ]]; then\n'
@@ -1512,9 +1515,9 @@ class crontab:
                 'special_log': head + python_bin + " " + public.GetConfigValue('setup_path') + "/panel/script/rotate_log_special.py " +
                                str(param['save']) + " " + param['sName'],
                 'site_restart':head + python_bin + " " + public.GetConfigValue('setup_path') + "/panel/script/move_config.py " +
-                              " " + param['sName'] + " " + special_time +" " + "$force_start",
+                               " " + param['sName'] + " " + special_time +" " + "$force_start",
                 'log_cleanup':head + python_bin + " " + public.GetConfigValue('setup_path') + "/panel/script/log_cleanup.py " +
-                              " " + param['sName']+" " + log_cut_path,
+                              "all " + param['sName']+" " + log_cut_path,
             }
             # 取消插件调用计划任务
             # if param['backupTo'] != 'localhost':
@@ -1538,21 +1541,21 @@ class crontab:
             #     }
             try:
                 shell = wheres[type]
-
+            
             except:
                 if type=="site_restart":
                     lines = shell.split('\n')
-                    last_line = lines[-1]               
+                    last_line = lines[-1]
                     new_command = '''
 
 if [[ $1 == "start" ]]; then
         {} start
 else
         {}
-                    
+        
 fi
 '''.format(last_line, last_line)
-
+                    
                     shell = shell.replace(last_line, new_command)
                 # 设置 User-Agent 头
                 if hasattr(param, 'user_agent'):
@@ -1561,7 +1564,7 @@ fi
                     user_agent_value = param.get('user_agent', '')
                 else:
                     user_agent_value = ''
-
+                
                 user_agent = "-H 'User-Agent: {}'".format(user_agent_value) if user_agent_value else ''
                 
                 if type == 'toUrl':
@@ -1573,6 +1576,7 @@ fi
                         param1[i['paramName']] = i['paramValue']
                     # shell = head + '''curl -sS -X POST --connect-timeout 10 -m 3600 -H "Content-Type: application/json"  -d '{}' {} '''.format(json.dumps(param1),
                     #                                                                                                                            param['urladdress'])
+                    public.print_log(param1)
                     shell = head + '''curl -sS -L -X POST {} --connect-timeout 10 -m 3600 -H "Content-Type: application/json"  -d '{}' {} '''.format(user_agent, json.dumps(param1), param['urladdress'])
                 else:
                     shell = head + param['sBody'].replace("\r\n", "\n")
@@ -1591,7 +1595,7 @@ rm -f {cronFile}
 '''
         if type == 'toShell' and param.get('notice') and param['notice_channel'] and param['notice_channel'] and len(param.get('keyword', '')):
             shell += "btpython /www/server/panel/script/shell_push.py {} {} {} {} &".format(cronName, param['notice_channel'], param['keyword'], param['name'])
-
+        
         cronPath = public.GetConfigValue('setup_path') + '/cron'
         if not os.path.exists(cronPath): public.ExecShell('mkdir -p ' + cronPath)
         file = cronPath + '/' + cronName
@@ -1600,16 +1604,16 @@ rm -f {cronFile}
         return cronName
         # except Exception as ex:
         # return public.returnMsg(False, 'FILE_WRITE_ERR' + str(ex))
-
-
-
+    
+    
+    
     # 检查脚本
     def CheckScript(self, shell):
         keys = ['shutdown', 'init 0', 'mkfs', 'passwd', 'chpasswd', '--stdin', 'mkfs.ext', 'mke2fs']
         for key in keys:
             shell = shell.replace(key, '[***]')
         return shell
-
+    
     # 重载配置
     def CrondReload(self):
         if os.path.exists('/etc/init.d/crond'):
@@ -1618,7 +1622,7 @@ rm -f {cronFile}
             public.ExecShell('service cron restart')
         else:
             public.ExecShell("systemctl reload crond")
-
+    
     def is_cron_hardened(self,safe_status):
         """
         判断系统是否启用了对 cron 的加固功能。
@@ -1629,38 +1633,38 @@ rm -f {cronFile}
         返回:
         bool: 如果 cron 加固开启，返回 True，否则返回 False
         """
-
+        
         if not safe_status.get('open', False):
             return False  # 如果整体的加固功能关闭，直接返回 False
         # 遍历返回的加固项目列表
         for item in safe_status.get('list', []):
             if item.get('key') == 'cron':
                 return item.get('open', False)  # 如果找到了 cron 相关的加固项，返回其状态
-
+        
         return False  # 如果没有找到 cron 相关的加固项，默认返回 False
     
     def check_cron_file_status(self,file):
         
-
+        
         import PluginLoader
         # 检查cron服务是否安装
-
+        
         if os.path.exists("/etc/init.d/bt_syssafe"):
             # syssafe_main().get_safe_status(None)
             safe_status = PluginLoader.plugin_run("syssafe", "get_safe_status", "")
             # 检查 cron 是否加固
             if self.is_cron_hardened(safe_status):
                 return public.returnMsg(False, '文件写入失败,请检查是否开启系统加固功能!')
-
-         
+        
+        
         # 检查文件是否被加锁
         result = public.ExecShell("lsattr {}".format(file))
         if 'i' in result[0]:
             return public.returnMsg(False, '{} 文件被加锁。请检查是否用了其他云锁产品，您可以使用命令 `chattr -i {}` 解锁！'.format(file, file))
-
+        
         return public.returnMsg(True, "文件正常")
-
-
+    
+    
     # 将Shell脚本写到文件
     def WriteShell(self, config):
         # if not self.is_cron_installed():
@@ -1668,10 +1672,10 @@ rm -f {cronFile}
         #     return public.returnMsg(False, '检测到cron服务异常，请先修复cron服务！')
         u_file = '/var/spool/cron/crontabs/root'
         file = self.get_cron_file()
-        if not os.path.exists(file): 
+        if not os.path.exists(file):
             if not public.writeFile(file, ''):
                 return self.check_cron_file_status(file)
-               
+        
         conf = public.readFile(file)
         if type(conf) == bool: return public.returnMsg(False, '读取文件失败!')
         conf += config + "\n"
@@ -1682,7 +1686,7 @@ rm -f {cronFile}
                 public.ExecShell("chmod 600 '" + file + "' && chown root.crontab " + file)
             return public.returnMsg(True, '文件写入成功')
         return self.check_cron_file_status(file)
-
+    
     def is_cron_installed(self):
         import os
         
@@ -1696,7 +1700,7 @@ rm -f {cronFile}
             # 进一步检查 cron 服务是否正在运行
             service_status = public.ExecShell("systemctl is-active crond")
             return "active" in service_status[0]
-
+        
         # 检查是否存在 apt（适用于 Debian 和 Ubuntu）
         elif os.path.exists("/usr/bin/apt"):
             # 使用 dpkg 检查 cron 是否安装（只检查是否为ii状态）
@@ -1711,8 +1715,8 @@ rm -f {cronFile}
         else:
             # 对于其他系统返回不支持的提示
             return False
-
-
+    
+    
     # 立即执行任务
     def StartTask(self, get):
         echo = public.M('crontab').where('id=?', (get.id,)).getField('echo')
@@ -1722,7 +1726,7 @@ rm -f {cronFile}
         public.ExecShell('chmod +x ' + execstr)
         public.ExecShell('nohup ' + execstr +' start >> ' + execstr + '.log 2>&1 &')
         return public.returnMsg(True, 'CRONTAB_TASK_EXEC')
-
+    
     # 获取计划任务文件位置
     def get_cron_file(self):
         u_path = '/var/spool/cron/crontabs'
@@ -1731,12 +1735,12 @@ rm -f {cronFile}
         cron_path = c_file
         if not os.path.exists(u_path):
             cron_path = c_file
-
+        
         if os.path.exists("/usr/bin/apt-get"):
             cron_path = u_file
         elif os.path.exists('/usr/bin/yum'):
             cron_path = c_file
-
+        
         if cron_path == u_file:
             if not os.path.exists(u_path):
                 os.makedirs(u_path, 472)
@@ -1744,9 +1748,9 @@ rm -f {cronFile}
         if not os.path.exists(cron_path):
             public.writeFile(cron_path, "")
         return cron_path
-
+    
     def modify_project_log_split(self, cronInfo, get):
-
+        
         def _test_project_type(self, project_type):
             if project_type == "Node项目":
                 return "nodojsModel"
@@ -1760,7 +1764,7 @@ rm -f {cronFile}
                 return "pythonModel"
             else:
                 return None
-
+        
         def the_init(self, cronInfo, get: dict):
             self.get = get
             self.cronInfo = cronInfo
@@ -1777,13 +1781,13 @@ rm -f {cronFile}
             else:
                 self.project_type = None
                 return
-
+            
             self.project_type = project_type
             self.project_name = project_name
             conf_path = '{}/data/run_log_split.conf'.format(public.get_panel_path())
             data = json.loads(public.readFile(conf_path))
             self.log_size = int(data[self.project_name]["log_size"]) / 1024 / 1024
-
+        
         def modify(self):
             from importlib import import_module
             if not self.project_type:
@@ -1801,27 +1805,27 @@ rm -f {cronFile}
                 get.hour = str(self.get['hour'])
                 get.minute = str(self.get['minute'])
             get.num = str(self.get["save"])
-
+            
             model = import_module(".{}".format(self.project_type), package="projectModel")
-
+            
             res = getattr(model.main(), "mamger_log_split")(get)
             self.msg = res["msg"]
             self.flag = res["status"]
-
+            
             return True
-
+        
         attr = {
             "__init__": the_init,
             "_test_project_type": _test_project_type,
             "modify": modify,
         }
         return type("ProjectLog", (object,), attr)(cronInfo, get)
-
+    
     # 检查指定的url是否通
     def check_url_connecte(self, get):
         if 'url' not in get or not get['url']:
             return public.returnMsg(False, '请传入url!')
-
+        
         try:
             start_time = time.time()
             response = requests.get(get['url'], timeout=30)
@@ -1829,12 +1833,12 @@ rm -f {cronFile}
             end_time = time.time()
             
             response_time = "{}ms".format(int(round(end_time - start_time, 2) * 1000))
-            result = {'status': response.status_code == 200, 
-                    'status_code': response.status_code, 
-                    'txt': public.xsssec(response.text),
-                    'time': response_time}
+            result = {'status': response.status_code == 200,
+                      'status_code': response.status_code,
+                      'txt': public.xsssec(response.text),
+                      'time': response_time}
             return result
-
+        
         except requests.exceptions.Timeout as err:
             end_time = time.time()
             response_time = "{}ms".format(int(round(end_time - start_time, 2) * 1000))
@@ -1851,17 +1855,17 @@ rm -f {cronFile}
             end_time = time.time()
             response_time = "{}ms".format(int(round(end_time - start_time, 2) * 1000))
             return {'status': False, 'status_code': '', 'txt': '请求异常: {}'.format(err), 'time': response_time}
-
+    
     # 获取各个类型数据库
     def GetDatabases(self, get):
         from panelMysql import panelMysql
         db_type = getattr(get, "db_type", "mysql")
-
+        
         crontab_databases = public.M("crontab").field("id,sName").where("LOWER(type)=LOWER(?)", (db_type)).select()
         for db in crontab_databases:
             db["sName"] = set(db["sName"].split(","))
             # table_list = panelMysql().query("show tables from `{db_name}`;".format(db_name=database["name"]))
-
+        
         if db_type == "redis":
             database_list = []
             cron_id = None
@@ -1871,9 +1875,9 @@ rm -f {cronFile}
                     break
             database_list.append({"name": "本地数据库", "ps": "", "cron_id": cron_id})
             return database_list
-
+        
         databases = public.M("databases").field("name,ps").where("LOWER(type)=LOWER(?)", (db_type)).select()
-
+        
         for database in databases:
             try:
                 if database.get("name") is None: continue
@@ -1885,7 +1889,7 @@ rm -f {cronFile}
                 for tb_name in table_list:
                     cron_id = public.M("mysql_increment_settings").where("tb_name in (?)", (tb_name[0])).getField("cron_id")
                     database["table_list"].append({"tb_name": tb_name[0], "value": tb_name[0], "cron_id": cron_id if cron_id else None})
-
+                
                 database["cron_id"] = []
                 for db in crontab_databases:
                     if database["name"] in db["sName"]:
@@ -1893,7 +1897,7 @@ rm -f {cronFile}
             except Exception as e:
                 print(e)
         return databases
-
+    
     # 取任务日志
     def GetWebShellLogs(self, get):
         id = get['id']
@@ -1919,7 +1923,7 @@ rm -f {cronFile}
                     pass
             time_logs.reverse()
             logs = time_logs
-
+        
         if hasattr(get, 'type') and get.type != '':
             if get.type == 'warring':
                 warring_logs = []
@@ -1927,7 +1931,7 @@ rm -f {cronFile}
                     if '【warring】' in logs[i]:
                         warring_logs.append(logs[i])
                 logs = warring_logs
-
+        
         for i in range(len(logs)):
             if '【warring】' in logs[i]:
                 logs[i] = '<span style="background-color:rgba(239, 8, 8, 0.8)">{}</span>'.format(logs[i])
@@ -1936,7 +1940,7 @@ rm -f {cronFile}
             return public.returnMsg(True, logs)
         else:
             return public.returnMsg(False, 'CRONTAB_TASKLOG_EMPTY')
-
+    
     def download_logs(self, get):
         try:
             id = int(get['id'])
@@ -1975,7 +1979,7 @@ rm -f {cronFile}
             return public.returnMsg(True, '/tmp/{}.log'.format(echo['echo']))
         except:
             return public.returnMsg(False, '下载失败！')
-
+    
     def clear_logs(self, get):
         try:
             id = int(get['id'])
@@ -1988,7 +1992,7 @@ rm -f {cronFile}
                 day = int(get.day)
                 end_time = int(time.time())
                 start_time = end_time - day * 86400
-
+                
                 last_idx = len(logs) - 1
                 for i in range(len(logs) - 1, -1, -1):
                     info_obj = re.search(r'[【\[](\d+-\d+-\d+\s+\d+:\d+:\d+)[】\]]', logs[i])
@@ -1996,7 +2000,7 @@ rm -f {cronFile}
                         add_info_time = info_obj.group(1)
                         add_info_time = time.strptime(add_info_time, "%Y-%m-%d %H:%M:%S")
                         add_info_time = time.mktime(add_info_time)
-                        if add_info_time < start_time:
+                        if int(add_info_time) < start_time:
                             break
                         last_idx = i
                 logs = logs[last_idx:]
@@ -2006,7 +2010,7 @@ rm -f {cronFile}
             return public.returnMsg(True, '清除成功！')
         except:
             return public.returnMsg(False, '清除失败！')
-
+    
     def cloud_backup_download(self, get):
         if not hasattr(get, 'filename'):
             return public.returnMsg(False, '请传入filename!')
@@ -2044,12 +2048,12 @@ rm -f {cronFile}
                 return public.returnMsg(False, '数据错误！')
             names = public.M(table).field('name').select()
             names = [i.get('name') for i in names]
-
+        
         if cron_data['sType']=="path":
             names = [os.path.basename(i) for i in list(names) if os.path.basename(i) in file_name]
         else:
             names = [i for i in list(names) if i in file_name]
-
+        
         if not names:
             public.returnMsg(False, '未找到对应的文件，请手动去云存储下载')
         if  cron_data['db_type']=="redis":
@@ -2067,7 +2071,7 @@ rm -f {cronFile}
             for i in data['list']:
                 if i['name'] == file_name:
                     url = i['download']
-
+            
             if not url:
                 path = os.path.join(backup_path, 'site')
                 data = c.obj.get_list(path)
@@ -2114,11 +2118,11 @@ rm -f {cronFile}
         if url == '':
             return public.returnMsg(False, '在云存储中未发现该文件!')
         return {'status': True, 'is_loacl': False, 'path': url}
-
+    
     def get_crontab_types(self, get):
         data = public.M("crontab_types").field("id,name,ps").order("id asc").select()
         return {'status': True, 'msg': data}
-
+    
     def add_crontab_type(self, get):
         # get.name =  html.escape(get.name.strip())
         get.name = public.xsssec(get.name.strip())
@@ -2128,40 +2132,40 @@ rm -f {cronFile}
             return public.returnMsg(False, "分类名称不能为空")
         if len(get.name) > 16:
             return public.returnMsg(False, "分类名称长度不能超过16位")
-
+        
         crontab_type_sql = public.M('crontab_types')
-
+        
         if get.name in {"Shell脚本", "备份网站", "备份数据库", "数据库增量备份", "日志切割", "备份目录", "木马查杀", "同步时间", "释放内存", "访问URL", "系统任务"}:
             return public.returnMsg(False, "指定分类名称已存在")
-
+        
         if crontab_type_sql.where('name=?', (get.name,)).count() > 0:
             return public.returnMsg(False, "指定分类名称已存在")
-
+        
         # 添加新的计划任务分类
         crontab_type_sql.add("name", (get.name,))
-
+        
         return public.returnMsg(True, '添加成功')
-
+    
     def remove_crontab_type(self, get):
         crontab_type_sql = public.M('crontab_types')
         crontab_sql = public.M('crontab')
         crontab_type_id = get.id
-
+        
         if crontab_type_sql.where('id=?', (crontab_type_id,)).count() == 0:
             return public.returnMsg(False, "指定分类不存在")
-
+        
         name = crontab_type_sql.where('id=?', (crontab_type_id,)).field('name').find().get('name', '')
         # if name in {"toShell", "site", "database", "enterpriseBackup", "logs", "path", "webshel", "syncTime", "rememory", "toUrl", "系统任务"}:
         #     return public.returnMsg(False, "这是默认类型，无法删除")
-
+        
         # 删除指定的计划任务分类
         crontab_type_sql.where('id=?', (crontab_type_id,)).delete()
-
+        
         # 找到 crontab 表中的相关数据，并设置其 sType 和 type_id 字段为空
         crontab_sql.where('type_id=?', (crontab_type_id,)).save('type_id', (0))
-
+        
         return public.returnMsg(True, "分类已删除")
-
+    
     def modify_crontab_type_name(self, get):
         get.name = public.xsssec(get.name.strip())
         # get.name =  html.escape(get.name.strip())
@@ -2171,30 +2175,30 @@ rm -f {cronFile}
             return public.returnMsg(False, "分类名称不能为空")
         if len(get.name) > 16:
             return public.returnMsg(False, "分类名称长度不能超过16位")
-
+        
         crontab_type_sql = public.M('crontab_types')
         crontab_type_id = get.id
-
+        
         if crontab_type_sql.where('id=?', (crontab_type_id,)).count() == 0:
             return public.returnMsg(False, "指定分类不存在")
-
+        
         if get.name in {"Shell脚本", "备份网站", "备份数据库", "数据库增量备份", "日志切割", "备份目录", "木马查杀", "同步时间", "释放内存", "访问URL", "系统任务"}:
             return public.returnMsg(False, "名字不能修改为系统默认的任务分类名")
-
+        
         if crontab_type_sql.where('name=? AND id!=?', (get.name, crontab_type_id)).count() > 0:
             return public.returnMsg(False, "指定分类名称已存在")
-
+        
         # 修改指定的计划任务分类名称
         crontab_type_sql.where('id=?', (crontab_type_id,)).setField('name', get.name)
-
+        
         return public.returnMsg(True, "修改成功")
-
+    
     def set_crontab_type(self, get):
         try:
             crontab_ids = json.loads(get.crontab_ids)
             crontab_sql = public.M("crontab")
             crontab_type_sql = public.M("crontab_types")
-
+            
             # sType= public.M('crontab_types').where('id=?', (get['type_id'],)).field('name').find().get('name', '')
             crontab_type_id = get.id
             if crontab_type_id=="-1" or crontab_type_id=="0":
@@ -2203,12 +2207,12 @@ rm -f {cronFile}
                 return public.returnMsg(False, "指定分类不存在")
             for s_id in crontab_ids:
                 crontab_sql.where("id=?", (s_id,)).save('type_id', (crontab_type_id))
-
+            
             return public.returnMsg(True, "设置成功")
         except Exception as e:
             return public.returnMsg(False, "设置失败" + str(e))
-
-
+    
+    
     def export_crontab_to_json(self, get):
         try:
             # 获取前端发送的id值，可以是逗号分隔的字符串
@@ -2243,43 +2247,43 @@ rm -f {cronFile}
             return public.returnMsg(True, "/tmp/计划任务数据.json")
         except Exception as e:
             return public.returnMsg(False, "导出失败：" + str(e))
-
-
+    
+    
     def import_crontab_from_json(self, get):
         try:
-            file = request.files['file']           
+            file = request.files['file']
             overwrite = get.get('overwrite') == '1'
             if file:
                 json_data = file.read().decode('utf-8')
-
+                
                 try:
                     crontab_data = json.loads(json_data)
                 except ValueError as e:
                     return public.returnMsg(False, "无法解析的JSON文件！")
-
+                
                 if not isinstance(crontab_data, list):
                     return public.returnMsg(False, "JSON文件内容格式不正确！")
-
+                
                 existing_tasks = public.M('crontab').order("id desc").field(self.field).select()
                 existing_names = {task['name'] for task in existing_tasks} if overwrite else set()
-
+                
                 successful_imports = 0
                 failed_tasks = []
                 skipped_tasks = []
-                successful_tasks = [] 
+                successful_tasks = []
                 required_keys = [
                     'name', 'type', 'where1', 'where_hour', 'where_minute', 'addtime', 'status', 'save', 'backupTo',
                     'sName', 'sBody', 'sType', 'urladdress', 'save_local', 'notice', 'notice_channel', 'db_type', 'split_type',
                     'split_value', 'keyword', 'post_param', 'flock', 'time_set', 'backup_mode', 'db_backup_path', 'time_type',
                     'special_time', 'user_agent', 'version', 'table_list', 'result', 'log_cut_path', 'rname', 'type_id', 'second','stop_site'
                 ]
-
+                
                 for task in crontab_data:
                     if overwrite and task['name'] in existing_names:
                         skipped_tasks.append(task['name'])
-                        continue 
-                    
-                    # 创建新任务字典时，特别处理 where_hour 和 where_minute
+                        continue
+                        
+                        # 创建新任务字典时，特别处理 where_hour 和 where_minute
                     new_task = {}
                     for key in required_keys:
                         if key == 'where_hour':
@@ -2294,27 +2298,27 @@ rm -f {cronFile}
                     result = self.AddCrontab(new_task)
                     if result.get('status', False):
                         successful_imports += 1
-                        successful_tasks.append(task['name'])  
+                        successful_tasks.append(task['name'])
                     else:
                         failed_tasks.append(task['name'])
-
+                
                 message = "成功导入{}条计划任务".format(successful_imports)
                 result = {
                     "status": True,
                     "msg": message,
                     "skipped_tasks": skipped_tasks,
                     "failed_tasks": failed_tasks,
-                    "successful_tasks": successful_tasks  
+                    "successful_tasks": successful_tasks
                 }
                 return result
-
+            
             else:
                 return public.returnMsg(False, "请选择导入文件!")
         except Exception as e:
             return public.returnMsg(False, "导入失败！{0}".format(str(e)))
-
-
-
+    
+    
+    
     def stop_cron_task(self, cronPath, cronName, if_stop):
         cronFile = '{}/{}.pl'.format(cronPath,cronName)
         if if_stop == "True":
@@ -2327,7 +2331,7 @@ rm -f {cronFile}
                     os.remove(cronFile)
                 except:
                     pass
-
+    
     def set_atuo_start_syssafe(self, get):
         try:
             if not hasattr(get, 'time'):
@@ -2349,7 +2353,7 @@ rm -f {cronFile}
         except Exception as e:
             public.ExecShell('/etc/init.d/bt_syssafe start')
             return public.returnMsg(False, "临时关闭系统加固失败！" + str(e))
-
+    
     # def set_atuo_start_syssafe(self, get):
     #     try:
     #         if not hasattr(get, 'time'):
@@ -2365,13 +2369,13 @@ rm -f {cronFile}
     #             'args': {
     #                 'status': 1
     #             }
-
+    
     #         }
     #         public.set_tasks_run(data)
     #         return public.returnMsg(True, "临时关闭系统加固成功！")
     #     except Exception as e:
     #         return public.returnMsg(False, "临时关闭系统加固失败！" + str(e))
-
+    
     def get_task_name_and_body(self,model_name, project_name):
         task_name = '[勿删]定时重启{}项目{}'.format(model_name, project_name)
         sBody = 'btpython /www/server/panel/script/restart_project.py {} {}'.format(model_name, project_name)
@@ -2381,7 +2385,7 @@ rm -f {cronFile}
         try:
             task_name, sBody = self.get_task_name_and_body(get.model_name, get.project_name)
             crontab_data_list = public.M('crontab').where('name=?', (task_name,)).select()
-
+            
             if crontab_data_list:
                 crontab_data = crontab_data_list[0]
                 return public.returnMsg(True, crontab_data)
@@ -2405,14 +2409,14 @@ rm -f {cronFile}
             return public.returnMsg(True, crontab_data)
         except Exception as e:
             return public.returnMsg(False, "获取失败"+str(e))
-
+    
     def set_restart_project(self, get):
         try:
             task_name, sBody = self.get_task_name_and_body(get.model_name, get.project_name)
             hour = get.get('hour', 0)
             minute = get.get('minute', 0)
             status = get.get('status', 0)
-
+            
             # 查找是否已经存在任务
             crontab_data_list = public.M('crontab').where('name=?', (task_name,)).select()
             
@@ -2438,12 +2442,12 @@ rm -f {cronFile}
                     return public.returnMsg(True, "设置成功")
                 else:
                     return public.returnMsg(False, res.get('msg', '设置失败'))
-
-
+            
+            
             else:
                 # 如果存在任务，则修改任务
                 task['id'] = crontab_data_list[0]['id']
-                if int(status)==crontab_data_list[0]['status']:                 
+                if int(status)==crontab_data_list[0]['status']:
                     res = self.modify_crond(task)
                     if res.get('status'):
                         return public.returnMsg(True, "设置成功")
@@ -2452,33 +2456,33 @@ rm -f {cronFile}
                 else:
                     data={"id":task['id']}
                     return self.set_cron_status(data)
-                
+        
         except Exception as e:
             return public.returnMsg(False, "设置失败"+str(e))
-
+    
     def modify_values(self, cronName, new_time_type, new_special_time, new_time_list):
-        cronName = cronName 
-        cronPath = '/www/server/cron'  
+        cronName = cronName
+        cronPath = '/www/server/cron'
         cronFile = '{}/{}'.format(cronPath, cronName)
         # 打开文件
         with open(cronFile, 'r') as file:
             # 读取文件内容
             lines = file.readlines()
-
+        
         # 进行你的修改
         for i, line in enumerate(lines):
             if "btpython /www/server/panel/script/time_check.py" in line:
                 lines[i] = 'if ! btpython /www/server/panel/script/time_check.py time_type={} special_time={} time_list={}; then\n'.format(new_time_type, new_special_time, new_time_list)
-
+        
         # 保存修改
         with open(cronFile, 'w') as file:
             file.writelines(lines)
-
+    
     def set_execute_script(self, get):
-
+        
         if '_ws' not in get:
             return False
-
+        
         public.ExecShell("chmod +x /www/server/panel/script/check_crontab.sh")
         # 使用nohup运行脚本，并将输出重定向到/www/test.txt，同时确保命令在后台运行
         exec_result=public.ExecShell("nohup /www/server/panel/script/check_crontab.sh > /tmp/check_crontab.txt 2>&1 &")
@@ -2487,7 +2491,7 @@ rm -f {cronFile}
             # 以只读模式打开日志文件，并移动到文件末尾
             if not os.path.exists("/tmp/check_crontab.txt"):
                 public.writeFile("/tmp/check_crontab.txt","")
-
+            
             with open("/tmp/check_crontab.txt", "r") as log_file:
                 while True:
                     # 读取新的一行                   
@@ -2496,8 +2500,8 @@ rm -f {cronFile}
                         time.sleep(1)  # 如果没有新内容，则稍等片刻再尝试读取
                         continue
                     get._ws.send(public.getJson({
-                    "callback":"set_execute_script",
-                    "result":line.strip()                    
+                        "callback":"set_execute_script",
+                        "result":line.strip()
                         
                     }))
                     if line.strip()=="successful":
@@ -2506,7 +2510,7 @@ rm -f {cronFile}
         else:
             get._ws.send("脚本执行失败")
             return False
-
+    
     def get_system_user_list(self, get):
         all_user = False
         if get is not None:
@@ -2534,7 +2538,7 @@ rm -f {cronFile}
                         continue
                     if all_user:
                         other_users.append(user_name)  # 添加所有用户（根据all_user标志）
-
+        
         # 合并列表，确保root和www在前
         return root_and_www + list(set(other_users) - set(root_and_www))
     
@@ -2542,18 +2546,18 @@ rm -f {cronFile}
         task_name = '自动备份mysql数据库[所有]'
         data={"id":public.M('crontab').where("name=?", (task_name,)).getField('id')}
         return crontab().set_cron_status(public.to_dict_obj(data))
-        
+    
     def get_auto_config(self, get):
         try:
-
+            
             name=get.name
-            if name=="mysql":                
-               task_name = '自动备份mysql数据库[所有]'
+            if name=="mysql":
+                task_name = '自动备份mysql数据库[所有]'
             #    sType='database'
             if name=="site":
-               task_name = '自动备份网站[所有]'
+                task_name = '自动备份网站[所有]'
             #    sType='site'
-           
+            
             public.M('crontab').where('name=?', (task_name,)).select()
             # if public.M('crontab').where('name=?', (task_name,)).count() == 0:
             #     task = {
@@ -2577,9 +2581,9 @@ rm -f {cronFile}
             if crontab_data_list:
                 crontab_data = crontab_data_list[0]
             else:
-                 crontab_data={"status":0}
+                crontab_data={"status":0}
             return public.returnMsg(True, crontab_data)
-
+        
         except Exception as e:
             return public.returnMsg(False, "获取失败"+str(e))
     
@@ -2587,12 +2591,12 @@ rm -f {cronFile}
         try:
             # status=get.status
             name=get.name
-            if name=="mysql":                
-               task_name = '自动备份mysql数据库[所有]'
-               sType='database'
+            if name=="mysql":
+                task_name = '自动备份mysql数据库[所有]'
+                sType='database'
             if name=="site":
-               task_name = '自动备份网站[所有]'
-               sType='site'
+                task_name = '自动备份网站[所有]'
+                sType='site'
             if public.M('crontab').where('name=?', (task_name,)).count() == 0:
                 task = {
                     "name": task_name,
@@ -2607,23 +2611,24 @@ rm -f {cronFile}
                     "save": "3",
                     "sBody": "",
                     "urladdress": "",
-                    "db_type":name
+                    "db_type":name,
+                    "table_list": "ALL",
                 }
                 res=crontab().AddCrontab(task)
                 if res['status']:
-                  return public.returnMsg(True,"设置成功！")
+                    return public.returnMsg(True,"设置成功！")
                 else:
-                  return public.returnMsg(False, res['msg']) 
+                    return public.returnMsg(False, res['msg'])
             else:
-               return self.set_status(get)
-
+                return self.set_status(get)
+        
         except Exception as e:
             return public.returnMsg(False, "开启失败"+str(e))
-
+    
     def set_rotate_log(self, get):
         try:
-
-
+            
+            
             try:
                 log_size = float(get.log_size) if float(get.log_size) >= 0 else 0
                 hour = get.hour.strip() if 0 <= int(get.hour) < 24 else "2"
@@ -2636,12 +2641,12 @@ rm -f {cronFile}
                 minute = "0"
                 num = 10
                 compress = False
-
+            
             if log_size != 0:
                 log_size = log_size * 1024 * 1024
                 hour = 0
                 minute = 5
-
+            
             log_conf = {
                 "log_size": log_size,
                 "hour": hour,
@@ -2669,7 +2674,7 @@ rm -f {cronFile}
             return public.returnMsg(flag, msg)
         except Exception as e:
             return public.returnMsg(False, str(e))
-
+    
     def change_cronta(self, log_conf):
         
         python_path = "btpython"
@@ -2688,7 +2693,7 @@ rm -f {cronFile}
         cronInfo['save'] = log_conf['num']
         cronInfo['type'] = 'day' if log_conf["log_size"] == 0 else "minute-n"
         cronInfo['where1'] = '' if log_conf["log_size"] == 0 else log_conf['minute']
-
+        
         columns = 'where_hour,where_minute,sBody,save,type,where1'
         values = (cronInfo['where_hour'], cronInfo['where_minute'], cronInfo['sBody'], cronInfo['save'], cronInfo['type'], cronInfo['where1'])
         self.remove_for_crond(cronInfo['echo'])
@@ -2729,29 +2734,29 @@ rm -f {cronFile}
                 return True, "新建任务成功"
             return False, res["msg"]
         return True
-            
+    
     def get_rotate_log_config(self, get):
         try:
             p = crontab()
             task_name = '[勿删]切割计划任务日志'
             config_path = '{}/data/crontab_log_split.conf'.format(public.get_panel_path())
-
+            
             log_size = 0
             hour = "0"
             minute = "0"
             num = 10
             compress = False
             stype="day"
-
+            
             default_config = {
-            "log_size": log_size,
-            "hour": hour,
-            "minute": minute,
-            "num":  num,
-            "compress": compress,
-            "stype": stype,
+                "log_size": log_size,
+                "hour": hour,
+                "minute": minute,
+                "num":  num,
+                "compress": compress,
+                "stype": stype,
             }
-
+            
             if os.path.exists(config_path):
                 try:
                     data = json.loads(public.readFile(config_path))
@@ -2760,21 +2765,21 @@ rm -f {cronFile}
                     data['status']=cron_info['status']
                     data['hour']=cron_info['where_hour']
                     data['minute']=cron_info['where_minute']
-                    
+                
                 except:
                     data = default_config
             else:
                 data=default_config
                 data['status']=0
                 with open(config_path, 'w') as config_file:
-                    json.dump(default_config, config_file)           
-
+                    json.dump(default_config, config_file)
+            
             
             return public.returnMsg(True, data)
         except Exception as e:
             return public.returnMsg(False, "获取失败" + str(e))
-        
-
+    
+    
     def set_rotate_log_status(self,get):
         task_name = '[勿删]切割计划任务日志'
         cronInfo = public.M('crontab').where('name=?', (task_name,)).find()
@@ -2800,7 +2805,7 @@ rm -f {cronFile}
                 }
                 return self.AddCrontab(task)
         status = 1
-
+        
         if cronInfo['status'] == status:
             status = 0
             remove_res=self.remove_for_crond(cronInfo['echo'])
@@ -2811,7 +2816,7 @@ rm -f {cronFile}
             sync_res=self.sync_to_crond(cronInfo)
             if not sync_res['status']:
                 return public.returnMsg(False, sync_res['msg'])
-
+        
         public.M('crontab').where('id=?', (cronInfo["id"],)).setField('status', status)
         return public.returnMsg(True, '设置成功')    # 增量备份获取数据库信息
     def get_databases(self, get):
@@ -2827,7 +2832,7 @@ rm -f {cronFile}
                 database["value"] = database["name"]
                 cron_id = public.M("mysql_increment_settings").where("db_name=?", (database["name"])).getField("cron_id")
                 database["cron_id"] = cron_id if cron_id else None
-
+                
                 table_list = panelMysql().query("show tables from `{db_name}`;".format(db_name=database["name"]))
                 if not isinstance(table_list, list):
                     continue
@@ -2841,7 +2846,7 @@ rm -f {cronFile}
             return {"status":False, "msg": err}
     def get_local_backup_path(self,get):
         try:
-
+            
             from  panelBackup import backup
             id = get['id']
             query = public.M('crontab').where("id=?", (id,))
@@ -2863,7 +2868,7 @@ rm -f {cronFile}
                 base_backup_dir=backup().get_backup_dir(data,args,db_type)
                 if sName=="ALL" or db_type=="redis":
                     local_backup_path = base_backup_dir
-                else:   
+                else:
                     local_backup_path = os.path.join(base_backup_dir,sName)
             elif sType=="path":
                 

@@ -20,7 +20,6 @@ if "/www/server/panel" not in sys.path:
 
 import public
 
-
 def get_jar_war_config(jar_war_file: str) -> Optional[List[Tuple[str, AnyStr]]]:
     """获取jar文件中的配置文件"""
     if not os.path.exists(jar_war_file):
@@ -41,7 +40,6 @@ def get_jar_war_config(jar_war_file: str) -> Optional[List[Tuple[str, AnyStr]]]:
 
     return res_list
 
-
 def to_utf8(file_data_list: List[Tuple[str, AnyStr]]) -> List[Tuple[str, str]]:
     res_list = []
     for i, data in file_data_list:
@@ -54,7 +52,6 @@ def to_utf8(file_data_list: List[Tuple[str, AnyStr]]) -> List[Tuple[str, str]]:
                 res_list.append((i, new_data))
     return res_list
 
-
 def parse_application_yaml(conf_data_list: List[Tuple[str, AnyStr]]) -> List[Tuple[str, Dict]]:
     res_list = []
     for i, data in conf_data_list:
@@ -63,7 +60,6 @@ def parse_application_yaml(conf_data_list: List[Tuple[str, AnyStr]]) -> List[Tup
             res_list.append((i, d))
 
     return res_list
-
 
 # 接收一个jdk路径并将其规范化
 def normalize_jdk_path(jdk_path: str) -> Optional[str]:
@@ -79,15 +75,14 @@ def normalize_jdk_path(jdk_path: str) -> Optional[str]:
         return None
     return jdk_path
 
-
 def test_jdk(jdk_path: str) -> bool:
     java_bin = os.path.join(jdk_path, "bin/java")
     if os.path.exists(java_bin):
-        out, err = public.ExecShell("{} -version 2>&1".format(java_bin))  # type: str, str
+        out, err = public.ExecShell("{} -version 2>&1".format(java_bin))
+        # type: str, str
         if out.lower().find("version") != -1:
             return True
     return False
-
 
 class TomCat:
 
@@ -201,7 +196,10 @@ class TomCat:
 
         ver = self.version()
         if ver:
+            public.print_log(ver)
+            # public.print_log(log_file)
             log_file = os.path.join(path, "catalina-daemon-{}.out".format(ver))
+            public.print_log(log_file)
             return log_file
         else:
             return os.path.join(path, "catalina-daemon.out")
@@ -211,12 +209,12 @@ class TomCat:
         if self._bt_tomcat_conf is None:
             p = os.path.join(self.path, "bt_tomcat.json")
             if not os.path.exists(p):
-                self._bt_tomcat_conf = {}
+                self._bt_tomcat_conf = { }
                 return self._bt_tomcat_conf
             try:
                 self._bt_tomcat_conf = json.loads(public.readFile(p))
             except:
-                self._bt_tomcat_conf = {}
+                self._bt_tomcat_conf = { }
         return self._bt_tomcat_conf
 
     def save_bt_tomcat_conf(self):
@@ -261,6 +259,14 @@ class TomCat:
             else:
                 new_list.append(i)
         public.writeFile(target_sh, "\n".join(new_list))
+        # *同步更改tomcat安装目录所有者
+        public.ExecShell(
+            "chown -R {user}:{user} {tomcat_path}".format(
+                user=user,
+                tomcat_path=self.path
+            )
+        )
+        return True
 
     @property
     def config_xml(self) -> Optional[ElementTree]:
@@ -397,42 +403,67 @@ class TomCat:
                 return True
         return False
 
-    def add_host(self, name: str, path: str) -> bool:
+    def add_host(self, name: str, path: str, context_path: str = "") -> bool:
         if self.config_xml is None:
             return False
         if not os.path.exists(path):
             os.makedirs(path)
+
+        engine_type = ""
+
         if self.host_by_name(name):
-            return False
-        engines = self.config_xml.findall("Service/Engine")
-        if not engines:
-            return False
-        engine = engines[0]
-        path_name = ""
-        if os.path.isfile(path):
-            app_base = os.path.dirname(path)
-            if path.endswith(".war"):
-                path_name = os.path.basename(path).rsplit(".", 1)[0]
+            # *相同域名时仅context添加
+            engines = self.config_xml.findall("Service/Engine/Host")
+            for host in engines:
+                if host.get("name", "") == name:
+                    engine = host
+                    engine_type = "context"
         else:
-            app_base = path
+            engines = self.config_xml.findall("Service/Engine")
+            if not engines:
+                return False
+            engine = engines[0]
+            engine_type = "host"
 
-        host = Element("Host", attrib={
-            # "appBase": app_base,
-            "autoDeploy": "true",
-            "name": name,
-            "unpackWARs": "true",
-            "xmlNamespaceAware": "false",
-            "xmlValidation": "false",
-        })
+        # context_path = ""
+        # if os.path.isfile(path):
+        #     app_base = os.path.dirname(path)
+        #     if path.endswith(".war"):
+        #         context_path = os.path.basename(path).rsplit(".", 1)[0]
+        # else:
+        #     app_base = path
+        #     # context_path = "/" + re.sub(r'[^a-z0-9\-]+', '-', name.strip().lower())
+        #     context_path = "/" + name.strip().lower()
 
-        context = Element("Context", attrib={
-            "docBase": path,
-            "path": path_name,
-            "reloadable": "true",
-            "crossContext": "true",
-        })
+        context = Element(
+            "Context",
+            attrib={
+                "docBase": path,
+                "path": context_path,
+                "reloadable": "true",
+                "crossContext": "true",
+            },
+        )
+
+        host = Element(
+            "Host",
+            attrib={
+                # "appBase": app_base,
+                "autoDeploy": "true",
+                "name": name,
+                "unpackWARs": "true",
+                "xmlNamespaceAware": "false",
+                "xmlValidation": "false",
+            },
+        )
         host.append(context)
-        engine.append(host)
+
+        if engine_type == "context":
+            engine.append(context)
+        elif engine_type == "host":
+            engine.append(host)
+        else:
+            return False
         return True
 
     def set_host_path_by_name(self, name: str, path: str) -> bool:
@@ -447,16 +478,24 @@ class TomCat:
                     return True
         return False
 
-    def remove_host(self, name: str) -> bool:
+    def remove_host(self, host_name: str, context_path: str = "") -> bool:
+        # 增加仅移除context
         if self.config_xml is None:
             return False
-        target_host = self.host_by_name(name)
-        if not target_host:
+        host, engines = self.host_by_name(host_name), self.config_xml.findall("Service/Engine")
+        if not host or not engines:
             return False
-        engine = self.config_xml.findall("Service/Engine")
-        if not engine:
-            return False
-        engine[0].remove(target_host)
+        target_context, other_context_count = None, 0
+        for i in host:
+            if i.tag == "Context":
+                if i.attrib["path"] == context_path:
+                    target_context = i
+                else:
+                    other_context_count += 1
+        if target_context is not None:
+            host.remove(target_context)
+        if not other_context_count:
+            engines[0].remove(host)
         return True
 
     def mutil_remove_host(self, name_list: List[str]) -> bool:
@@ -466,7 +505,10 @@ class TomCat:
             self.remove_host(name)
         return False
 
-    def _init_log_file(self, by_user: str = "root"):
+    def _init_log_file(self, by_user: str = ""):
+        if not by_user:
+            by_user = self.user
+
         if not os.path.exists(self.log_file):
             public.writeFile(self.log_file, "")
         public.set_mode(self.log_file, "666")  # 保障其他用户也可以写入日志（syslog）
@@ -475,7 +517,10 @@ class TomCat:
         )
         pass_dir_for_user(os.path.dirname(self.log_file), by_user)
 
-    def start(self, by_user: str = "root") -> bool:
+    def start(self, by_user: str = "") -> bool:
+        if not by_user:
+            by_user = self.user
+
         if self.running():
             return True
 
@@ -507,10 +552,15 @@ class TomCat:
         public.ExecShell("bash {} stop".format(daemon_file))
         return not self.running()
 
-    def restart(self, by_user: str = "root") -> bool:
+    def restart(self, by_user: str = "") -> bool:
+        if not by_user:
+            by_user = self.user
+
         if self.service_exists:
             if not os.path.exists(self.log_file):
-                public.ExecShell("touch {file} && chown {user}:{user} {file}".format(file=self.log_file, user=by_user))
+                public.ExecShell(
+                    "touch {file} && chown {user}:{user} {file}".format(file=self.log_file, user=by_user)
+                )
 
             self.change_default_user(by_user)
 
@@ -521,6 +571,20 @@ class TomCat:
         if self.running():
             self.stop()
         return self.start(by_user)
+
+    @property
+    def user(self) -> str:
+        tomcat_path = self.path
+        user = ""
+        flag = 'test ".$TOMCAT_USER" = . && TOMCAT_USER='
+        target_sh = os.path.join(tomcat_path, "bin/daemon.sh")
+        if os.path.exists(target_sh):
+            file_data = public.readFile(target_sh)
+            if isinstance(file_data, str):
+                for i in file_data.split("\n"):
+                    if i.startswith(flag):
+                        user = i.replace(flag, "").replace("\"", "").strip()
+        return user
 
     def replace_jdk(self, jdk_path: str) -> Optional[str]:
         jdk_path = normalize_jdk_path(jdk_path)
@@ -632,18 +696,18 @@ make
             jdk_path = ''
 
         shell_str = (
-            'rm -rf /tmp/1.sh && '
-            'wget -O /tmp/1.sh %s/install/src/webserver/shell/new_jdk.sh && '
-            'bash /tmp/1.sh install %s %s'
-        ) % (public.get_url(), version, jdk_path)
+                        'rm -rf /tmp/1.sh && '
+                        'wget -O /tmp/1.sh %s/install/src/webserver/shell/new_jdk.sh && '
+                        'bash /tmp/1.sh install %s %s'
+                    ) % (public.get_url(), version, jdk_path)
 
         if not os.path.exists("/tmp/panelTask.pl"):  # 如果当前任务队列并未执行，就把日志清空
             public.writeFile('/tmp/panelExec.log', '')
         soft_name = "Java项目Tomcat-" + version
         task_id = public.M('tasks').add(
             'id,name,type,status,addtime,execstr',
-            (None, '安装[{}]'.format(soft_name), 'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), shell_str))
-
+            (None, '安装[{}]'.format(soft_name), 'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), shell_str)
+        )
         cls._create_install_wait_msg(task_id, version)
 
     @staticmethod
@@ -684,6 +748,7 @@ make
 
     # 修复配置文件
     def repair_config(self, config_list: List[Dict], port: int = None) -> Optional[str]:
+        public.print_log("修复配置文件")
         if not port:
             port = self.default_port()
         if not port:
@@ -711,21 +776,27 @@ make
                 if path.endswith(".war"):
                     path_name = os.path.basename(path).rsplit(".", 1)[0]
 
-            host = Element("Host", attrib={
-                # "appBase": app_base,
-                "autoDeploy": "true",
-                "name": name,
-                "unpackWARs": "true",
-                "xmlNamespaceAware": "false",
-                "xmlValidation": "false",
-            })
+            host = Element(
+                "Host", attrib={
+                    # "appBase": app_base,
+                    "autoDeploy": "true",
+                    "name": name,
+                    "unpackWARs": "true",
+                    "xmlNamespaceAware": "false",
+                    "xmlValidation": "false",
+                }
+            )
 
-            host.append(Element("Context", attrib={
-                "docBase": path,
-                "path": path_name,
-                "reloadable": "true",
-                "crossContext": "true",
-            }))
+            host.append(
+                Element(
+                    "Context", attrib={
+                        "docBase": path,
+                        "path": path_name,
+                        "reloadable": "true",
+                        "crossContext": "true",
+                    }
+                )
+            )
 
             engine.append(host)
 
@@ -746,7 +817,6 @@ make
                 return "Tomcat配置中没有当前项目路径，请尝试修复项目"
         return None
 
-
 class SiteTomcat(TomCat):
 
     # 将某个Host之外的其他host都删除，实现ROOT访问的效果（不需要前置应用）
@@ -756,7 +826,7 @@ class SiteTomcat(TomCat):
         target_host = self.host_by_name(host_name)
         engines = self.config_xml.findall("Service/Engine")
         if not engines:
-            self.repair_config([{"name": host_name, "path": path}], port=port)
+            self.repair_config([{ "name": host_name, "path": path }], port=port)
             return "配置文件出错，已进行修复，请尝试重试"
         path_name = ""
         if os.path.isfile(path):
@@ -774,20 +844,24 @@ class SiteTomcat(TomCat):
             engine.append(target_host)
             target_host.set("name", "localhost")
         else:
-            host = Element("Host", attrib={
-                "autoDeploy": "true",
-                "name": "localhost",
-                "unpackWARs": "true",
-                "xmlNamespaceAware": "false",
-                "xmlValidation": "false",
-            })
+            host = Element(
+                "Host", attrib={
+                    "autoDeploy": "true",
+                    "name": "localhost",
+                    "unpackWARs": "true",
+                    "xmlNamespaceAware": "false",
+                    "xmlValidation": "false",
+                }
+            )
 
-            context = Element("Context", attrib={
-                "docBase": path,
-                "path": path_name,
-                "reloadable": "true",
-                "crossContext": "true",
-            })
+            context = Element(
+                "Context", attrib={
+                    "docBase": path,
+                    "path": path_name,
+                    "reloadable": "true",
+                    "crossContext": "true",
+                }
+            )
             host.append(context)
             engine.append(host)
 
@@ -812,13 +886,13 @@ class SiteTomcat(TomCat):
         engine = engines[0]
 
         host_list = engine.findall("Host")
-        host_name_dict = {}
+        host_name_dict = { }
         for host in host_list:
             tmp_host_name = host.attrib.get("name", None)
             if not tmp_host_name:
                 continue
             if tmp_host_name in host_name_dict:  # 出现重复的host name 则直接修复配置文件
-                return self.repair_config([{"name": host_name, "path": path}], port=port)
+                return self.repair_config([{ "name": host_name, "path": path }], port=port)
             host_name_dict[tmp_host_name] = host
 
         if host_name in host_name_dict:
@@ -828,12 +902,14 @@ class SiteTomcat(TomCat):
             target_host.clear()
             for k, v in attr.items():
                 target_host.set(k, v)
-            context = Element("Context", attrib={
-                "docBase": path,
-                "path": path_name,
-                "reloadable": "true",
-                "crossContext": "true",
-            })
+            context = Element(
+                "Context", attrib={
+                    "docBase": path,
+                    "path": path_name,
+                    "reloadable": "true",
+                    "crossContext": "true",
+                }
+            )
             target_host.append(context)
 
             return None
@@ -842,37 +918,40 @@ class SiteTomcat(TomCat):
             target_host = host_name_dict["localhost"]
             target_host.set("name", host_name)
 
-            default_host = Element("Host", attrib={
-                "appBase": "webapps",
-                "autoDeploy": "true",
-                "name": "localhost",
-                "unpackWARs": "true",
-            })
-            default_host.append(Element("Valve", attrib={
-                "className": "org.apache.catalina.valves.AccessLogValve",
-                "directory": "logs",
-                "prefix": "localhost_access_log",
-                "suffix": ".txt",
-                "pattern": "%h %l %u %t &quot;%r&quot; %s %b"
-            }))
+            default_host = Element(
+                "Host", attrib={
+                    "appBase": "webapps",
+                    "autoDeploy": "true",
+                    "name": "localhost",
+                    "unpackWARs": "true",
+                }
+            )
+            default_host.append(
+                Element(
+                    "Valve", attrib={
+                        "className": "org.apache.catalina.valves.AccessLogValve",
+                        "directory": "logs",
+                        "prefix": "localhost_access_log",
+                        "suffix": ".txt",
+                        "pattern": "%h %l %u %t &quot;%r&quot; %s %b"
+                    }
+                )
+            )
             engine.insert(1, default_host)
             return
 
-        return self.repair_config([{"name": host_name, "path": path}], port=port)
-
+        return self.repair_config([{ "name": host_name, "path": path }], port=port)
 
 def bt_tomcat(ver: int) -> Optional[TomCat]:
     if ver not in (7, 8, 9, 10) and ver not in ("7", "8", "9", "10"):
         return None
     return TomCat(tomcat_path="/usr/local/bttomcat/tomcat%d" % int(ver))
 
-
 def site_tomcat(site_name: str) -> Optional[SiteTomcat]:
     tomcat_path = os.path.join("/www/server/bt_tomcat_web", site_name)
     if not os.path.exists(tomcat_path):
         return None
     return SiteTomcat(tomcat_path=tomcat_path)
-
 
 class JDKManager:
 
@@ -971,7 +1050,8 @@ class JDKManager:
             public.writeFile('/tmp/panelExec.log', '')
         task_id = public.M('tasks').add(
             'id,name,type,status,addtime,execstr',
-            (None,  '安装[{}]'.format(version), 'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), sh_str))
+            (None, '安装[{}]'.format(version), 'execshell', '0', time.strftime('%Y-%m-%d %H:%M:%S'), sh_str)
+        )
 
         self._create_install_wait_msg(task_id, version)
 
@@ -1079,7 +1159,6 @@ class JDKManager:
 
         return current_java_home
 
-
 # 通过JVM临时目录获取进程pid，速度较快，不一定准确
 # 默认 /tmp 下所有用户的java进程
 def jps(tmp_path: str = None, user_name: str = None) -> List[int]:
@@ -1095,14 +1174,12 @@ def jps(tmp_path: str = None, user_name: str = None) -> List[int]:
         dir_list = [i for i in os.listdir(tmp_path) if i.startswith("hsperfdata_")]
     return [int(j) for j in itertools.chain(*[os.listdir(tmp_path + "/" + i) for i in dir_list]) if j.isdecimal()]
 
-
 def js_value_to_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
         return value.lower() in ("true", "yes", "1")
     return bool(value)
-
 
 def check_port_with_net_connections(port: int) -> bool:
     try:
@@ -1112,7 +1189,6 @@ def check_port_with_net_connections(port: int) -> bool:
     except:
         pass
     return True
-
 
 def check_port(port) -> bool:
     """
@@ -1141,8 +1217,9 @@ def check_port(port) -> bool:
                 return False
     except:
         pass
-    return True
 
+    # 检测特殊端口
+    return public.checkPort(str(port))
 
 def pass_dir_for_user(path_dir: str, user: str):
     """
@@ -1185,7 +1262,6 @@ def pass_dir_for_user(path_dir: str, user: str):
                 os.chmod(path_dir, old_mod + 1)  # chmod o+x
         path_dir = os.path.dirname(path_dir)
 
-
 def create_a_not_used_port() -> int:
     """
     生成一个可用的端口
@@ -1196,47 +1272,44 @@ def create_a_not_used_port() -> int:
         if check_port_with_net_connections(port):
             return port
 
-
 # 记录项目是通过用户停止的
 def stop_by_user(project_id):
     file_path = "{}/data/push/tips/project_stop.json".format(public.get_panel_path())
     if not os.path.exists(file_path):
-        data = {}
+        data = { }
     else:
         data_content = public.readFile(file_path)
         try:
             data = json.loads(data_content)
         except json.JSONDecodeError:
-            data = {}
+            data = { }
     data[str(project_id)] = True
     public.writeFile(file_path, json.dumps(data))
-
 
 # 记录项目是通过用户操作启动的
 def start_by_user(project_id):
     file_path = "{}/data/push/tips/project_stop.json".format(public.get_panel_path())
     if not os.path.exists(file_path):
-        data = {}
+        data = { }
     else:
         data_content = public.readFile(file_path)
         try:
             data = json.loads(data_content)
         except json.JSONDecodeError:
-            data = {}
+            data = { }
     data[str(project_id)] = False
     public.writeFile(file_path, json.dumps(data))
-
 
 def is_stop_by_user(project_id):
     file_path = "{}/data/push/tips/project_stop.json".format(public.get_panel_path())
     if not os.path.exists(file_path):
-        data = {}
+        data = { }
     else:
         data_content = public.readFile(file_path)
         try:
             data = json.loads(data_content)
         except json.JSONDecodeError:
-            data = {}
+            data = { }
     if str(project_id) not in data:
         return False
     return data[str(project_id)]
@@ -1274,4 +1347,3 @@ def is_stop_by_user(project_id):
 #         else:
 #             res_list.append({"version": i, "installed": False})
 #     return res_list
-

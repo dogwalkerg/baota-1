@@ -439,10 +439,24 @@ def check_panel_url():
                 break
         except:pass
         if total_time > 15:
-            print_x('ERROR：面板启动失败，请检查面板是否正常启动')
+            break
 
         total_time += 1
         time.sleep(1)
+
+    if not panel_state:
+        # 检测到BT-Panel 和 BT-Task 进程存在，则认为面板已经启动
+        for pname in ['BT-Panel','BT-Task']:
+            if public.process_exists(pname):
+                panel_state = True
+                break
+
+    if not panel_state:
+        print_x('ERROR：面板启动失败，请检查面板是否正常启动')
+        # 检测自己的进程，并杀掉
+        pname = os.path.basename(__file__)
+        if public.process_exists(pname):
+            public.ExecShell('pkill -9 {}'.format(pname))
 
     return panel_state
 
@@ -459,7 +473,21 @@ def download_panel(ver,tmp_file,info = None):
     @下载面板文件
     """
     down_url = 'http://download.bt.cn/install/update/LinuxPanel-{}.zip'.format(ver)
-    download_file(down_url,tmp_file)
+    download_file(down_url, tmp_file)
+
+    if not "hash" in info or not "update_time" in info:
+        down_url = 'http://download.bt.cn/install/update/LinuxPanel-{}.pl'.format(ver)
+        if os.path.exists("/tmp/LinuxPanel-{}.pl".format(ver)):
+            os.remove("/tmp/LinuxPanel-{}.pl".format(ver))
+        download_file(down_url, "/tmp/LinuxPanel-{}.pl".format(ver))
+        try:
+            pl_info = json.loads(readFile("/tmp/LinuxPanel-{}.pl".format(ver)))
+        except:
+            print_x('ERROR：下载文件校验失败，可能原因：下载不完整。')
+            return False
+
+        info['hash'] = pl_info['hash']
+        info['update_time'] = pl_info['update_time']
 
     if os.path.getsize(tmp_file) < 5 * 1024 * 1024:
         print_x('ERROR：下载更新包失败，请检查服务器网络状况')
@@ -477,15 +505,20 @@ def get_panel_info(v = None):
     @name 获取面板版本
     """
     try:
-        if v and v.strip() == 'lts':
-            info = httpGet('https://www.bt.cn/api/panel/get_panel_version?v=lts')
+        if v:
+            if v.strip() == 'lts':
+                info = httpGet('https://www.bt.cn/api/panel/get_panel_version?v=lts')
+            else:
+                info = json.dumps({
+                    "version": v,
+                })
         else:
             info = httpGet('https://www.bt.cn/api/panel/get_panel_version')
         if not info:
-            return None
+            return {"version": v}
         return json.loads(info)
     except:pass
-    return None
+    return {"version": v}
 
 def clear_tmp():
     """
@@ -500,6 +533,7 @@ def repair_panel(v = None):
     """
     @name 修复面板(对外接口)
     """
+    public.writeFile(logPath, "")
     print_x('正在获取面板版本...')
 
     info = get_panel_info(v)

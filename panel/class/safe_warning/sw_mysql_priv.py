@@ -36,20 +36,30 @@ def check_run():
         @author linxiao<2020-9-18>
         @return (bool, msg)
     """
-    mycnf_file = '/etc/my.cnf'
-    if not os.path.exists(mycnf_file):
+    # 获取mysql配置
+    mysql_port = _get_mysql_port()
+    if not mysql_port:
         return True, '无风险'
-    mycnf = public.readFile(mycnf_file)
-    port_tmp = re.findall(r"port\s*=\s*(\d+)", mycnf)
-    if not port_tmp:
-        return True, '无风险'
-    if not public.ExecShell("lsof -i :{}".format(port_tmp[0]))[0]:
-        return True, '无风险'
+    # mycnf_file = '/etc/my.cnf'
+    # if not os.path.exists(mycnf_file):
+    #     return True, '无风险'
+    # mycnf = public.readFile(mycnf_file)
+    # port_tmp = re.findall(r"port\s*=\s*(\d+)", mycnf)
+    # if not port_tmp:
+    #     return True, '无风险'
 
+    # 检查mysql是否运行
+    if not _is_mysql_running():
+        return True, '无风险'
+    # if not public.ExecShell("lsof -i :{}".format(port_tmp[0]))[0]:
+    # return True, '无风险'
+
+    # 检查备份权限
     base_backup_privs = ["Lock_tables_priv", "Select_priv"]
     select_sql = "Select {} FROM mysql.user WHERE user='root' and " \
                  "host=SUBSTRING_INDEX((select current_user()),'@', " \
                  "-1);".format(",".join(base_backup_privs))
+    # 执行查询
     select_result = panelMysql.panelMysql().query(select_sql)
     if not select_result:
         return False, "root用户执行mysqldump备份的权限不足。"
@@ -58,3 +68,51 @@ def check_run():
         if priv.lower() != "y":
             return False, "root用户执行mysqldump备份的权限不足。"
     return True, '无风险'
+
+
+def _is_mysql_running():
+    """检查MySQL是否运行"""
+    try:
+        # 1. 首先通过进程检查（最快）
+        if public.ExecShell("ps aux | grep mysqld | grep -v grep")[0]:
+            return True
+
+        # 2. 通过服务状态检查
+        if public.ExecShell("systemctl status mysql")[0]:
+            return True
+
+        # 3. 如果上述方法都未确认，则检查端口
+        config_files = [
+            '/etc/my.cnf',
+            '/etc/mysql/my.cnf',
+            '/www/server/mysql/my.cnf'
+        ]
+
+        for conf_file in config_files:
+            if os.path.exists(conf_file):
+                mycnf = public.readFile(conf_file)
+                if mycnf:
+                    port_match = re.findall(r"port\s*=\s*(\d+)", mycnf)
+                    if port_match and public.ExecShell("lsof -i :{}".format(port_match[0]))[0]:
+                        return True
+
+        return False
+
+    except Exception as e:
+        return False
+
+
+def _get_mysql_port():
+    """获取MySQL端口"""
+    try:
+        # 检查多个配置文件位置
+        for conf_file in ['/etc/my.cnf', '/etc/mysql/my.cnf', '/www/server/mysql/my.cnf']:
+            if os.path.exists(conf_file):
+                mycnf = public.readFile(conf_file)
+                if mycnf:
+                    port_match = re.findall(r"port\s*=\s*(\d+)", mycnf)
+                    if port_match:
+                        return port_match[0]
+        return None
+    except Exception as e:
+        return None

@@ -23,500 +23,18 @@ class main(panelBase):
     __db_objs = {}
 
     def __init__(self):
-        overview_template = [
-            {
-                "template": "base",
-                "option": [
-                    {
-                        "title": "网站",
-                        "name": "sites",
-                        "status": True,
-                        "repetition": True,
-                        "type": "base",
-                        "source": {
-                            "click": "href",
-                            "href": "/site"
-                        },
-                        "params": [
-                            {
-                                "name": "网站类型",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "全部",
-                                        "source": "all"
-                                    },
-                                    {
-                                        "name": "PHP项目",
-                                        "source": "php"
-                                    },
-                                    {
-                                        "name": "Java项目",
-                                        "source": "java"
-                                    },
-                                    {
-                                        "name": "Node项目",
-                                        "source": "node"
-                                    },
-                                    {
-                                        "name": "Go项目",
-                                        "source": "go"
-                                    },
-                                    {
-                                        "name": "Python项目",
-                                        "source": "python"
-                                    },
-                                    {
-                                        "name": "其它项目",
-                                        "source": "other"
-                                    },
-                                    {
-                                        "name": "反向代理",
-                                        "source": "proxy"
-                                    },
-                                    {
-                                        "name": "docker网站",
-                                        "source": "docker/dockersite"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "FTP",
-                        "name": "ftps",
-                        "status": True,
-                        "repetition": False,
-                        "type": "base",
-                        "source": {
-                            "click": "href",
-                            "href": "/ftp"
-                        },
-                        "params": [
-                            {
-                                "name": "FTP",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "FTP",
-                                        "source": "all"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "数据库",
-                        "name": "databases",
-                        "status": True,
-                        "repetition": True,
-                        "type": "base",
-                        "source": {
-                            "click": "href",
-                            "href": "/database"
-                        },
-                        "params": [
-                            {
-                                "name": "数据库类型",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "全部",
-                                        "source": "all"
-                                    },
-                                    {
-                                        "name": "MySQL",
-                                        "source": "mysql"
-                                    },
-                                    {
-                                        "name": "SQLServer",
-                                        "source": "sqlserver"
-                                    },
-                                    {
-                                        "name": "MongoDB",
-                                        "source": "mongodb"
-                                    },
-                                    {
-                                        "name": "Redis",
-                                        "source": "redis"
-                                    },
-                                    {
-                                        "name": "PgSQL",
-                                        "source": "pgsql"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "安全风险",
-                        "name": "safety_risk",
-                        "status": True,
-                        "repetition": False,
-                        "type": "model",
-                        "source": {
-                            "click": "href",
-                            "href": "/"
-                        },
-                        "params": [
-                            {
-                                "name": "网站类型",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "安全风险",
-                                        "source": "safety_risk"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "备忘录",
-                        "name": "memo",
-                        "status": True,
-                        "repetition": False,
-                        "type": "model",
-                        "source": {
-                            "click": "href",
-                            "href": "/memo"
-                        },
-                        "params": [
-                            {
-                                "name": "备忘录",
-                                "source": "memo"
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                "template": "browse",
-                "option": [
-                    {
-                        "title": "网站监控报表",
-                        "name": "monitor",
-                        "status": False,
-                        "repetition": True,
-                        "type": "plugin",
-                        "action": {
-                            "click": "href",
-                            "href": "/monitor"
-                        },
-                        "params": [
-                            {
-                                "name": "网站",
-                                "type": "select",
-                                "select_option": "site_all",
-                                "option": []
-                            },
-                            {
-                                "name": "指标",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "浏览量",
-                                        "source": "pv"
-                                    },
-                                    {
-                                        "name": "访客量",
-                                        "source": "uv"
-                                    },
-                                    {
-                                        "name": "ip",
-                                        "source": "ip"
-                                    },
-                                    {
-                                        "name": "蜘蛛数",
-                                        "source": "spider"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "旧版监控报表",
-                        "name": "total",
-                        "status": False,
-                        "repetition": True,
-                        "type": "plugin",
-                        "action": {
-                            "click": "href",
-                            "href": "/total"
-                        },
-                        "params": [
-                            {
-                                "name": "网站",
-                                "type": "select",
-                                "select_option": "site_all",
-                                "option": []
-                            },
-                            {
-                                "name": "指标",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "浏览量",
-                                        "source": "pv"
-                                    },
-                                    {
-                                        "name": "访客量",
-                                        "source": "uv"
-                                    },
-                                    {
-                                        "name": "ip",
-                                        "source": "ip"
-                                    },
-                                    {
-                                        "name": "蜘蛛数",
-                                        "source": "spider"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "WAF",
-                        "name": "btwaf",
-                        "status": False,
-                        "repetition": False,
-                        "type": "plugin",
-                        "source": {
-                            "click": "href",
-                            "href": "/btwaf/index"
-                        },
-                        "params": [
-                            {
-                                "name": "展示",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "风险拦截",
-                                        "source": "intercept"
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "title": "防篡改",
-                        "name": "tamper_core",
-                        "status": False,
-                        "repetition": False,
-                        "type": "plugin",
-                        "source": {
-                            "click": "href",
-                            "href": ""
-                        },
-                        "params": [
-                            {
-                                "name": "展示",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "拦截数",
-                                        "source": "intercept"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                "template": "browse",
-                "option": [
-                    {
-                        "title": "SSH登录日志数",
-                        "name": "ssh_log",
-                        "status": True,
-                        "repetition": True,
-                        "type": "model",
-                        "source": {
-                            "click": "href",
-                            "href": "/logs"
-                        },
-                        "params": [
-                            {
-                                "name": "日志类型",
-                                "type": "select",
-                                "option": [
-                                    {
-                                        "name": "SSH登录日志-全部",
-                                        "source": "ALL"
-                                    },
-                                    {
-                                        "name": "SSH登录日志-成功数",
-                                        "source": "Accepted"
-                                    },
-                                    {
-                                        "name": "SSH登录日志-失败数",
-                                        "source": "Failed"
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                "template": "open_dir",
-                "status": True,
-                "repetition": False,
-                "type": "model",
-                "option": [
-                    {
-                        "title": "快捷目录",
-                        "name": "open_dir",
-                        "source": {
-                            "click": "href",
-                            "href": "/files"
-                        },
-                        "params": [
-                            {
-                                "name": "目录",
-                                "type": "dir",
-                                "option": [
-                                    {
-                                        "name": '/www/wwwroot',
-                                        "source": '/www/wwwroot'
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                "template": "search_file",
-                "status": True,
-                "repetition": False,
-                "type": "model",
-                "option": [
-                    {
-                        "title": "文件/内容快速查找",
-                        "name": "search_file",
-                        "source": {
-                            "click": "href",
-                            "href": "/files",
-                            "xx": "xxx"
-                        },
-                        "params": []
-                    }
-                ]
-            }
-        ]
-        if not os.path.isfile(self._OVERVIEW_TEMPLATE):
-            public.writeFile(self._OVERVIEW_TEMPLATE, json.dumps(overview_template))
-        else:
-            temp_overview_template = public.readFile(self._OVERVIEW_TEMPLATE)
-            if temp_overview_template != overview_template:
-                public.writeFile(self._OVERVIEW_TEMPLATE, json.dumps(overview_template))
-
-        overview_setting = [
-            {
-                "id": 1,
-                "template": "base",
-                "title": "网站",
-                "name": "sites",
-                "status": True,
-                "repetition": True,
-                "type": "base",
-                "source": {
-                    "click": "href",
-                    "href": "/site"
-                },
-                "params": [
-                    {
-                        "name": "全部",
-                        "source": "all"
-                    }
-                ]
-            },
-            {
-                "id": 3,
-                "template": "base",
-                "title": "数据库",
-                "name": "databases",
-                "status": True,
-                "repetition": True,
-                "type": "base",
-                "source": {
-                    "click": "href",
-                    "href": "/database"
-                },
-                "params": [
-                    {
-                        "name": "全部",
-                        "source": "all"
-                    }
-                ]
-            },
-            {
-                "id": 4,
-                "template": "base",
-                "title": "安全风险",
-                "name": "safety_risk",
-                "status": True,
-                "repetition": False,
-                "type": "model",
-                "source": {
-                    "click": "href",
-                    "href": "/"
-                },
-                "params": [
-                    {
-                        "name": "安全风险",
-                        "source": "safety_risk"
-                    }
-                ]
-            },
-            {
-                "id": 5,
-                "template": "base",
-                "name": "memo",
-                "title": "备忘录",
-                "status": True,
-                "repetition": False,
-                "type": "model",
-                "source": {
-                    "click": "href",
-                    "href": "/memo"
-                },
-                "params": [
-                    {
-                        "name": "备忘录",
-                        "source": "memo",
-                    }
-                ]
-            }
-        ]
+        overview_setting = []
         if not os.path.isfile(self._OVERVIEW_SETTING):
-            # site_name = self._default_monitor()
-            # monitor = {
-            #     "id": 6,
-            #     "template": "browse",
-            #     "title": "监控报表",
-            #     "name": "monitor",
-            #     "status": True,
-            #     "repetition": True,
-            #     "type": "plugin",
-            #     "action": {
-            #         "click": "href",
-            #         "href": "/monitor"
-            #     },
-            #     "params": [
-            #         {
-            #             "name": site_name,
-            #             "source": site_name
-            #         }, {
-            #             "name": "浏览量",
-            #             "source": "pv"
-            #         }
-            #     ]
-            # }
-            # overview_setting.append(monitor)
-
+            temp_data = json.loads(public.readFile(self._OVERVIEW_TEMPLATE))
+            id = 0
+            for temp in temp_data:
+                for option in temp.get("option", []):
+                    if option.get("name") in ["sites", "databases", "safety_risk", "memo"]:
+                        option["id"] = id
+                        option["template"] = temp["template"]
+                        option["params"] = [p["option"][0] for p in option.get("params", []) if p.get("option")]
+                        id += 1
+                        overview_setting.append(option)
             public.writeFile(self._OVERVIEW_SETTING, json.dumps(overview_setting))
         # else:
         #     temp_overview_setting = json.loads(public.readFile(self._OVERVIEW_SETTING))
@@ -553,10 +71,11 @@ class main(panelBase):
         overview_template = json.loads(overview_template)
         for template in overview_template:
             template_option = template.get("option", [])
-            for option in template_option:
+            for i in range(len(template_option)-1, -1, -1):
+                option = template_option[i]
                 if option["name"] == "total":
                     if not os.path.exists("/www/server/panel/plugin/total"):
-                        template_option.remove(option)
+                        del template_option[i]
                         continue
 
                 if option.get("status", False) is False:
@@ -634,6 +153,8 @@ class main(panelBase):
             overview_setting = []
 
         overview = json.loads(get.overview)
+        if None in overview["params"]:
+            return public.returnMsg(False, "请添加网站后再开启此概览")
 
         if overview.get("value") is not None:
             del overview["value"]
@@ -641,7 +162,11 @@ class main(panelBase):
         max_id = 0
         for over in overview_setting:
             if over["name"] == overview["name"]:
-                return public.returnMsg(False, "已存在该概览！")
+                if None in over["params"]:
+                    overview_setting.remove(over)
+                    break
+                else:
+                    return public.returnMsg(False, "已存在该概览！")
             if over["id"] > max_id: max_id = over["id"]
 
         overview["id"] = max_id + 1
@@ -769,20 +294,54 @@ class main(panelBase):
                 value_list[0] = data
         return value_list
 
-    # 安全风险
+    # 云安全检测总风险数量
     def _safety_risk(self, name: str, params_list: list) -> list:
-        value_list = [0]
-        from panelWarning import panelWarning
+        # value_list = [0]
+        # from panelWarning import panelWarning
 
-        data = panelWarning().get_scan_bar(None)
-        if isinstance(data, dict):
-            safety_risk = data.get("count")
-            value_list[0] = safety_risk
+        # data = panelWarning().get_scan_bar(None)
+        # if isinstance(data, dict):
+        #     safety_risk = data.get("count")
+        #     value_list[0] = safety_risk
+
+        # return value_list
+        value_list = [0]
+        try:
+            # 使用PluginLoader调用云安全插件的方法
+            import PluginLoader, public
+            args = public.dict_obj()
+            args.model_index = 'project'
+            # 调用云查杀接口
+            res = PluginLoader.module_run('safecloud', 'get_safecloud_list', args)
+            
+            if (isinstance(res, dict) and 
+                res.get('status') is True and 
+                isinstance(res.get('data'), dict)):
+                
+                total_risk = res['data'].get('total', 0)
+                value_list[0] = total_risk
+                return value_list
+                
+        except Exception as e:
+            # 如果出错，记录日志（可选）
+            # public.WriteLog('安全风险', f'从云安全获取数据失败: {str(e)}')
+            pass
+            
+        # 如果上面失败，使用原来的方式获取数据
+        try:
+            from panelWarning import panelWarning
+            data = panelWarning().get_scan_bar(None)
+            if isinstance(data, dict):
+                safety_risk = data.get("count", 0)
+                value_list[0] = safety_risk
+        except Exception:
+            # 如果两种方式都失败，保持默认值0
+            pass
+                
         return value_list
 
     def _monitor(self, name: str, params_list: list) -> list:
         try:
-            print(name, params_list)
             SiteName = params_list[0]['source']
             param = params_list[1]['source']
             __run_path = '{}/monitor'.format(public.get_setup_path())
@@ -820,7 +379,7 @@ class main(panelBase):
             db_obj.close()
             return result
         except:
-            print(public.get_error_info())
+            public.print_log(public.get_error_info())
             return []
 
     # 获取网站监控报表

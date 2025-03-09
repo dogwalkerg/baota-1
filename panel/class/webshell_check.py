@@ -230,7 +230,7 @@ class webshell_check:
             else:
                 body = "webshell查杀发现%s目录中存在木马如下:%s" % (path, return_data)
                 msg = public.get_push_info("木马查杀", ['>发送内容：' + body])['msg']
-                object.send_msg(msg)
+                object.push_data(msg)
         return return_data
 
     def webshellchop(self, filename, url):

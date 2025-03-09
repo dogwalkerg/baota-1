@@ -2,7 +2,7 @@
   {
     "id": "70",
     "ver": "1",
-    "used": true,
+    "used": false,
     "source": "domain_endtime",
     "title": "域名到期",
     "load_cls": {
@@ -59,9 +59,11 @@
       "weixin",
       "webhook"
     ],
-    "unique": false
+    "unique": false,
+    "tags": ["ssl"],
+    "description": "定时检查域名的到期时间（根据配置的域名有效期），如果剩余天数小于配置的阈值，则发送告警通知给管理员"
   },
-    {
+  {
     "id": "71",
     "ver": "1",
     "used": true,
@@ -121,7 +123,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": false
+    "unique": false,
+    "tags": ["ssl"],
+    "description": "定时检查证书的到期时间，如果剩余天数小于配置的阈值，则发送告警通知给管理员"
   }
 ]
 

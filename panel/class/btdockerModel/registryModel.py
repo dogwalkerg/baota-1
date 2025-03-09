@@ -164,6 +164,7 @@ class main(dockerBase):
             res = []
 
         for r in res:
+            if "reg_name" not in r: continue
             if r["name"] == "" or not r["name"] or r["name"] is None:
                 r["name"] = r["reg_name"]
 

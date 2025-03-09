@@ -2,7 +2,7 @@
   {
     "id": "30",
     "ver": "1",
-    "used": true,
+    "used": false,
     "source": "mysql_pwd_end",
     "title": "MySQL数据库密码到期",
     "load_cls": {
@@ -76,7 +76,7 @@
   {
     "id": "31",
     "ver": "1",
-    "used": true,
+    "used": false,
     "source": "mysql_replicate_status",
     "title": "Msql主从同步告警",
     "load_cls": {

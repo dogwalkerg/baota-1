@@ -9,23 +9,25 @@
 # 新告警通道管理模块
 # ------------------------------
 import json
-import traceback
 import os
+from typing import List
 from mod.base import json_response
 
-from mod.base.push_mod import PushManager, TaskConfig, TaskRecordConfig, TaskTemplateConfig, PushSystem
+from mod.base.push_mod import PushManager, TaskConfig, TaskRecordConfig, TaskTemplateConfig, PushSystem, SenderConfig
 from mod.base.push_mod import update_mod_push_system, UPDATE_MOD_PUSH_FILE, load_task_template_by_file, \
-    UPDATE_VERSION_FILE
+    UPDATE_VERSION_FILE, update_mod_push_system2
 from mod.base.msg import update_mod_push_msg
 from mod.base.push_mod.rsync_push import load_rsync_template
 from mod.base.push_mod.task_manager_push import load_task_manager_template
 from mod.base.push_mod.load_push import load_load_template
-from mod.base.push_mod import PUSH_DATA_PATH
+from mod.base.push_mod.util import ExecShell, debug_log
+from mod.base.push_mod.web_log_push import load_web_log_template
+
 
 def update_mod():
     try:
         with open(UPDATE_VERSION_FILE, 'r') as f:
-            if f.read() == "3":
+            if f.read() == "9.5.0b":
                 pl = False
             else:
                 pl = True
@@ -38,117 +40,105 @@ def update_mod():
         load_task_template_by_file("/www/server/panel/mod/base/push_mod/system_push_template.json")
         load_task_template_by_file("/www/server/panel/mod/base/push_mod/database_push_template.json")
         load_task_template_by_file("/www/server/panel/mod/base/push_mod/ssl_push_template.json")
-        with open(UPDATE_VERSION_FILE, "w") as f:
-            f.write("3")
-
-    if not os.path.exists(UPDATE_MOD_PUSH_FILE):
-        update_mod_push_msg()
-
+        load_task_template_by_file("/www/server/panel/mod/base/push_mod/ftp_push_template.json")
+        load_task_template_by_file("/www/server/panel/mod/base/push_mod/safe_mod_push_template.json")
+        load_task_template_by_file("/www/server/panel/mod/base/push_mod/monitor_push_template.json")
         load_rsync_template()
         load_task_manager_template()
         load_load_template()
+        load_web_log_template()
+        update_mod_push_system2()
+        with open(UPDATE_VERSION_FILE, "w") as f:
+            f.write("9.5.0b")
+            # debug_log(">>>>>>> update_mod_push_system <<<<<<<<")
 
+    if not os.path.exists(UPDATE_MOD_PUSH_FILE):
+        update_mod_push_msg()
         update_mod_push_system()
-    CHECK_MOD_PUSH_FILE = "/www/server/panel/data/mod_push_data/check_mod_push_file.pl"
-    if not os.path.exists(CHECK_MOD_PUSH_FILE):  
-        import sys
-        os.chdir('/www/server/panel')
-        if not 'class/' in sys.path:
-            sys.path.insert(0,'class/')
-        import public
-        public.ExecShell('nohup btpython /www/server/panel/script/migrate_push_tasks.py > /dev/null 2>&1 &')
 
+    check_mod_push_file = "/www/server/panel/data/mod_push_data/check_mod_push_file.pl"
+    if not os.path.exists(check_mod_push_file):
+        ExecShell('nohup btpython /www/server/panel/script/migrate_push_tasks.py > /dev/null 2>&1 &')
 
-
-update_mod()
+try:
+    update_mod()
+except:
+    pass
 del update_mod
 
 
 class main(PushManager):
 
     def get_task_list(self, get=None):
-
-        # 通道类型映射，包含模糊匹配规则
-        channel_map = {
-            "微信公众号": "wx_account",
-            "邮箱": "mail",
-            "自定义通道": "webhook",
-            "飞书": "feishu",
-            "钉钉": "dingding",
-            "短信": "sms"
-        }
-        try:
-            if get:
-                # get["status"] = "false"
-                # get["keyword"] = "shylock"
-                # 获取状态和关键词参数
-                status_filter = get.get("status", None)
-                keyword_filter = get.get("keyword", None)
+        sf = kf = None
+        if get:
+            sf = get.get("status/s", "").lower()
+            if sf and sf in ("true", "1"):
+                sf = True
+            elif sf and sf in ("false", "0"):
+                sf = False
             else:
-               status_filter = ""
-               keyword_filter =""
-            res = TaskConfig().config
+                sf = None
 
-            # 按创建时间排序
-            res.sort(key=lambda x: x["create_time"])
-            # 读取发送者信息
-            sender_info = self.get_sender_info()   
+            kf = get.get("keyword/s", "").lower()
 
-            # 根据状态过滤任务
-            if status_filter:
-                res = [task for task in res if str(task["status"]).lower() == status_filter.lower()]
-            
-            # 根据关键词过滤任务
-            if keyword_filter:
-                keyword_filter_lower = keyword_filter.lower()
-                filtered_res = []
-                for task in res:
-                    # print("task",task)
-                    task_match = False
-                    if keyword_filter_lower=="面板登录时，发出告警":
-                        if task['keyword']=="panel_login":
+        res = self._get_task_list(status=sf, keyword=kf)
+        return json_response(status=True, data=res)
+
+    def _get_task_list(self, status: bool=None, keyword: str=None, template_id: List[str] = None):
+        res = TaskConfig().config
+        # 按创建时间排序
+        res.sort(key=lambda x: x["create_time"])
+        can_call_template_ids = TaskTemplateConfig.can_call_template_ids()
+        res = [task for task in res if task["template_id"] in can_call_template_ids]
+
+        # 根据状态过滤任务
+        if status is not None:
+            res = [task for task in res if bool(task["status"]) == status]
+
+        if template_id is not None and isinstance(template_id, list) and len(template_id) > 0:
+            res = [task for task in res if task["template_id"] in template_id]
+
+        for i in res:
+            i['view_msg'] = self.get_view_msg_format(i)
+
+        # 根据关键词过滤任务
+        if keyword is not None and keyword:
+            filtered_res = []
+            for task in res:
+                task_match = False
+                if keyword in task["view_msg"].lower() or keyword in task["title"].lower():
+                    task_match = True
+                else:
+                    sc = SenderConfig()
+                    # 通道类型映射，包含模糊匹配规则
+                    channel_map = {
+                        "wx_account": "微信公众号",
+                        "mail": "邮箱",
+                        "webhook": "自定义通道",
+                        "feishu": "飞书",
+                        "dingding": "钉钉",
+                        "weixin": "企业微信",
+                        "sms": "短信"
+                    }
+
+                    for sender_id in task["sender"]:
+                        sender = sc.get_by_id(sender_id)
+                        if not sender:
+                            continue
+                        sender_title = sender.get("data", {}).get("title", "").lower()
+                        sender_type = sender.get("sender_type", "")
+                        sender_type_name = channel_map.get(sender_type, "")
+                        if keyword in sender_title or keyword in sender_type or keyword in sender_type_name:
                             task_match = True
-                    if keyword_filter_lower in task["title"].lower() or \
-                        (task["task_data"].get("title") and keyword_filter_lower in task["task_data"]["title"].lower()) or \
-                        keyword_filter_lower in str(task["time_rule"]["send_interval"]) or \
-                        keyword_filter_lower in str(task["number_rule"]["day_num"]):
-                        task_match = True
-                    else:
-                        for sender_id in task["sender"]:
-                            sender = sender_info.get(sender_id, {})
-                            sender_title = sender.get("data", {}).get("title", "").lower()
-                            sender_type = sender.get("sender_type", "").lower()
-                            if keyword_filter_lower in sender_title or \
-                            keyword_filter_lower in sender_type:
-                                task_match = True
-                                break
-                            # 检查关键词是否包含在通道类型的映射键中
-                            for chinese_name, channel_type in channel_map.items():
-                                if keyword_filter_lower in chinese_name.lower() and channel_type == sender_type:
-                                    task_match = True
-                                    break
-                    if task_match:
-                        filtered_res.append(task)
-                res = filtered_res
-            for i in res:
-                i['view_msg'] = self.get_view_msg_format(i)
-            
-            return json_response(status=True, data=res)
-        except:
-            import traceback
+                            break
 
-            print(traceback.format_exc())
-            data=[]
-            return json_response(status=True, data=res)
+                if task_match:
+                    filtered_res.append(task)
 
-    def get_sender_info(self):
-        sender_file = '/www/server/panel/data/mod_push_data/sender.json'
-        try:
-            with open(sender_file, 'r', encoding='utf-8') as f:
-                sender_data = json.load(f)
-            return {sender['id']: sender for sender in sender_data}
-        except Exception as e:
-            return {}
+            res = filtered_res
+
+        return res
 
     @staticmethod
     def get_task_record(get):
@@ -202,6 +192,7 @@ class main(PushManager):
     def get_task_template_list(get=None):
         res = []
         p_sys = PushSystem()
+        tags = set()
         for i in TaskTemplateConfig().config:
             if not i['used']:
                 continue
@@ -212,23 +203,18 @@ class main(PushManager):
             if not t:
                 continue
             i["template"] = t
+            tags.update(set(t.get("tags", [])))
             res.append(i)
 
         return json_response(status=True, data=res)
 
-    @staticmethod
-    def get_view_msg_format(task: dict) -> str:
-        from mod.base.push_mod.rsync_push import ViewMsgFormat as Rv
-        from mod.base.push_mod.site_push import ViewMsgFormat as Sv
-        from mod.base.push_mod.task_manager_push import ViewMsgFormat as Tv
-        from mod.base.push_mod.database_push import ViewMsgFormat as Dv
-        from mod.base.push_mod.system_push import ViewMsgFormat as SSv
-        from mod.base.push_mod.load_push import ViewMsgFormat as Lv
-        from mod.base.push_mod.ssl_push import ViewMsgFormat as SSLv
+    @classmethod
+    def get_view_msg_format(cls, task: dict) -> str:
+        return TaskTemplateConfig.task_view_msg_format(task)
 
-        list_obj = [Rv(), Sv(), Tv(), Dv(), SSv(), Lv(), SSLv()]
-        for i in list_obj:
-            res = i.get_msg(task)
-            if res is not None:
-                return res
-        return '<span>--</span>'
+    def monitor_push_list(self, get):
+        res = self._get_task_list(template_id=["130", "131", "132"])
+        site_name = get.get("site_name/s", "")
+        if site_name:
+            res = [i for i in res if site_name == i["task_data"]["site"]]
+        return json_response(status=True, data=res)

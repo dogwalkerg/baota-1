@@ -13,6 +13,7 @@ import os
 # ------------------------------
 import sys
 import time
+import datetime
 
 if "/www/server/panel/class" not in sys.path:
     sys.path.insert(0, "/www/server/panel/class")
@@ -150,8 +151,7 @@ echo $! > {pid_file}
         if not project_find: return public.returnResult(False, "项目不存在", code=5)
 
         project_find = self.get_project_find(get.project_name)
-        day_time = time.time()
-        if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+        if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
             return public.returnResult(False, "当前项目已过期，请重新设置项目到期时间", code=5)
 
         self._update_project(get.project_name, project_find)
@@ -260,8 +260,7 @@ echo $! > {pid_file}
         project_find = self.get_project_find(get.project_name)
         if not project_find: return public.returnResult(False, '项目不存在', code=5)
         project_find = self.get_project_find(get.project_name)
-        day_time = time.time()
-        if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+        if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
             return public.returnResult(False, '当前项目已过期，请重新设置项目到期时间', code=5)
         project_script = project_find['project_config']['project_script'].strip().replace('  ', ' ')
         pid_file = "{}/{}.pid".format(self.node_pid_path, get.project_name)
@@ -302,9 +301,8 @@ cd {}
             @return dict
         '''
         project_find = self.get_project_find(get.project_name)
-        day_time = time.time()
         if project_find:
-            if project_find['edate'] != "0000-00-00" and public.to_date("%Y-%m-%d", project_find['edate']) < day_time:
+            if project_find['edate'] != "0000-00-00" and project_find['edate'] < datetime.datetime.today().strftime("%Y-%m-%d"):
                 return public.returnResult(False, '当前项目已过期，请重新设置项目到期时间', code=5)
         res = self.stop_project(get)
         if not res['status']: return res

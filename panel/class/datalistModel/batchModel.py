@@ -167,12 +167,6 @@ class main(dataBase):
 
                 if "type" in project_config and project_config["type"] == "PHPMOD":
                     get.sitename = site["name"]
-                    if get.option == 0:
-                        get.project_action = "stop"
-                    elif get.option == 1:
-                        get.project_action = "start"
-                    else:
-                        get.project_action = "restart"
                     self.batch_set_phpsync_status(get, error_list, success_list)
                     continue
 
@@ -891,7 +885,7 @@ class main(dataBase):
         get.certName = get.get("certName", None)
         if get.certName is None:
             return public.returnResult(False, "请传入证书域名")
-
+        
         error_list = []
         success_list = []
         if get.all == 0:
@@ -899,7 +893,7 @@ class main(dataBase):
                 btinfo["ssl_hash"] = get.ssl_hash
                 btinfo["certName"] = get.certName
                 btinfo["siteName"] = btinfo["name"]
-
+                
             get.BatchInfo = get.site_list
         else:
             get.BatchInfo = []
@@ -920,11 +914,10 @@ class main(dataBase):
             return public.returnResult(False, result["msg"])
 
         for r in result["successList"]:
-            if r["status"]:
-                success_list.append({"certName": r["certName"], "siteName": r["siteName"], "status": True, "msg": "设置成功!"})
-        for r in result["faildList"]:
-            if not r["status"]:
+            if r["status"] is False:
                 error_list.append({"certName": r["certName"], "siteName": r["siteName"], "status": False, "msg": r["error_msg"]})
+            else:
+                success_list.append({"certName": r["certName"], "siteName": r["siteName"], "status": True, "msg": "设置成功!"})
 
         return public.returnResult(True, '操作成功!', {"error": error_list, "success": success_list})
 
@@ -1125,9 +1118,8 @@ class main(dataBase):
                 else:
                     success_list.append({"id": db["id"], "name": db["name"], "status": True, "msg": "备份成功!"})
         else:
-            all_dbs_info = public.M('databases').field('id,name,type').select()
+            all_dbs_info = public.M('databases').field('id,name').select()
             for db in all_dbs_info:
-                if db["type"] != "MySQL": continue
                 if not db: continue
                 if db["id"] in get.exclude_ids: continue
 

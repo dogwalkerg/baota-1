@@ -71,7 +71,7 @@ class panelWarning:
             'is_autofix': is_autofix,
             'check_time': datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
         }
-        context = {"status": "准备修复", "percentage": 0, "count": 0, "score": 100}
+        context = {"status": "正在扫描", "percentage": 0, "count": 0, "score": 100}
         public.WriteFile(self.__path + '/bar.txt', json.dumps(context))  # 扫描进度条归零
         bar_num = 0  # 进度条初始化
         bar_limit = 0  # 进度条限制
@@ -260,6 +260,33 @@ class panelWarning:
         else:
             output["interrupt"] = False
         return output
+
+    def get_result(self, args):
+        '''
+            @name 获取当前首页风险检测结果
+            @return dict
+        '''
+        result_file = self.__path + '/resultresult.json'
+        output = {
+            "score": 100,
+            "check_time": public.format_date(),
+            "interrupt": False,
+            "security": [],
+            "risk": [],
+            "ignore": [],
+            "is_autofix": []
+        }
+        if not os.path.exists(result_file):
+            return output
+        result_body = public.ReadFile(result_file)
+        if not result_body:
+            return output
+        try:
+            output = json.loads(result_body)
+        except:
+            return output
+        return output
+        
 
     def sync_rule(self):
         '''

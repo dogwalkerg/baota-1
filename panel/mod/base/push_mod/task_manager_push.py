@@ -10,7 +10,7 @@ from typing import Tuple, Union, Optional, List
 import psutil
 
 from .send_tool import WxAccountMsg
-from .base_task import BaseTask
+from .base_task import BaseTask, BaseTaskViewMsg
 from .mods import PUSH_DATA_PATH, TaskTemplateConfig
 from .util import read_file, write_file, get_config_value, GET_CLASS
 
@@ -53,9 +53,6 @@ def have_task_manager_plugin():
 
 
 def load_task_manager_template():
-    if TaskTemplateConfig().get_by_id("60"):
-        return None
-
     from .mods import load_task_template_by_config
     load_task_template_by_config([
         {
@@ -127,7 +124,9 @@ def load_task_manager_template():
                 "weixin",
                 "webhook"
             ],
-            "unique": False
+            "unique": False,
+            "tags": ["plugin"],
+            "description": "定期检查指定进程的CPU占用量，如果超过设定值，则触发告警，避免过高的资源占用导致的服务异常。"
         },
         {
             "id": "61",
@@ -198,7 +197,9 @@ def load_task_manager_template():
                 "weixin",
                 "webhook"
             ],
-            "unique": False
+            "unique": False,
+            "tags":["plugin"],
+            "description": "定期检查指定进程的内存占用量，如果超过设定值，则触发告警，避免过高的资源占用导致的服务异常。"
         },
         {
             "id": "62",
@@ -269,7 +270,9 @@ def load_task_manager_template():
                 "weixin",
                 "webhook"
             ],
-            "unique": False
+            "unique": False,
+            "tags": ["plugin"],
+            "description": "定期检查指定进程的子进程数，如果超过设定值，则触发告警，避免过高的资源占用导致的服务异常。"
         }
     ])
 
@@ -478,7 +481,7 @@ class TaskManagerProcessTask(BaseTask):
         return msg
 
 
-class ViewMsgFormat(object):
+class ViewMsgFormat(BaseTaskViewMsg):
     _FORMAT = {
         "60": (
             lambda x: "<span>进程：{}的CUP占用超过{}%触发</span>".format(
@@ -501,3 +504,6 @@ class ViewMsgFormat(object):
         if task["template_id"] in self._FORMAT:
             return self._FORMAT[task["template_id"]](task["task_data"])
         return None
+
+
+TaskManagerCPUTask.VIEW_MSG = TaskManagerMEMTask.VIEW_MSG = TaskManagerProcessTask.VIEW_MSG = ViewMsgFormat

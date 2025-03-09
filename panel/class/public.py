@@ -695,7 +695,7 @@ def GetLocalIp():
             m_str = HttpGet(url)
             ipaddress = re.search(r"^\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}$", m_str).group(0)
             WriteFile(filename, ipaddress)
-        c_ip = check_ip(ipaddress)
+        c_ip = check_ip(ipaddress.strip())
         if not c_ip: return GetHost().strip()
         return ipaddress.strip()
     except:
@@ -6257,6 +6257,9 @@ def init_msg(module):
     初始化消息通道
     @module 消息通道模块名称
     """
+    res = _init_msg_compatible(module)
+    if res:
+        return res
     module = module.strip()
     if module == "":
         return None
@@ -6275,7 +6278,8 @@ def init_msg(module):
         if module in not_use_tip:
             return False
 
-    sys.path.insert(0, "{}/class/msg".format(panelPath))
+    if "{}/class/msg".format(panelPath) not in sys.path:
+        sys.path.insert(0, "{}/class/msg".format(panelPath))
 
     if module in ("dingding", "feishu", "mail", "sms", "weixin", "wx_account"):
         sfile = 'class/msg/{}_msg.py'.format(module)
@@ -6299,6 +6303,14 @@ def init_msg(module):
         msg_cls_obj = getattr(msg_main, "web_hook_msg")(module)
         return msg_cls_obj
     return eval('msg_main.{}_msg()'.format(module))
+
+
+def _init_msg_compatible(module):
+    if "/www/server/panel" not in sys.path:
+        sys.path.insert(0, "/www/server/panel")
+
+    from mod.base.msg import compatible
+    return compatible.get_sender_by_id(module)
 
 
 def push_argv(msg):
@@ -7481,10 +7493,7 @@ def get_user_server_ipaddress(host_list, level):
                 return ips_result
         except:
             continue
-    if not ips_result:
-        return [{'continent': '', 'country': '未知地区', 'province': '', 'city': '', 'region': '', 'carrier': '',
-                 'division': '', 'en_country': '', 'en_short_code': '', 'longitude': '',
-                 'latitude': '', 'info': '本服务器公网IP归属地信息', 'ip': GetLocalIp(), 'level': 0}]
+    return  ips_result
 
 
 def get_bt_hosts(get_speed, host_list, level):
@@ -8809,4 +8818,13 @@ def get_cloud_server_type():
     else:
         server_type = "others"
     return service, server_type
+
+
+def get_menu():
+    path = '/www/server/panel/config/menu.json'
+    try:
+        data = json.loads(readFile(path))
+        return data["menu"]
+    except:
+        return []
 

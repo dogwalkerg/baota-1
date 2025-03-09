@@ -60,7 +60,9 @@
       "webhook",
       "sms"
     ],
-    "unique": false
+    "unique": false,
+    "tags": ["site", "common", "ssl"],
+    "description": "定时检查网站证书(SSL)是否即将到期，如果即将到期则发送告警通知给管理员"
   },
   {
     "id": "2",
@@ -106,7 +108,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["site"],
+    "description": "定时检查设置有过期时间的网站是否临近过期，如果临近过期则发送告警通知给管理员"
   },
   {
     "id": "3",
@@ -152,7 +156,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["panel"],
+    "description": "定时检查设置面板密码过期时间，如果临近过期则发送告警通知给管理员"
   },
   {
     "id": "4",
@@ -223,7 +229,10 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["system", "common", "safe"],
+    "description": "定期扫描系统中的SSH登录日志，检测频繁失败的登录的异常登录行为，并在发现异常时及时触发告警通知，帮助发现潜在的安全威胁",
+    "is_pro": true
   },
   {
     "id": "5",
@@ -303,7 +312,9 @@
       "webhook",
       "sms"
     ],
-    "unique": false
+    "unique": false,
+    "tags": ["soft", "system", "common"],
+    "description": "定时监控系统中的运行状态，如果发现服务停止，则及时触发告警通知，可设置尝试重启，帮助服务器快速恢复到可用状态"
   },
   {
     "id": "6",
@@ -354,7 +365,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["panel", "common", "safe"],
+    "description": "定期检查面板的安全状态，如用户变更、日志删除、开启开发者模式等，及时触发告警通知，帮助管理员及时处理安全风险"
   },
   {
     "id": "7",
@@ -388,7 +401,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["system", "common", "safe"],
+    "description": "当出现root用户异常登录时，及时触发告警通知，帮助管理员及时处理安全风险"
   },
   {
     "id": "8",
@@ -423,7 +438,9 @@
       "webhook",
       "sms"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["panel", "common", "safe"],
+    "description": "当出现面板异常登录时，及时触发告警通知"
   },
   {
     "id": "9",
@@ -535,7 +552,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": false
+    "unique": false,
+    "tags": ["site", "common"],
+    "description": "定期检查网站项目运行状态，当项目非人为停止时，及时触发告警通知"
   },
   {
     "id": "10",
@@ -566,7 +585,9 @@
       "weixin",
       "webhook"
     ],
-    "unique": true
+    "unique": true,
+    "tags": ["panel", "common"],
+    "description": "定期检查面板更新情况，当面板有新版本时，触发告警通知(面板的每个新版本会触发一次)"
   }
 ]
 

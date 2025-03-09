@@ -73,3 +73,22 @@ def load_task_cls_by_path(path: str, cls_name: str) -> Optional[Type[T_CLS]]:
         print(sys.path)
         debug_log(traceback.format_exc())
         return None
+
+
+def load_task_cls(load_cls_data) -> Optional[Type[T_CLS]]:
+    if "load_type" not in load_cls_data:
+        return None
+    if load_cls_data["load_type"] == "func":
+        cls = load_task_cls_by_function(
+            name=load_cls_data["name"],
+            func_name=load_cls_data["func_name"],
+            is_model=load_cls_data.get("is_model", False),
+            model_index=load_cls_data.get("is_model", ''),
+            args=load_cls_data.get("args", None),
+            sub_name=load_cls_data.get("sub_name", None),
+        )
+    else:
+        cls_path = load_cls_data["cls_path"]
+        cls = load_task_cls_by_path(cls_path, load_cls_data["name"])
+
+    return cls

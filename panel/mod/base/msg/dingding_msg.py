@@ -67,7 +67,7 @@ class DingDingMsg:
                 "isAtAll": self.config['isAtAll']
             }
         }
-        status = False
+
         error = None
         try:
             def allowed_gai_family():
@@ -89,6 +89,9 @@ class DingDingMsg:
 
             if response.json()["errcode"] == 0:
                 status = True
+            else:
+                error = response.json()["errmsg"]
+                status = False
         except:
             error = traceback.format_exc()
             status = False
@@ -133,7 +136,7 @@ class DingDingMsg:
             test_task.to_dingding_msg(test_msg, test_task.the_push_public_data()),
             "面板消息通道配置提醒"
         )
-        if res:
+        if res is True:
             return data
 
         return res
@@ -148,7 +151,6 @@ class DingDingMsg:
             test_task.to_dingding_msg(test_msg, test_task.the_push_public_data()),
             "面板消息通道配置提醒"
         )
-        print(res)
         if res is None:
             return None
         return res

@@ -87,7 +87,7 @@ class main(sslBase):
         record_line = '默认'
         if 'record_line' in get:
             record_line = get.record_line
-        mx = 0
+        mx = 10
         if record_type == 'MX':
             if not get.get('mx'):
                 return public.returnMsg(False, 'MX记录类型必须填写MX值')
@@ -159,7 +159,7 @@ class main(sslBase):
             #     data['list'] = json_data['RecordList']
             if 'RecordCountInfo' in json_data:
                 data['info'] = {
-                    "record_total": json_data['RecordCountInfo']['ListCount']
+                    "record_total": json_data['RecordCountInfo']['SubdomainCount']
                 }
             data["list"] = [
                 {
@@ -190,7 +190,7 @@ class main(sslBase):
         record_type = get.record_type
         remark = get.get("remark", "")
 
-        mx = 0
+        mx = 10
         if record_type == 'MX':
             if not get.get('mx'):
                 return public.returnMsg(False, 'MX记录类型必须填写MX值')
@@ -235,3 +235,26 @@ class main(sslBase):
         except Exception as e:
             return public.returnMsg(False, e)
 
+    def get_domain_list(self, get):
+        try:
+            params = json.dumps({})
+            headers = self.get_headers(get.dns_id, "DescribeDomainList", params)
+            res = requests.post(self.host, headers=headers, data=params).json()
+            local_domain_list = [d['domain'] for d in public.M('ssl_domains').field('domain').select()]
+
+            domain_list = [
+                {
+                    "id": i["DomainId"],
+                    "name": i["Name"],
+                    "remark": i.get("Remark") or "",
+                    "record_count": i.get("RecordCount") or 0,
+                    "sync": 0 if i["Name"] in local_domain_list else 1,
+                }
+                for i in res["Response"]["DomainList"]
+            ]
+
+            if "Error" in res['Response']:
+                return public.returnMsg(False, res['Response']["Error"]["Message"])
+            return {"status": True, "msg": "获取成功！","data": domain_list}
+        except Exception as e:
+            return {"status": False, "msg": self.get_error(str(e)), "data": []}

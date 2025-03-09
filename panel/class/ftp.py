@@ -50,6 +50,7 @@ class ftp:
             os.remove(old_filepath)
         else:
             pass
+
     def AddUser(self, get):
         """
         @name 添加FTP用户
@@ -99,7 +100,7 @@ class ftp:
             command = 'echo -e "{}\n{}\n" | {}/pure-pw useradd "{}" -u www -d {}'.format(password,password,self.__runPath,username,get["path"])
             result = subprocess.run(command, shell=True, text=True, capture_output=True)
             if result.returncode != 0:
-                return public.returnMsg(False, '执行命令添加用户命令失败: {result.stderr}')
+                return public.returnMsg(False, '执行命令添加用户命令失败: {}'.format(result.stderr))
             self.FtpReload()
             ps = public.xssencode2(get['ps'])
             if get['ps'] == '': ps = public.getMsg('INPUT_PS')
@@ -405,13 +406,31 @@ class ftp:
                 data['is_push'] = False
                 if len(data) < 3:
                     return public.returnMsg(False, '参数不足！')
-                config[get.push_action].append(data)
+                config.setdefault(get.push_action, []).append(data)
                 config['channel'] = get.channel
-            self.create_task()
-            print(config)
+            # self.create_task()
+            if len(config.get("1", [])) + len(config.get("2", [])) + len(config.get("3", [])) > 0:
+                if "/www/server/panel" not in sys.path:
+                    sys.path.insert(0, "/www/server/panel")
+
+                from mod.base.push_mod.manager import PushManager
+                push_manager = PushManager()
+                res = push_manager.set_task_conf_data({
+                    "template_id": "102",
+                    "task_data": {
+                        "status": True,
+                        "sender": config["channel"].split(","),
+                        "task_data": {},
+                        "number_rule": {
+                            "day_num": 1
+                        }
+                    }
+                })
+
             public.writeFile(self.config_path, json.dumps(config))
             return public.returnMsg(True, '设置成功！')
         except:
+            public.print_error()
             return public.returnMsg(False, '设置失败！')
 
     def send_notification(self, title, msg, channel):

@@ -327,6 +327,8 @@ class RealAccessRestriction(_ConfigObject, _ApacheAccessConf, _NginxAccessConf):
             password = get.password.strip()
             if len(password) < 3:
                 return '密码不能少于3位'
+            elif len(password) > 8:
+                return '密码有效位数不能大于8位'
             if re.search(r'\s', password):
                 return '密码不能存在空格'
             values['password'] = password

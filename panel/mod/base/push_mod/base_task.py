@@ -1,10 +1,16 @@
-from typing import Union, Optional, List, Tuple
+from typing import Union, Optional, List, Tuple, Any
 from .send_tool import WxAccountMsg
 
+
+class BaseTaskViewMsg:
+
+    def get_msg(self, task: dict) -> Optional[str]:
+        return ""
 
 # 告警系统在处理每个任务时，都会重新建立有一个Task的对象，(请勿在__init__的初始化函数中添加任何参数)
 # 故每个对象中都可以大胆存放本任务所有数据，不会影响同类型的其他任务
 class BaseTask:
+    VIEW_MSG = BaseTaskViewMsg
 
     def __init__(self):
         self.source_name: str = ''
@@ -47,24 +53,32 @@ class BaseTask:
         """
         return
     
-    def task_config_update_hook(self, task: dict) -> None:
+    def task_config_update_hook(self, task: dict) -> Optional[str]:
         """
         在告警管理中。更新任务数据后，会去掉用这个函数
-        @return:
+        task 是任务的全部配置信息
+        @return: 当返回None值时，表示 更新没有问题，正常储存，否则会将返回的错误信息直接返回前端，不在写入
+        例如：检查到这个任务依赖的信息不足时
+         >
+         > return "该任务需要到xxx处设置添加，无法直接在告警中添加"
+         >
+        此时会直接跳过
         """
         return 
     
     def task_config_remove_hook(self, task: dict) -> None:
         """
         在告警管理中。移除这个任务后，会去掉用这个函数
+        task 是任务的全部配置信息
         @return:
         """
         return 
     
-    def task_config_create_hook(self, task: dict) -> None:
+    def task_config_create_hook(self, task: dict) -> Optional[str]:
         """
         在告警管理中。新建这个任务后，会去掉用这个函数
-        @return:
+        task 是任务的全部配置信息
+        @return: 同 task_config_update_hook
         """
         return 
 
@@ -185,18 +199,15 @@ class BaseTask:
         public_headers = self.public_headers_msg(push_public_data, "\n")
         return public_headers + "\n" + "\n".join(msg_list)
 
-    def public_headers_msg(self, push_public_data: dict, spc: str = None,dingding=False) -> str:
+    def public_headers_msg(self, push_public_data: dict, spc: str = None, dingding=False) -> str:
         if spc is None:
             spc = "\n\n"
         title = self.title
-        print(title)
+
         if dingding:
-            print("dingdingtitle",title)
             if "面板" not in title:
                 title += "面板"
-                print("dingdingtitle",title)
-        
-        print(title)     
+
         return spc.join([
             "#### {}".format(title),
             ">服务器：" + push_public_data['server_name'],

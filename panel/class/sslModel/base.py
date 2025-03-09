@@ -62,24 +62,23 @@ class sslBase(object):
 
 
     def extract_zone(self,domain_name, is_let_txt=False):
+        # 申请证书时，域名可能带*，去掉*
         if is_let_txt:
             domain_name = domain_name.lstrip("*.")
-        top_domain = "." + ".".join(domain_name.rsplit('.')[-2:])
-        is_tow_top = False
-        if top_domain in self.top_domain_list:
-            is_tow_top = True
-        if domain_name.count(".") <= 1:
-            zone = ""
-            root = domain_name
-            acme_txt = "_acme-challenge"
+        domain_split = domain_name.split('.')
+        # 二级结构直接返回
+        if len(domain_split) <= 2:
+            root, sub = domain_name, ""
         else:
-            zone, middle, last = domain_name.rsplit(".", 2)
-            acme_txt = "_acme-challenge.%s" % zone
-            if is_tow_top:
-                last = top_domain[1:]
-                middle = zone.split(".")[-1]
-            root = ".".join([middle, last])
-        return root, zone, acme_txt
+            # 默认根域名后两位
+            root, sub = ".".join(domain_split[-2:]), ".".join(domain_split[:-2])
+            for i in range(len(domain_split)):
+                # 检查从当前位置到末尾是否是顶级域名
+                if "." + ".".join(domain_split[i:]) in self.top_domain_list:
+                    root, sub = ".".join(domain_split[i - 1:]), ".".join(domain_split[:i - 1])
+                    break
+        acme_txt = "_acme-challenge.%s" % sub if sub else "_acme-challenge"
+        return root, sub, acme_txt
 
     def get_dns_data(self, get):
         """

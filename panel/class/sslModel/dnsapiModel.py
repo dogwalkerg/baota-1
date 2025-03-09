@@ -65,10 +65,11 @@ class main(sslBase):
 
         pdata.update({'id': uuid.uuid4().hex, 'ps': ps})
 
-        data = {}
         sfile = "{}/config/dns_mager.conf".format(public.get_panel_path())
-        if os.path.exists(sfile):
+        try:
             data = json.loads(public.readFile(sfile))
+        except:
+            data = {}
         type_data = data.get(dns_name)
         if type_data:
             type_data.append(pdata)

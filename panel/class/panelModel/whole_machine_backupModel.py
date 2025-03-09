@@ -30,14 +30,19 @@ import psutil
 import ajax
 from firewallModel.comModel import main as firewall_main
 from safeModel.firewallModel import main as safe_firewall_main
+from CloudStoraUpload import CloudStoraUpload  # 引入云存储上传模块
 
 
 class main:
     sys_config = public.M('config').where("id=1", ()).find()
-    sys_backup_path = '/www/backup/'
-    if sys_config and sys_config.get('backup_path'):
-        sys_backup_path = sys_config.get('backup_path')
-        sys_backup_path = sys_backup_path if sys_backup_path.endswith('/') else sys_backup_path + '/'
+    setting_path='{}/data/whole_machine_backup_settings.json'.format(public.get_panel_path()) 
+    if os.path.exists(setting_path):
+        sys_backup_path = json.loads(public.ReadFile(setting_path))['sys_backup_path']
+    else:
+        sys_backup_path = '/www/backup/'
+        if sys_config and sys_config.get('backup_path'):
+            sys_backup_path = sys_config.get('backup_path')
+            sys_backup_path = sys_backup_path if sys_backup_path.endswith('/') else sys_backup_path + '/'
     backup_path = '{}whole_machine_backup/'.format(sys_backup_path)
     backup_log_path = '{}log/'.format(backup_path)
     all_backup_config_path = os.path.join(public.get_panel_path(), 'config/whole_machine_backup.json')
@@ -372,22 +377,55 @@ class main:
             get.backup_type = "整机备份"
         if not hasattr(get, "next_exec_time") or get.next_exec_time == "":
             get.next_exec_time = "0"
+        # get.storage_type="ftp"
+        # 设置存储类型，默认为 "local"
+        storage_type = get.storage_type if hasattr(get, 'storage_type') else 'local'
+        if get.type == '2' and storage_type !='local':
+           return public.returnMsg(False, '暂时不还原云存储文件！')
+
         try:
+            # 根据任务类型设置任务名称
             if get.type == '1':
                 name = "备份任务"
             else:
                 name = "还原任务"
+
+            # 检查是否存在重复任务（同名任务且未完成）
             task_data = public.M('tasks').where("name = ? AND status != ?", ("{}".format(name), "1")).find()
             if task_data:
-                return public.returnMsg(False, '已有重复的任务了，请上一个备份任务执行完成后在进行添加新的备份任务！')
+                return public.returnMsg(False, '已有重复的任务了，请上一个备份任务执行完成后再进行添加新的备份任务！')
+
+            # 初始化任务参数
             get.type = get.type if hasattr(get, 'type') else '1'
             get.backup_sql_time = int(get.backup_sql_time) if hasattr(get, 'backup_sql_time') else 0
-            if int(get.type) == 1:
+
+            if int(get.type) == 1:  # 备份任务
+                if get.next_exec_time not in [0, '0']:
+                    exec_time=datetime.datetime.fromtimestamp(int(get.next_exec_time)).strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    exec_time="暂未执行"
+                # 确保 backup_config 为 JSON 格式
                 get.backup_config = get.backup_config if isinstance(get.backup_config, str) else json.dumps(get.backup_config)
 
+                # 生成唯一任务 ID
                 get.id = public.GetRandomString(16)
+
+                # 设置任务相关文件路径
                 task_config_path = os.path.join(self.backup_path, get.id, "task_config.json")
                 reduction_task_config_path = os.path.join(self.backup_path, get.id + "_reduction.json")
+                storage_backup_path=""
+                if storage_type !='local':
+                    name="{}.tar.gz".format(get.id)
+                    cloud_name=get.storage_type
+                    import CloudStoraUpload
+                    c = CloudStoraUpload.CloudStoraUpload()
+                    c.run(cloud_name)
+                    url = ''
+                    backup_path = c.obj.backup_path
+                    storage_backup_path = os.path.join(backup_path, "whole_machine_backup",name)
+
+                
+                # 定义任务配置
                 conf = {
                     "backup_sql_time": get.backup_sql_time,
                     "addtime": time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -397,21 +435,31 @@ class main:
                     "status": 0,  # -1 备份中 0 等待备份 1 备份完成 2 备份失败 3 还原中 4 还原完成 5 还原失败
                     "task_config": task_config_path,
                     "reduction_task_config_path": reduction_task_config_path,
-                    "exec_time": "暂未执行",
+                    "exec_time": exec_time,
                     "backup_type": get.backup_type,
                     "name": get.get('name', get.backup_type),
+                    "storage_type":storage_type,
+                    "storage_backup_path":storage_backup_path
                 }
+                # 创建备份任务目录
                 if not os.path.exists(os.path.join(self.backup_path, get.id)):
                     public.ExecShell("mkdir -p {}".format(os.path.join(self.backup_path, get.id)))
+
+                # 写入任务配置文件
                 task_config = {
                     "backup_config": get.backup_config,
-                    "reduction_config": {}, }
+                    "reduction_config": {}
+                }
                 public.writeFile(task_config_path, json.dumps(task_config))
+
+                # 将任务配置写入全局配置
                 self.write_config(get.id, conf)
+
+                # 如果设置了定时执行时间，加入定时任务
                 if get.next_exec_time not in [0, '0']:
                     data = {
                         "name": 'whole_machine_backup',
-                        "title": '',
+                        "title": '面板数据备份',
                         "type": "1",
                         "time": str(int(get.next_exec_time) + 10),
                         "fun": 'create_queue',
@@ -420,20 +468,195 @@ class main:
                     }
                     public.set_tasks_run(data)
                 else:
+                    # 立即加入任务队列
                     self.create_queue(public.to_dict_obj({"id": get.id, "type": 1}))
-            elif int(get.type) == 2:
+
+            elif int(get.type) == 2:  # 还原任务
+                # 检查还原任务是否存在
                 if get.id not in self.config:
                     return public.returnMsg(False, '还原配置不存在,请刷新后重试！')
+
+                # 设置还原任务配置路径
                 reduction_task_config_path = os.path.join(self.backup_path, get.id + "_reduction.json")
+
+                # 写入还原配置文件
                 reduction_config = get.reduction_config
-                task_config = {}
-                task_config['reduction_config'] = reduction_config
+                task_config = {"reduction_config": reduction_config}
                 public.writeFile(reduction_task_config_path, json.dumps(task_config))
+
+                # 加入还原任务队列
                 self.create_queue(public.to_dict_obj({"id": get.id, "type": 2}))
+
             return public.returnMsg(True, '添加成功！')
+
         except:
+            # 捕获异常，记录错误日志并返回失败消息
             self.print_log(public.get_error_info())
             return public.returnMsg(False, '添加任务报错了！')
+
+    def check_plugins(self, get):
+        import PluginLoader
+        """
+        检查指定目录下是否存在某些插件目录，并判断对应存储是否安装
+
+        :param plugin_path: 插件目录的路径，例如 "/www/server/panel/plugin"
+        :return: 一个字典，包含每个插件的安装状态
+        """
+        import os
+
+        plugin_path = "{}/plugin".format(public.get_panel_path())
+        # 定义需要检查的插件
+        plugins = ["alioss", "txcos", "ftp", "qiniu","webdav"]
+
+        # 初始化结果字典
+        result = {}
+
+        # 检查插件目录
+        for plugin in plugins:
+            plugin_dir = os.path.join(plugin_path, plugin)
+
+            # 初始化插件信息
+            result[plugin] = {
+                "install": os.path.exists(plugin_dir),  # 插件目录是否存在
+                "config": False                         # 默认 config 为 False
+            }
+
+            # 检查配置状态
+            if result[plugin]["install"]:
+                try:
+                    
+                    get.path = "/"
+                    if plugin == "webdav":
+                        res = PluginLoader.plugin_run(plugin, "list_files", get)
+                        if not "status" in res:
+                            print(res)
+                            result[plugin]["config"] = True
+                    else:
+                        res = PluginLoader.plugin_run(plugin, "get_list", get)
+                        if "list" in res and "list":
+                            result[plugin]["config"] = True
+                    # if not "status" in res:
+                    #     print(res)
+                    #     result[plugin]["config"] = True
+                except Exception as e:
+                    
+                    result[plugin]["config"] = False
+
+        return public.returnMsg(True, result)
+
+    def delete_account(self, get):
+        storage_type=get.storage_type
+        panel_path=public.get_panel_path()
+        plugin_path = "{}/plugin".format(panel_path)
+        config_path = os.path.join(plugin_path, storage_type,"config.conf")
+        aes_status_path = os.path.join(plugin_path, storage_type,"aes_status")
+        data_path=os.path.join("{}/data".format(panel_path),"{}AS.conf".format(storage_type))
+        # # 检查 aes_status 文件内容
+        # if os.path.exists(config_path):
+        public.ExecShell("rm -rf {}".format(config_path))
+        public.ExecShell("rm -rf {}".format(aes_status_path))
+        public.ExecShell("rm -rf {}".format(data_path))
+        return public.returnMsg(True, "删除账号成功！")
+
+
+    def backup_download(self, get):
+        if not hasattr(get, 'backup_path') or not hasattr(get, 'storage_type'):
+            return public.returnMsg(False, '请传入backup_path!')
+        # 调用 check_plugins 检查云存储插件状态
+        plugin_status = self.check_plugins(get)["msg"]
+        storage_type = get.storage_type       
+        if storage_type not in ["alioss", "txcos", "ftp", "qiniu", "webdav","local"]:
+            return public.returnMsg(False, "不支持该插件：{}".format(storage_type))
+        if storage_type in plugin_status:
+            if not plugin_status[storage_type]["install"]:
+                return public.returnMsg(False, "请先安装{}存储插件！".format(storage_type))
+            if not plugin_status[storage_type]["config"]:
+                return public.returnMsg(False, "{}存储插件未配置，请先配置！".format(storage_type))
+
+        backup_path=get.backup_path
+        if get.storage_type=="webdav" or get.storage_type=="local" or get.storage_type=="ftp":
+            if get.storage_type=="webdav":
+                import sys
+                if '/www/server/panel/plugin/webdav' not in sys.path:
+                    sys.path.insert(0, '/www/server/panel/plugin/webdav')
+                try:
+                    from webdav_main import webdav_main as webdav
+                    # get.object_name =os.path.join(webdav().default_backup_path , "whole_machine_backup", os.path.basename(backup_path))
+                    # self.client.download_file(from_path=download_path, to_path=local_path)
+                    download_path=os.path.join(webdav().default_backup_path , "whole_machine_backup",os.path.basename(backup_path))
+                    local_path = os.path.join("/tmp", os.path.basename(backup_path))
+                    webdav().client.download_file(from_path=download_path, to_path=local_path)
+                    path=local_path
+                except Exception as e:
+                    if "could not be found in the server" in str(e):
+                        return public.returnMsg(False, '在云存储中未发现该文件!')
+                    return public.returnMsg(False, '请先安装webdav存储插件！')
+            elif get.storage_type=="ftp":
+                import sys
+                if '/www/server/panel/plugin/ftp' not in sys.path:
+                    sys.path.insert(0, '/www/server/panel/plugin/ftp')
+                try:
+                    from ftp_main import ftp_main as ftp
+                    # get.object_name =os.path.join(webdav().default_backup_path , "whole_machine_backup", os.path.basename(backup_path))
+                    # self.client.download_file(from_path=download_path, to_path=local_path)
+                    ftp_backup_path=ftp().get_config(get)['backup_path']
+                    download_path=os.path.join(ftp_backup_path , "whole_machine_backup",os.path.basename(backup_path))
+                    local_path = os.path.join("/tmp", os.path.basename(backup_path))
+                    ftp().client.generate_download_url(download_path)
+                    path=local_path
+                except:
+                    import traceback
+                    print(traceback.format_exc())
+                    return public.returnMsg(False, '请先安装ftp存储插件！')
+            else:
+                path = get.backup_path
+            if os.path.exists(path):
+                return {'status': True, 'is_loacl': True, 'path': path}
+            return public.returnMsg(False, '文件不存在！')
+        else:
+            name=os.path.basename(backup_path)
+            cloud_name=get.storage_type
+            import CloudStoraUpload
+            c = CloudStoraUpload.CloudStoraUpload()
+            c.run(cloud_name)
+            url = ''
+            backup_path = c.obj.backup_path
+            path = os.path.join(backup_path, "whole_machine_backup")
+            data = c.obj.get_list(path)
+            for i in data['list']:
+                print(i)
+                if i['name'] == name:
+                    url = i['download']
+            if url == '':
+                return public.returnMsg(False, '在云存储中未发现该文件!')
+            return {'status': True, 'is_loacl': False, 'path': url}
+
+    
+    def get_sys_backup_path_config(self,get=None):
+        setting_path='{}/data/whole_machine_backup_settings.json'.format(public.get_panel_path())
+        try:
+            with open(setting_path, 'r') as f:
+                settings = json.load(f)
+        except:
+            settings = {'sys_backup_path': self.sys_backup_path}
+            with open(setting_path, 'w') as f:
+                json.dump(settings, f) 
+        sys_backup_path = settings.get('sys_backup_path', self.sys_backup_path)
+        return public.returnMsg(True,sys_backup_path)
+
+    def set_sys_backup_path_config(self, get):
+        setting_path='{}/data/whole_machine_backup_settings.json'.format(public.get_panel_path())
+        sys_backup_path = get.sys_backup_path if get.sys_backup_path.endswith('/') else get.sys_backup_path + '/'
+        # 检查是否是有效目录路径
+        if not os.path.isabs(sys_backup_path):
+            return public.returnMsg(False, "请输入正确的目录路径!")
+        settings = {
+            'sys_backup_path': sys_backup_path
+        }
+        with open(setting_path, 'w') as f:
+            json.dump(settings, f)
+        return public.returnMsg(True, "设置成功！") 
+
 
     # ======================================================================
     #     开始备份
@@ -492,13 +715,85 @@ class main:
             public.writeFile(conf_path, json.dumps({id: conf}))
             public.ExecShell('cp {} {}'.format(self.backup_log_path, conf['backup_path']))
             public.ExecShell('cp {} {}'.format(os.path.join(conf['backup_path'], 'backup.json'), os.path.join(backup_path, id + '_backup.json')))
-            public.ExecShell('tar -zcvf {}.tar.gz -C {} .'.format(self.backup_path, self.backup_path))
+            # public.ExecShell('tar -zcvf {}.tar.gz -C {} .'.format(self.backup_path, self.backup_path))
+            # 压缩备份文件
+            
+            self.print_log(self.backup_path)
+            tar_gz_filename ="{}.tar.gz".format(self.backup_path)
+            public.ExecShell(f'tar -zcvf {tar_gz_filename} -C {self.backup_path} .')
+            self.print_log(f"->>>压缩备份文件完成：{tar_gz_filename}")
+            
+            # 判断是否需要上传到云存储
+            storage_type = conf.get("storage_type", "local")
+            cloud_backup_path = tar_gz_filename  # 初始备份路径为本地路径
+            
+            if storage_type != "local" and os.path.exists(tar_gz_filename):
+                _cloud_name = {
+                    "tianyiyun": "天翼云cos",
+                    "webdav": "webdav存储",
+                    "minio": "minio存储",
+                    "dogecloud": "多吉云COS",
+                }
+                print(333333333333333)
+                if storage_type in ["tianyiyun","webdav","minio","dogecloud"]:
+                    cloud_name_cn = _cloud_name.get(storage_type, storage_type)  # 获取云存储的中文名
+                    from CloudStoraUpload import CloudStoraUpload
+                    _cloud_new = CloudStoraUpload()
+                    _cloud = _cloud_new.run(storage_type)
+                    if _cloud is False:
+                        return False
+                    self.print_log("->>>正在上传文件{}到{}，请稍候...".format(tar_gz_filename,cloud_name_cn))
+                    try:
+                        backup_path = _cloud_new.backup_path
+                        if not backup_path.endswith('/'):
+                            backup_path += '/'
+                        upload_path = os.path.join(backup_path, "whole_machine_backup", os.path.basename(tar_gz_filename))
+                        self.print_log(tar_gz_filename)
+                        self.print_log(upload_path)
+                        if _cloud.upload_file(tar_gz_filename, upload_path):
+                            self.print_log(f"->>>文件已成功上传到云存储：{cloud_name_cn}")
+                            public.ExecShell('rm -rf {}'.format(tar_gz_filename))
+                            self.print_log('删除本地文件{}'.format(tar_gz_filename))
+                            # cloud_backup_path = upload_path + '|' + storage_type + '|' + os.path.basename(tar_gz_filename)  # 更新为云存储路径
+                        else:
+                            self.print_log(f"->>>上传到{cloud_name_cn}失败")
+                    except Exception as e:
+                        self.print_log(f"->>>上传到{cloud_name_cn}时发生错误: {str(e)}")
+                else:
+                    print(storage_type)
+                    from CloudStoraUpload import CloudStoraUpload
+                    _cloud = CloudStoraUpload()
+                    _cloud.run(storage_type)
+                    cloud_name_cn = _cloud.obj._title
+                    if not _cloud.obj:
+                        return False
+                    self.print_log("->>>正在上传文件{}到{}，请稍候...".format(tar_gz_filename,cloud_name_cn))
+                    try:
+                        backup_path = _cloud.obj.backup_path
+                        if not backup_path.endswith('/'):
+                            backup_path += '/'
+                        upload_path = os.path.join(backup_path, "whole_machine_backup", os.path.basename(tar_gz_filename))
+                        print(upload_path)
+                        print((tar_gz_filename))
+                        if _cloud.cloud_upload_file(tar_gz_filename, upload_path):
+                            self.print_log(f"->>>已成功上传到{cloud_name_cn}")
+                            public.ExecShell('rm -rf {}'.format(tar_gz_filename))
+                            self.print_log('删除本地文件{}'.format(tar_gz_filename))
+                            # cloud_backup_path = upload_path + '|' + storage_type + '|' + os.path.basename(tar_gz_filename)  # 更新为云存储路径
+                        else:
+                            self.print_log(f"->>>上传到{cloud_name_cn}失败")
+                    except Exception as e:
+                        self.print_log(f"->>>上传到{cloud_name_cn}时发生错误: {str(e)}")
+                
+            # return public.returnMsg(False, '备份失败！')
+
             public.ExecShell('rm -rf {}'.format(self.backup_path))
             self.write_config(id, conf)
             return public.returnMsg(True, '备份完成！')
         except:
             print(public.get_error_info())
             return public.returnMsg(False, '备份失败！')
+        
 
     # 修改备份状态
     def change_backup_status1(self, block, name="", son_name="", status_name="", status=0, sec_name='', ):
@@ -578,6 +873,7 @@ class main:
         if self.id_config is None:
             if not os.path.exists(self.backup_save_config):
                 public.writeFile(self.backup_save_config, json.dumps({}))
+            print(self.backup_save_config)
             self.id_config = json.loads(public.readFile(self.backup_save_config))
         if sec_name != "":
             if block not in self.id_config:
@@ -674,7 +970,8 @@ class main:
                 self.print_log('文件修复成功')
                 return True, i_flag
         return False, i_flag
-
+    # 222222222222
+    
     # ======================================================================
     #     备份环境
     # ======================================================================
@@ -1418,6 +1715,10 @@ class main:
         # 获取数据库的所有表名称
         table_list = database.database().GetInfo(public.to_dict_obj({'db_name': sql_name}))
         table_list = [i['table_name'] for i in table_list["tables"]]
+        if not table_list:
+            self.print_log("备份mysql数据库:{}数据校验成功，数据库无表".format(sql_name))
+            return True
+
         self.print_log(table_list)
         res = public.ExecShell("grep -o -F -e {} {}".format(" -e ".join(table_list), sql_path))[0]
         # 去重和去空
@@ -1456,16 +1757,18 @@ class main:
                 self.change_backup_status("data_list", "sql_list", 'mysql', "backup_status", 1, conf["name"])
                 self.print_log("->>>备份mysql数据库:{}完成,远程数据库".format(conf["name"]))
                 return
-
+            self.print_log("32")
             sql_path = '/tmp/{}.sql'.format(conf["name"])
             md5_name = self.generate_md5(sql_path)
             save_path = os.path.join(self.backup_path, "backup", md5_name)
             sql_data = save_path
             if not os.path.exists(save_path):
                 if not os.path.exists(self.backup_path):
+                    self.print_log("333333333332")
                     os.makedirs(self.backup_path)
                 _MYSQLDUMP_BIN = public.get_mysqldump_bin()
                 db_password = public.M("config").where("id=?", (1,)).getField("mysql_root")
+                self.print_log("33333333333333333333332")
                 try:
                     db_port = int(panelMysql.panelMysql().query("show global variables like 'port'")[0][1])
                 except:
@@ -1495,7 +1798,9 @@ class main:
                 )
                 public.ExecShell(shell)
                 if not self.check_mysql_files(sql_path, conf["name"]):
+                    self.print_log("3333333333333333333333333333333")
                     self.change_backup_status("data_list", "sql_list", 'mysql', "backup_status", 2, conf["name"], msg="备份mysql数据库:{}失败".format(conf["name"]))
+                    self.print_log("333333333333333333333333333333333333333333333333333")
                     return
                 time.sleep(0.1)
                 if os.path.exists(sql_path):
@@ -1518,6 +1823,7 @@ class main:
                 "sql_data_md5": sql_data_md5,
             }
             self.print_log(config)
+            self.print_log("3333333333333333333")
             self.write_id_config("data_list", "sql_list", "mysql", config=config, sec_name=conf["name"])
             self.change_backup_status("data_list", "sql_list", 'mysql', "backup_status", 1, conf["name"], msg="备份mysql数据库:{}完成".format(conf["name"]))
             self.print_log("->>>备份mysql数据库:{}完成".format(conf["name"]))
@@ -3184,19 +3490,50 @@ class main:
         self.change_reduction_status("data_list", "safety", "ssh_config", "reduction_status", 1, conf["name"], msg="还原ssh数据成功")
 
     def create_queue(self, get):
+        """
+        创建任务队列（用于执行备份或还原任务）
+
+        :param get: 包含任务 ID 和任务类型的对象
+            - id (str): 任务的唯一标识符
+            - type (str): 任务类型，1 表示备份，2 表示还原
+        """
+        # 获取任务 ID 和类型
         id = get.id
         type = get.type
-        name = '备份任务' if type == '1' else '还原任务'
+        print(type)
+        # 根据任务类型设置任务名称
+        name = '备份任务' if type == 1 else '还原任务'
+        print(name)
+        # 导入任务管理模块
         import panelTask
-        panelTask.bt_task().create_task(name, 0, "btpython /www/server/panel/class/panelModel/whole_machine_backupModel.py {} {} &> {}".format(id, type, self.logs_file))
+        print("btpython /www/server/panel/class/panelModel/whole_machine_backupModel.py {} {} &> {}".format(id, type, self.logs_file ))
+        # 使用任务管理模块创建任务，执行命令通过 `btpython` 调用对应脚本
+        panelTask.bt_task().create_task(
+            name,  # 任务名称
+            0,     # 任务类型（0 表示普通任务）
+            "btpython /www/server/panel/class/panelModel/whole_machine_backupModel.py {} {} &> {}".format(
+                id,   # 任务 ID
+                type, # 任务类型
+                self.logs_file  # 日志文件路径
+            )
+        )
+
+        # 记录日志，表示任务创建成功
         self.print_log("创建{}成功".format(name))
 
+
     def input(self, get):
+        # 文件名清理：去掉干扰字符 (如 "(1)")
+        original_file_name = get.f_name
+        clean_file_name = original_file_name
+        if '(' in original_file_name and ')' in original_file_name:
+            clean_file_name = original_file_name.split('(')[0].strip() + ".tar.gz"
+
         # file_name = '/www/backup/whole_machine_backup/{}'.format(get.f_name)
-        file_name = self.backup_path + get.f_name
+        file_name = self.backup_path + clean_file_name 
         if not os.path.exists(self.backup_path):
             os.makedirs(self.backup_path)
-        if get.f_name in self.config:
+        if clean_file_name in self.config:
             return public.returnMsg(False, '已存在相同的任务，请先删除后再导入！')
         from files import files
         fileObj = files()
@@ -3207,28 +3544,32 @@ class main:
         if not ff['status']:
             return ff
         # 解压出全局配置文件
-        print(public.ExecShell('cd {} && tar -zxvf {} ./{} '.format(self.backup_path, file_name, get.f_name.rstrip('.tar.gz'))))
-        all_config_path = os.path.join(self.backup_path, get.f_name.rstrip('.tar.gz'))
+        print(public.ExecShell('cd {} && tar -zxvf {} ./{} '.format(self.backup_path,  clean_file_name, clean_file_name.rstrip('.tar.gz'))))
+        print(clean_file_name)
+        all_config_path = os.path.join(self.backup_path, clean_file_name.rstrip('.tar.gz'))
+        print(all_config_path)
         time.sleep(0.2)
         if not os.path.exists(all_config_path):
             return public.returnMsg(False, '未找到配置文件！')
         try:
-            res  =json.loads(public.readFile(all_config_path))
-            res[get.f_name.rstrip('.tar.gz')]['status'] = 1
+            res=json.loads(public.readFile(all_config_path))
+            res[clean_file_name.rstrip('.tar.gz')]['status'] = 1
             self.config.update(res)
-        except:
+        except Exception as e:
+            print(e)
             return public.returnMsg(False, '配置文件解析失败！')
         public.ExecShell('rm -rf {}'.format(all_config_path))
+
         # 取出备份记录
         if os.path.exists('{}backup.json'.format(self.backup_path)):
             public.ExecShell('rm -rf {}backup.json'.format(self.backup_path))
         public.ExecShell('cd {} && tar -zxvf {} ./backup.json'.format(self.backup_path, file_name))
         time.sleep(0.1)
-        public.ExecShell('mv {}backup.json  {}_backup.json'.format(self.backup_path, self.backup_path+get.f_name.rstrip('.tar.gz')))
+        public.ExecShell('mv {}backup.json  {}_backup.json'.format(self.backup_path, self.backup_path+clean_file_name.rstrip('.tar.gz')))
         # 取出备份日志
         if not os.path.exists(self.backup_log_path):
             public.ExecShell('mkdir -p {}'.format(self.backup_log_path))
-        public.ExecShell('cd {} && tar -zxvf {} ./{}_backup.log'.format(self.backup_log_path, file_name, get.f_name.rstrip('.tar.gz')))
+        public.ExecShell('cd {} && tar -zxvf {} ./{}_backup.log'.format(self.backup_log_path, file_name,clean_file_name.rstrip('.tar.gz')))
         public.writeFile(self.all_backup_config_path, json.dumps(self.config))
         return public.returnMsg(True, '导入成功！')
 

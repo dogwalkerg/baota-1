@@ -1,4 +1,4 @@
-#coding: utf-8
+# coding: utf-8
 # +-------------------------------------------------------------------
 # | 宝塔Linux面板
 # +-------------------------------------------------------------------
@@ -7,18 +7,22 @@
 # | Author: hwliang <hwl@bt.cn>
 # +-------------------------------------------------------------------
 
-#+--------------------------------------------------------------------
-#|   自动部署网站
-#+--------------------------------------------------------------------
+# +--------------------------------------------------------------------
+# |   自动部署网站
+# +--------------------------------------------------------------------
 
-import public,json,os,time,sys,re
+import public, json, os, time, sys, re
+
 try:
-    from BTPanel import session,cache
+    from BTPanel import session, cache
 except:
     pass
-class obj: id=0
-class plugin_deployment:
 
+
+class obj: id = 0
+
+
+class plugin_deployment:
     __panelPath = '/www/server/panel'
     __setupPath = '{}/data'.format(__panelPath)
     logPath = 'data/deployment_speed.log'
@@ -27,23 +31,23 @@ class plugin_deployment:
     oldTime = 0
     _speed_key = 'dep_download_speed'
 
-    def GetSiteList(self,get):
+    def GetSiteList(self, get):
         """
         @name 获取网站一键部署列表
         """
         jsonFile = self.__panelPath + '/data/deployment_list.json'
-        if not os.path.exists(jsonFile) or hasattr(get,'force'):
+        if not os.path.exists(jsonFile) or hasattr(get, 'force'):
             self.GetCloudList(get)
 
-        if not os.path.exists(jsonFile): return public.returnMsg(False,'配置文件不存在!')
+        if not os.path.exists(jsonFile): return public.returnMsg(False, '配置文件不存在!')
         data = {}
         data = self.get_input_list(json.loads(public.readFile(jsonFile)))
 
-        if not hasattr(get,'type'):
+        if not hasattr(get, 'type'):
             get.type = 0
         else:
             get.type = int(get.type)
-        if not hasattr(get,'search'):
+        if not hasattr(get, 'search'):
             search = None
             m = 0
         else:
@@ -52,22 +56,21 @@ class plugin_deployment:
         tmp = []
 
         for d in data['list']:
-            i=0
+            i = 0
             if get.type > 0:
-                if get.type == d['type']: i+=1
+                if get.type == d['type']: i += 1
             else:
-                i+=1
+                i += 1
             if search:
-                if d['name'].lower().find(search) != -1: i+=1
-                if d['title'].lower().find(search) != -1: i+=1
-                if d['ps'].lower().find(search) != -1: i+=1
+                if d['name'].lower().find(search) != -1: i += 1
+                if d['title'].lower().find(search) != -1: i += 1
+                if d['ps'].lower().find(search) != -1: i += 1
                 if get.type > 0 and get.type != d['type']: i -= 1
 
             if i > m:
-                del(d['versions'][0]['download'])
-                del(d['versions'][0]['md5'])
+                del (d['versions'][0]['download'])
+                del (d['versions'][0]['md5'])
                 d = self.get_icon(d)
-
 
                 if 'is_site_show' in d and d['is_site_show']:
                     d['is_many'] = 0
@@ -79,21 +82,21 @@ class plugin_deployment:
         data['list'] = tmp
         return data
 
-    #获取列表
-    def GetList(self,get):
+    # 获取列表
+    def GetList(self, get):
         jsonFile = self.__panelPath + '/data/deployment_list.json'
-        if not os.path.exists(jsonFile) or hasattr(get,'force'):
+        if not os.path.exists(jsonFile) or hasattr(get, 'force'):
             self.GetCloudList(get)
 
-        if not os.path.exists(jsonFile): return public.returnMsg(False,'配置文件不存在!')
+        if not os.path.exists(jsonFile): return public.returnMsg(False, '配置文件不存在!')
         data = {}
         data = self.get_input_list(json.loads(public.readFile(jsonFile)))
 
-        if not hasattr(get,'type'):
+        if not hasattr(get, 'type'):
             get.type = 0
         else:
             get.type = int(get.type)
-        if not hasattr(get,'search'):
+        if not hasattr(get, 'search'):
             search = None
             m = 0
         else:
@@ -106,31 +109,31 @@ class plugin_deployment:
 
         tmp = []
         for d in data['list']:
-            i=0
+            i = 0
             if get.type > 0:
-                if get.type == d['type']: i+=1
+                if get.type == d['type']: i += 1
             else:
-                i+=1
+                i += 1
             if search:
-                if d['name'].lower().find(search) != -1: i+=1
-                if d['title'].lower().find(search) != -1: i+=1
-                if d['ps'].lower().find(search) != -1: i+=1
+                if d['name'].lower().find(search) != -1: i += 1
+                if d['title'].lower().find(search) != -1: i += 1
+                if d['ps'].lower().find(search) != -1: i += 1
                 if get.type > 0 and get.type != d['type']: i -= 1
 
-            if i>m:
-                del(d['versions'][0]['download'])
-                del(d['versions'][0]['md5'])
+            if i > m:
+                del (d['versions'][0]['download'])
+                del (d['versions'][0]['md5'])
                 d = self.get_icon(d)
                 tmp.append(d)
         data['search_history'] = public.get_search_history('GetList', 'GetList')
         data['list'] = tmp
         return data
 
-    #获取图标
-    def get_icon(self,pinfo):
+    # 获取图标
+    def get_icon(self, pinfo):
         path = '/www/server/panel/BTPanel/static/img/dep_ico'
-        if not os.path.exists(path): os.makedirs(path,384)
-        filename = "%s/%s.png" %  (path, pinfo['name'])
+        if not os.path.exists(path): os.makedirs(path, 384)
+        filename = "%s/%s.png" % (path, pinfo['name'])
         m_uri = pinfo['min_image']
         pinfo['min_image'] = '/static/img/dep_ico/%s.png' % pinfo['name']
         if sys.version_info[0] == 2: filename = filename.encode('utf-8')
@@ -139,16 +142,16 @@ class plugin_deployment:
         public.ExecShell("wget -O " + filename + ' https://www.bt.cn' + m_uri + " &")
         return pinfo
 
-    #获取插件列表
-    def GetDepList(self,get):
+    # 获取插件列表
+    def GetDepList(self, get):
         jsonFile = self.__setupPath + '/deployment_list.json'
-        if not os.path.exists(jsonFile): return public.returnMsg(False,'配置文件不存在!')
+        if not os.path.exists(jsonFile): return public.returnMsg(False, '配置文件不存在!')
         data = {}
         data = json.loads(public.readFile(jsonFile))
         return self.get_input_list(data)
 
-    #获取本地导入的插件
-    def get_input_list(self,data):
+    # 获取本地导入的插件
+    def get_input_list(self, data):
         try:
             jsonFile = self.__setupPath + '/deployment_list_other.json'
             if not os.path.exists(jsonFile): return data
@@ -156,22 +159,23 @@ class plugin_deployment:
             for d in i_data:
                 data['list'].append(d)
             return data
-        except:return data
+        except:
+            return data
 
-    #从云端获取列表
-    def GetCloudList(self,get):
+    # 从云端获取列表
+    def GetCloudList(self, get):
         try:
             jsonFile = self.__setupPath + '/deployment_list.json'
             downloadUrl = 'https://www.bt.cn/api/panel/get_deplist'
             pdata = public.get_pdata()
             pdata["version"] = "v2"
-            tmp = public.httpPost(downloadUrl,pdata,30)
+            tmp = public.httpPost(downloadUrl, pdata, 30)
             tmp = json.loads(tmp)
-            if not tmp: return public.returnMsg(False,'从云端获取失败!')
-            public.writeFile(jsonFile,json.dumps(tmp))
-            return public.returnMsg(True,'更新成功!')
+            if not tmp: return public.returnMsg(False, '从云端获取失败!')
+            public.writeFile(jsonFile, json.dumps(tmp))
+            return public.returnMsg(True, '更新成功!')
         except:
-            return public.returnMsg(False,'从云端获取失败!')
+            return public.returnMsg(False, '从云端获取失败!')
 
     # 判断是否存在
     def CheckPackage(self, name):
@@ -243,15 +247,15 @@ class plugin_deployment:
         pinfo['config'] = con
         pinfo['versions'] = []
         version = {
-           "cpu_limit": 1,
-           "dependnet": "",
-           "m_version": pinfo['version'],
-           "mem_limit": 32,
-           "os_limit": 0,
-           "size": os.path.getsize(s_file),
-           "version": "0",
-           "download": "",
-           "version_msg": "测试2"
+            "cpu_limit": 1,
+            "dependnet": "",
+            "m_version": pinfo['version'],
+            "mem_limit": 32,
+            "os_limit": 0,
+            "size": os.path.getsize(s_file),
+            "version": "0",
+            "download": "",
+            "version_msg": "测试2"
         }
         version['md5'] = self.GetFileMd5(s_file)
         pinfo['versions'].append(version)
@@ -267,8 +271,8 @@ class plugin_deployment:
         public.writeFile(jsonFile, json.dumps(data))
         return public.returnMsg(True, '导入成功!')
 
-    #取本地包信息
-    def GetPackageOther(self,get):
+    # 取本地包信息
+    def GetPackageOther(self, get):
         p_name = get.p_name
         jsonFile = self.__setupPath + '/deployment_list_other.json'
         if not os.path.exists(jsonFile): public.returnMsg(False, '没有找到[{}]'.format(p_name))
@@ -276,12 +280,12 @@ class plugin_deployment:
 
         for i in range(len(data)):
             if data[i]['name'] == p_name: return data[i]
-        return public.returnMsg(False,'没有找到[%s]' % p_name)
+        return public.returnMsg(False, '没有找到[%s]' % p_name)
 
-    #删除程序包
-    def DelPackage(self,get):
+    # 删除程序包
+    def DelPackage(self, get):
         jsonFile = self.__setupPath + '/deployment_list_other.json'
-        if not os.path.exists(jsonFile): return public.returnMsg(False,'配置文件不存在!')
+        if not os.path.exists(jsonFile): return public.returnMsg(False, '配置文件不存在!')
 
         data = {}
         data = json.loads(public.readFile(jsonFile))
@@ -295,35 +299,35 @@ class plugin_deployment:
             tmp.append(d)
 
         data = tmp
-        public.writeFile(jsonFile,json.dumps(data))
-        return public.returnMsg(True,'删除成功!')
+        public.writeFile(jsonFile, json.dumps(data))
+        return public.returnMsg(True, '删除成功!')
 
-    #下载文件
-    def DownloadFile(self,url,filename):
+    # 下载文件
+    def DownloadFile(self, url, filename):
         import requests
         self.pre = 0
         self.oldTime = time.time()
         self.WriteLogs("正在下载文件【{}】...".format(filename))
 
         try:
-            download_res = requests.get(url,headers=public.get_requests_headers(),timeout=30,stream=True)
+            download_res = requests.get(url, headers=public.get_requests_headers(), timeout=30, stream=True)
             headers_total_size = int(download_res.headers['content-length'])
             res_chunk_size = 8192 * 2
             count = 0
-            with open(filename,'wb+') as with_res_f:
+            with open(filename, 'wb+') as with_res_f:
                 for download_chunk in download_res.iter_content(chunk_size=res_chunk_size):
                     if download_chunk:
                         count += 1
                         with_res_f.write(download_chunk)
                         speed_last_size = len(download_chunk)
-                        self.DownloadHook(count,speed_last_size,headers_total_size)
+                        self.DownloadHook(count, speed_last_size, headers_total_size)
                 with_res_f.close()
         except requests.exceptions.RequestException as e:
             error_message = "ERROR：下载文件【{}】失败: {}".format(filename, str(e))
             self.WriteLogs(error_message)
 
-    #下载文件进度回调
-    def DownloadHook(self,count, blockSize, totalSize):
+    # 下载文件进度回调
+    def DownloadHook(self, count, blockSize, totalSize):
         used = count * blockSize
         pre1 = int((100.0 * used / totalSize))
         if self.pre != pre1:
@@ -335,7 +339,7 @@ class plugin_deployment:
             self.WriteLogs(log_message)
             self.pre = pre1
 
-    #写输出日志
+    # 写输出日志
     def WriteLogs(self, msg):
         if msg.find('ERROR：') != -1 or msg.find('Success：') != -1:
             public.writeFile(self.logPath, '{}\n'.format(msg), 'a+')
@@ -357,8 +361,55 @@ class plugin_deployment:
             except:
                 public.writeFile(self.logPath, '{}\n'.format(msg), 'a+')
 
+    # 需要特殊处理的项目
+    def set_complex_conf(self, get, path, find):
+        if get.dname == "CatchAdmin":
+            return self.set_catchadmin_conf(get, path, find)
+
+        return public.returnMsg(False, '暂未支持')
+
+    # 处理deepseek_r1的配置的配置
+    def set_catchadmin_conf(self, get, path, find):
+        # 前后端分离处理替换配置文件
+        config_path = path + '/public/admin/static/config.js'
+        if os.path.exists(config_path):
+            self.WriteLogs('正在替换配置文件...')
+            url_data = public.readFile(config_path)
+            url_data = url_data.replace("${BT_APP_URL}", "http://{}/api".format(get.site_name.strip()))
+            public.writeFile(config_path, url_data)
+
+        index_js = path + '/public/admin/assets/js/index-CMy4Wf15.js'
+        if os.path.exists(index_js):
+            url_data = public.readFile(index_js)
+            url_data = url_data.replace("${BT_APP_URL}", "http://{}/api".format(get.site_name.strip()))
+            public.writeFile(index_js, url_data)
+
+        # 创建的数据库信息
+        if os.path.exists(path + '/.env'):
+            databaseInfo = public.M('databases').where('pid=?', (find['id'],)).field('username,password').find()
+            if databaseInfo:
+                env_data = public.readFile(path + '/.env')
+                env_data = env_data.replace('${BT_APP_URL}', 'http://{}'.format(get.site_name.strip()))
+                env_data = env_data.replace('${BT_MYSQL_PORT}', self.__mysql_info())
+                env_data = env_data.replace('${BT_DB_NAME}', databaseInfo['username'])
+                env_data = env_data.replace('${BT_DB_USERNAME}', databaseInfo['username'])
+                env_data = env_data.replace('${BT_DB_PASSWORD}', databaseInfo['password'])
+                public.writeFile(path + '/.env', env_data)
+
+        # 配置文件 适配请求前端文件
+        nginx_conf = "/www/server/panel/vhost/nginx/{}.conf".format(get.site_name.strip())
+        if os.path.exists(nginx_conf):
+            content = public.readFile(nginx_conf)
+
+            # 移除静态文件location
+            patt = 'location[\s~\.\*\\\\]+\((gif|js).+?\s+\}'  # 非贪婪匹配
+            rep_compile = re.compile(patt, re.S)
+            if rep_compile:
+                content = rep_compile.sub('', content)
+            public.writeFile(nginx_conf, content)
+
     def __setup_php_environment(self, get, name, packinfo, path, find):
-        if hasattr(get, "php_version"):php_version = get.php_version.strip()
+        if hasattr(get, "php_version"): php_version = get.php_version.strip()
         # 检查本地包
         self.WriteLogs('正在校验软件包...')
         pack_path = self.__panelPath + '/package'
@@ -379,7 +430,6 @@ class plugin_deployment:
         # 下载文件
         if isDownload:
             try:
-                self.WriteLogs('正在下载文件【{}】...'.format(packageZip))
                 if packinfo['versions'][0]['download']:
                     self.DownloadFile(public.GetConfigValue('home') + '/api/Pluginother/get_file?fname=' + packinfo['versions'][0]['download'], packageZip)
                 else:
@@ -411,15 +461,16 @@ class plugin_deployment:
                         public.ExecShell('chmod -R ' + str(chm['mode']) + ' ' + (path + '/' + chm['path']).replace('//', '/'))
         except Exception as e:
             pinfo["install_status"] = False
-            self.WriteLogs('设置权限时发生错误: {}'.format(str(e)))
-        #安装PHP扩展
-        self.WriteLogs('正在安装必要的PHP扩展...')
+            self.WriteLogs('ERROR：设置权限时发生错误: {}'.format(str(e)))
+        # 安装PHP扩展
+        self.WriteLogs('开始安装项目PHP扩展...')
         if 'php_ext' in pinfo:
             try:
                 import files
                 mfile = files.files()
-                if type(pinfo['php_ext']) != list : pinfo['php_ext'] = pinfo['php_ext'].strip().split(',')
+                if type(pinfo['php_ext']) != list: pinfo['php_ext'] = pinfo['php_ext'].strip().split(',')
                 for ext in pinfo['php_ext']:
+                    self.WriteLogs('正在安装PHP扩展: {}'.format(ext))
                     if ext == 'pathinfo':
                         import config
                         con = config.config()
@@ -433,87 +484,50 @@ class plugin_deployment:
                         mfile.InstallSoft(get)
             except Exception as e:
                 pinfo["install_status"] = False
-                self.WriteLogs('ERROR：安装必要的PHP扩展失败: {}'.format(str(e)))
+                self.WriteLogs('ERROR：安装PHP扩展失败: {}'.format(str(e)))
 
-        #解禁PHP函数
+        # 解禁PHP函数
         if 'enable_functions' in pinfo:
             try:
-                if type(pinfo['enable_functions']) == str : pinfo['enable_functions'] = pinfo['enable_functions'].strip().split(',')
+                if type(pinfo['enable_functions']) == str: pinfo['enable_functions'] = pinfo['enable_functions'].strip().split(',')
                 php_f = public.GetConfigValue('setup_path') + '/php/' + php_version + '/etc/php.ini'
                 php_c = public.readFile(php_f)
                 rep = "disable_functions\s*=\s{0,1}(.*)\n"
-                tmp = re.search(rep,php_c).groups()
+                tmp = re.search(rep, php_c).groups()
                 disable_functions = tmp[0].split(',')
                 for fun in pinfo['enable_functions']:
                     fun = fun.strip()
                     if fun in disable_functions: disable_functions.remove(fun)
                 disable_functions = ','.join(disable_functions)
                 php_c = re.sub(rep, 'disable_functions = ' + disable_functions + "\n", php_c)
-                public.writeFile(php_f,php_c)
+                public.writeFile(php_f, php_c)
                 public.phpReload(php_version)
-            except:pass
+            except:
+                pass
 
-        #执行额外shell进行依赖安装
+        # 执行额外shell进行依赖安装
         self.WriteLogs('正在执行额外SHELL依赖安装...')
-        if os.path.exists(path+'/install.sh'):
-            public.ExecShell('cd '+path+' && bash ' + 'install.sh ' + find['name'])
-            public.ExecShell('rm -f ' + path+'/install.sh')
+        if os.path.exists(path + '/install.sh'):
+            public.ExecShell('cd ' + path + ' && bash ' + 'install.sh ' + find['name'])
+            public.ExecShell('rm -f ' + path + '/install.sh')
 
-
-        #是否执行Composer
+        # 是否执行Composer
         if os.path.exists(path + '/composer.json'):
             self.WriteLogs('正在执行Composer...')
             if not os.path.exists(path + '/composer.lock'):
-                execPHP = '/www/server/php/' + php_version +'/bin/php'
+                execPHP = '/www/server/php/' + php_version + '/bin/php'
                 if execPHP:
                     if public.get_url().find('125.88'):
-                        public.ExecShell('cd ' +path+' && '+execPHP+' /usr/bin/composer config repo.packagist composer https://packagist.phpcomposer.com')
+                        public.ExecShell('cd ' + path + ' && ' + execPHP + ' /usr/bin/composer config repo.packagist composer https://packagist.phpcomposer.com')
                     import panelSite;
                     phpini = '/www/server/php/' + php_version + '/etc/php.ini'
                     phpiniConf = public.readFile(phpini)
                     phpiniConf = phpiniConf.replace('proc_open,proc_get_status,', '')
-                    public.writeFile(phpini,phpiniConf)
-                    public.ExecShell('nohup cd '+path+' && '+execPHP+' /usr/bin/composer install -vvv > /tmp/composer.log 2>&1 &')
+                    public.writeFile(phpini, phpiniConf)
+                    public.ExecShell('nohup cd ' + path + ' && ' + execPHP + ' /usr/bin/composer install -vvv > /tmp/composer.log 2>&1 &')
 
-        if get.dname == "CatchAdmin":
-            # 前后端分离处理替换配置文件
-            config_path = path + '/public/admin/static/config.js'
-            if os.path.exists(config_path):
-                self.WriteLogs('正在替换配置文件...')
-                url_data = public.readFile(config_path)
-                url_data = url_data.replace("${BT_APP_URL}", "http://{}/api".format(get.site_name.strip()))
-                public.writeFile(config_path, url_data)
-
-            index_js = path + '/public/admin/assets/js/index-CMy4Wf15.js'
-            if os.path.exists(index_js):
-                url_data = public.readFile(index_js)
-                url_data = url_data.replace("${BT_APP_URL}", "http://{}/api".format(get.site_name.strip()))
-                public.writeFile(index_js, url_data)
-
-            # 创建的数据库信息
-            if os.path.exists(path + '/.env'):
-                databaseInfo = public.M('databases').where('pid=?', (find['id'],)).field('username,password').find()
-                if databaseInfo:
-                    env_data = public.readFile(path + '/.env')
-                    env_data = env_data.replace('${BT_APP_URL}', 'http://{}'.format(get.site_name.strip()))
-                    env_data = env_data.replace('${BT_MYSQL_PORT}', self.__mysql_info())
-                    env_data = env_data.replace('${BT_DB_NAME}', databaseInfo['username'])
-                    env_data = env_data.replace('${BT_DB_USERNAME}', databaseInfo['username'])
-                    env_data = env_data.replace('${BT_DB_PASSWORD}',  databaseInfo['password'])
-                    public.writeFile(path + '/.env', env_data)
-
-            # 配置文件 适配请求前端文件
-            nginx_conf = "/www/server/panel/vhost/nginx/{}.conf".format(get.site_name.strip())
-            if os.path.exists(nginx_conf):
-                content = public.readFile(nginx_conf)
-
-                # 移除静态文件location
-                patt = 'location[\s~\.\*\\\\]+\((gif|js).+?\s+\}'  # 非贪婪匹配
-                rep_compile = re.compile(patt, re.S)
-                if rep_compile:
-                    content = rep_compile.sub('', content)
-                public.writeFile(nginx_conf, content)
-
+        # 处理复杂一些的项目配置
+        self.set_complex_conf(get, path, find)
 
         # 写伪静态
         self.WriteLogs('正在设置伪静态...')
@@ -538,7 +552,7 @@ class plugin_deployment:
         try:
             public.ExecShell("rm -f " + path + '/*.rewrite')
         except Exception as e:
-            self.WriteLogs('删除伪静态文件时发生错误: {}'.format(str(e)))
+            self.WriteLogs('ERROR：删除伪静态文件时发生错误: {}'.format(str(e)))
 
         # 删除多余文件
         rm_file = path + '/index.html'
@@ -559,16 +573,16 @@ class plugin_deployment:
                     siteObj.SetSiteRunPath(mobj)
         except Exception as e:
             pinfo["install_status"] = False
-            self.WriteLogs('设置运行目录时发生错误: {}'.format(str(e)))
+            self.WriteLogs('ERROR：设置运行目录时发生错误: {}'.format(str(e)))
 
-        #清理文件和目录
+        # 清理文件和目录
         try:
-            self.WriteLogs('正在清理多余的文件...')
+            self.WriteLogs('正在清理临时文件...')
             if 'remove_file' in pinfo:
-                if type(pinfo['remove_file']) == str : pinfo['remove_file'] = pinfo['remove_file'].strip().split(',')
+                if type(pinfo['remove_file']) == str: pinfo['remove_file'] = pinfo['remove_file'].strip().split(',')
                 for f_path in pinfo['remove_file']:
                     if not f_path: continue
-                    filename = (path + '/' + f_path).replace('//','/')
+                    filename = (path + '/' + f_path).replace('//', '/')
                     if os.path.exists(filename):
                         if not os.path.isdir(filename):
                             if f_path.find('.user.ini') != -1:
@@ -578,7 +592,7 @@ class plugin_deployment:
                             public.ExecShell("rm -rf " + filename)
         except Exception as e:
             pinfo["install_status"] = False
-            self.WriteLogs('清理多余的文件时发生错误: {}'.format(str(e)))
+            self.WriteLogs('ERROR：清理临时文件时发生错误: {}'.format(str(e)))
 
         # 导入数据
         try:
@@ -600,7 +614,7 @@ class plugin_deployment:
 
         except Exception as e:
             pinfo["install_status"] = False
-            self.WriteLogs('导入数据库时发生错误: {}'.format(str(e)))
+            self.WriteLogs('ERROR：导入数据库时发生错误: {}'.format(str(e)))
 
         public.serviceReload()
         self.start_php_async(get.site_name.strip())
@@ -647,7 +661,7 @@ class plugin_deployment:
             database = database()
             result = database.AddDatabase(public.to_dict_obj(mysql_data))
             if not result["status"]:
-                self.WriteLogs('数据库【{}】创建失败'.format(get.datauser))
+                self.WriteLogs('数据库【{}】创建失败,请在面板手动创建对应数据库'.format(get.datauser))
 
             self.WriteLogs('数据库【{}】创建成功'.format(get.datauser))
 
@@ -727,13 +741,13 @@ class plugin_deployment:
 
             self.WriteLogs('配置文件 {} 替换成功'.format(config_file))
         except Exception as e:
-            self.WriteLogs('替换配置文件失败: {}'.format(str(e)))
+            self.WriteLogs('替换配置文件{}失败: {}'.format(config_file, str(e)))
 
-    #一键安装网站程序
-    #param string name 程序名称
-    #param string site_name 网站名称
-    #param string php_version PHP版本
-    def SetupPackage(self,get):
+    # 一键安装网站程序
+    # param string name 程序名称
+    # param string site_name 网站名称
+    # param string php_version PHP版本
+    def SetupPackage(self, get):
         param_list = ['dname', 'site_name']
         for param in param_list:
             if not hasattr(get, param):
@@ -814,7 +828,7 @@ class plugin_deployment:
         # 获取项目监听端口
         filepath = "/www/wwwroot/{}/config".format(get.site_name.strip())
         if not os.path.exists(filepath):
-            self.WriteLogs('配置文件config目录不存在: {}'.format(filepath))
+            self.WriteLogs('ERROR：配置文件config目录不存在: {}'.format(filepath))
             return public.returnMsg(False, '配置文件目录不存在!')
 
         server_port = None
@@ -841,11 +855,11 @@ class plugin_deployment:
                 "status": "1",
             }))
 
-    #处理临时文件
-    def set_temp_file(self,filename,path):
+    # 处理临时文件
+    def set_temp_file(self, filename, path):
         public.ExecShell("rm -rf " + self.__tmp + '/*')
         self.WriteLogs('正在解压软件包【{}】...'.format(filename))
-        public.ExecShell('unzip -o '+filename+' -d ' + self.__tmp)
+        public.ExecShell('unzip -o ' + filename + ' -d ' + self.__tmp)
         auto_config = 'auto_install.json'
         p_info = self.__tmp + '/' + auto_config
         p_tmp = self.__tmp
@@ -869,17 +883,17 @@ class plugin_deployment:
                 # os.remove(p_info)
                 i_ndex_html = path + '/index.html'
                 if os.path.exists(i_ndex_html): os.remove(i_ndex_html)
-                if not self.copy_to(p_tmp,path): public.ExecShell(("\cp -arf " + p_tmp + '/. ' + path + '/').replace('//','/'))
+                if not self.copy_to(p_tmp, path): public.ExecShell(("\cp -arf " + p_tmp + '/. ' + path + '/').replace('//', '/'))
             except json.decoder.JSONDecodeError as e:
                 error_message = "ERROR：解析auto_install.json文件错误\n【{}】: {}".format(filename, str(e))
                 self.WriteLogs(error_message)
-            except: pass
+            except:
+                pass
         public.ExecShell("rm -rf " + self.__tmp + '/*')
         self.WriteLogs('解压【{}】成功...'.format(filename))
         return p_config
 
-
-    def copy_to(self,src,dst):
+    def copy_to(self, src, dst):
         try:
             if src[-1] == '/': src = src[:-1]
             if dst[-1] == '/': dst = dst[:-1]
@@ -890,42 +904,42 @@ class plugin_deployment:
                 f_src = src + '/' + p_name
                 f_dst = dst + '/' + p_name
                 if os.path.isdir(f_src):
-                    print(shutil.copytree(f_src,f_dst))
+                    print(shutil.copytree(f_src, f_dst))
                 else:
-                    print(shutil.copyfile(f_src,f_dst))
+                    print(shutil.copyfile(f_src, f_dst))
             return True
-        except: return False
+        except:
+            return False
 
-
-    #提交安装统计
-    def depTotal(self,id):
+    # 提交安装统计
+    def depTotal(self, id):
         import panelAuth
         p = panelAuth.panelAuth()
         pdata = p.create_serverid(None)
         pdata['pid'] = id
         p_url = public.GetConfigValue('home') + '/api/pluginother/create_order_okey'
-        public.httpPost(p_url,pdata)
+        public.httpPost(p_url, pdata)
 
-    #获取进度  未使用,目前使用  GetInLog
-    def GetSpeed(self,get):
+    # 获取进度  未使用,目前使用  GetInLog
+    def GetSpeed(self, get):
         try:
             result = cache.get(self._speed_key)
-            if not result: public.returnMsg(False,'当前没有部署任务!')
+            if not result: public.returnMsg(False, '当前没有部署任务!')
             return result
         except:
-            return {'name':'准备部署','total':0,'used':0,'pre':0,'speed':0}
+            return {'name': '准备部署', 'total': 0, 'used': 0, 'pre': 0, 'speed': 0}
 
-    #获取包信息
-    def GetPackageInfo(self,name):
+    # 获取包信息
+    def GetPackageInfo(self, name):
         data = self.GetDepList(None)
         if not data: return False
         for info in data['list']:
-            if info['name'] == name:
+            if info['name'].strip() == name:
                 return info
         return False
 
-    #检查指定包是否存在
-    def CheckPackageExists(self,name):
+    # 检查指定包是否存在
+    def CheckPackageExists(self, name):
         data = self.GetDepList(None)
         if not data: return False
         for info in data['list']:
@@ -933,24 +947,23 @@ class plugin_deployment:
 
         return False
 
-    #文件的MD5值
-    def GetFileMd5(self,filename):
+    # 文件的MD5值
+    def GetFileMd5(self, filename):
         if not os.path.isfile(filename): return False
         import hashlib;
         myhash = hashlib.md5()
-        f = open(filename,'rb')
+        f = open(filename, 'rb')
         while True:
             b = f.read(8096)
-            if not b :
+            if not b:
                 break
             myhash.update(b)
         f.close()
         return myhash.hexdigest()
 
-    #获取站点标识
-    def GetSiteId(self,get):
-        return public.M('sites').where('name=?',(get.webname,)).getField('id')
-
+    # 获取站点标识
+    def GetSiteId(self, get):
+        return public.M('sites').where('name=?', (get.webname,)).getField('id')
 
     def solve_chinese_domain(self, site_name):
         """处理中文域名导致的站点名称查询错误问题"""

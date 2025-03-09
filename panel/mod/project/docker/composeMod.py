@@ -278,8 +278,13 @@ class main(Compose):
 
         try:
             config_body = public.readFile(get.path)
-            env_body = public.readFile(
-                get.path.replace("docker-compose.yaml", ".env").replace("docker-compose.yml", ".env"))
+            # env_path = get.path.replace("docker-compose.yaml", ".env").replace("docker-compose.yml", ".env")
+            # 获取文件路径  有些情况不是用标准文件名进行启动容器的
+            file_path = os.path.dirname(get.path)
+            env_path = os.path.join(file_path, ".env")
+            # 判断路径下.env 文件是否存在
+            env_body = public.readFile(env_path) if os.path.exists(env_path) else ""
+
             if hasattr(get, '_ws'):
                 get._ws.send(json.dumps(self.wsResult(True, "获取成功", data={
                     "config": config_body if config_body else "",
@@ -513,13 +518,17 @@ class main(Compose):
             }
             dp.sql("stacks").insert(pdata)
         else:
-            if hasattr(get, '_ws'):
-                get._ws.send(json.dumps(self.wsResult(
-                    False,
-                    "项目名已经存在，请先删除后再添加!",
-                    code=3,
-                )))
-            return
+            check_status = public.ExecShell("docker-compose ls |grep {}".format(get.path))[0]
+            if not check_status:
+                dp.sql("stacks").where("name=?", (public.xsssec(get.project_name))).delete()
+            else:
+                if hasattr(get, '_ws'):
+                    get._ws.send(json.dumps(self.wsResult(
+                        False,
+                        "项目名已经存在，请先删除后再添加!",
+                        code=3,
+                    )))
+                return
 
         self.up(get)
 

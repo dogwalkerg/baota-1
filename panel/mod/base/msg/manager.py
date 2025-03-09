@@ -1,5 +1,5 @@
 import time
-import traceback
+import os
 
 from mod.base.push_mod import SenderConfig
 from .weixin_msg import WeiXinMsg
@@ -12,17 +12,13 @@ from .wx_account_msg import WeChatAccountMsg
 import json
 from mod.base import json_response
 from .util import write_file, read_file
-import sys,os
-sys.path.insert(0, "/www/server/panel/class/")
-import public
+
 
 # 短信会自动添加到 sender 库中的第一个 且通过官方接口更新
 # 微信公众号信息通过官网接口更新， 不写入数据库，需要时由文件中读取并序列化
 # 其他告警通道本质都类似于web hook 在确认完数据信息无误后，都可以自行添加或启用
 class SenderManager:
-    def __init__(self):
-        self.custom_parameter_filename = "/www/server/panel/data/mod_push_data/custom_parameter.pl"
-        self.init_default_sender()
+
     def set_sender_conf(self, get):
         sender_id = None
         try:
@@ -50,44 +46,28 @@ class SenderManager:
 
         if sender_type == "weixin":
             data = WeiXinMsg.check_args(args)
-            if isinstance(data, str):
+            if not isinstance(data, dict):
                 return json_response(status=False, data=data, msg="测试发送失败")
 
         elif sender_type == "mail":
             _, data = MailMsg.check_args(args)
-            if isinstance(data, str):
+            if not isinstance(data, dict):
                 return json_response(status=False, data=data, msg="测试发送失败")
 
         elif sender_type == "webhook":
-            custom_parameter = args.get("custom_parameter", {})
-            if custom_parameter:
-                try:
-                    public.writeFile(self.custom_parameter_filename, json.dumps(custom_parameter))
-                except:
-                    pass
-
             # 检查参数
             data = WebHookMsg.check_args(args)
-            if isinstance(data, str):
+            if not isinstance(data, dict):
                 return json_response(status=False, data=data, msg="测试发送失败")
-
-            # 从文件读取并删除文件
-            try:
-                if os.path.exists(self.custom_parameter_filename):
-                    custom_parameter = json.loads(public.readFile(self.custom_parameter_filename))
-                    data['custom_parameter'] = custom_parameter
-                    os.remove(self.custom_parameter_filename)
-            except:
-                pass
 
         elif sender_type == "feishu":
             data = FeiShuMsg.check_args(args)
-            if isinstance(data, str):
+            if not isinstance(data, dict):
                 return json_response(status=False, data=data, msg="测试发送失败")
 
         elif sender_type == "dingding":
             data = DingDingMsg.check_args(args)
-            if isinstance(data, str):
+            if not isinstance(data, dict):
                 return json_response(status=False, data=data, msg="测试发送失败")
         else:
             return json_response(status=False, msg="当前接口不适应的类型")
@@ -105,6 +85,10 @@ class SenderManager:
         else:
             now_sender_id = sender_id
             tmp = sender_config.get_by_id(sender_id)
+            if tmp is None:
+                return json_response(status=False, msg="未找到对应发送者")
+            if not isinstance(tmp["data"], dict):
+                tmp["data"] = {}
             tmp["data"].update(data)
 
         sender_config.save_config()
@@ -130,8 +114,8 @@ class SenderManager:
 
         return json_response(status=True, msg="保存成功")
 
-    @staticmethod
-    def remove_sender(get):
+    @classmethod
+    def remove_sender(cls, get):
         try:
             sender_id = get.sender_id.strip()
         except (AttributeError, TypeError):
@@ -143,21 +127,16 @@ class SenderManager:
             return json_response(status=False, msg="未找到对应发送者")
         sender_config.config.remove(tmp)
         sender_config.save_config()
-        SenderManager().remove_sender_from_tasks(sender_id)
+        cls.remove_sender_from_tasks(sender_id)
         return json_response(status=True, msg="删除成功")
-    
+
     @staticmethod
     def remove_sender_from_tasks(sender_id):
-        task_file_path="/www/server/panel/data/mod_push_data/task.json"
+        task_file_path = "/www/server/panel/data/mod_push_data/task.json"
         if not os.path.exists(task_file_path):
             return
         try:
-            tasks=json.loads(public.readFile(task_file_path))
-            # # 加载任务文件
-            # with open(task_file_path, 'r', encoding='utf-8') as f:
-            #     tasks = json.load(f)
-
-            # 遍历任务，移除 sender_id
+            tasks = json.loads(read_file(task_file_path))
             updated = False
             for task in tasks:
                 if "sender" in task and sender_id in task["sender"]:
@@ -166,18 +145,19 @@ class SenderManager:
 
             # 如果有更新，保存文件
             if updated:
-                public.writeFile(task_file_path, json.dumps(tasks))
+                write_file(task_file_path, json.dumps(tasks))
 
         except Exception as e:
-             pass 
+            pass
+
     @staticmethod
     def get_sender_list(get):
         # 微信， 飞书， 钉钉， web-hook， 邮箱
         refresh = False
         try:
             if hasattr(get, 'refresh'):
-                refresh = get.refresh.strip()
-                if refresh in ("1", "true"):
+                refresh_str = get.refresh.strip()
+                if refresh_str in ("1", "true"):
                     refresh = True
         except (AttributeError, TypeError):
             return json_response(status=False, msg="参数错误")
@@ -287,7 +267,7 @@ class SenderManager:
             try:
                 webhook_data = json.loads(read_file(webhook_file))
             except:
-                webhook_data =[]
+                webhook_data = []
             target_idx = -1
             for idx, i in enumerate(webhook_data):
                 if i["name"] == sender_data["data"]["title"]:
@@ -301,18 +281,12 @@ class SenderManager:
                 webhook_data[target_idx] = sender_data["data"]
             write_file(webhook_file, json.dumps(webhook_data))
 
-
-    def init_default_sender(self):
-
-        
-        import os,sys
-        sys.path.insert(0, "/www/server/panel/mod/project/push")
-        import msgconfMod
+    @classmethod
+    def sync_default_sender(cls):
         sender_config = SenderConfig()
-        sender_types = set(conf['sender_type'] for conf in sender_config.config)
-        all_types = {"feishu", "dingding", "weixin", "mail", "webhook"}  # 所有可能的类型
-        
-        for sender_type in sender_types:
+        all_types = ("feishu", "dingding", "weixin", "mail", "webhook")  # 所有可能的类型
+
+        for sender_type in all_types:
             type_senders = [conf for conf in sender_config.config if conf['sender_type'] == sender_type]
 
             # 检查是否已有默认通道
@@ -320,25 +294,7 @@ class SenderManager:
             if has_default:
                 continue
 
-            if len(type_senders) == 1:
-                # 只有一个通道，设置为默认通道
-                for conf in type_senders:
-                    get = public.dict_obj()
-                    get['sender_id'] = conf['id']
-                    get['sender_type'] = conf['sender_type']
-                    self.set_default_sender(get)
-            else:
+            if len(type_senders) >= 1:
                 # 有多个通道，根据添加时间设置默认通道
                 sorted_senders = sorted(type_senders, key=lambda x: x['data'].get('create_time', ''))
-                if sorted_senders:
-                    get = public.dict_obj()
-                    get['sender_id'] = sorted_senders[0]['id']
-                    get['sender_type'] = sorted_senders[0]['sender_type']
-                    self.set_default_sender(get)
-
-        # # 检查没有通道的类型，并删除对应文件
-        # missing_types = all_types - sender_types
-        # for missing_type in missing_types:
-        #     file_path = f"/www/server/panel/data/{missing_type}.json"
-        #     if os.path.exists(file_path):
-        #         os.remove(file_path)
+                cls.set_default_for_compatible(sorted_senders[0])

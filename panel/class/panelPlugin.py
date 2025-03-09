@@ -1117,6 +1117,12 @@ class panelPlugin:
     def uninstall_plugin(self, get):
         pluginInfo = self.get_soft_find(get.sName)
         if not pluginInfo: return public.returnMsg(False, '指定插件不存在!')
+        if not public.check_sys_write():
+            return public.returnCode(
+                False,
+                '<a style="color:red;">错误：检测到系统关键目录不可写!</a><br>1、如果安装了[宝塔系统加固]，请先关闭<br>2、如果安装了云锁，请关闭[系统加固]功能<br>3、如果安装了安全狗，请关闭[系统防护]功能<br>4、如果使用了其它安全软件，请先卸载<br>'
+                , -1)
+
         if pluginInfo['type'] != 5:
 
             # 是否有卸载前置检查 -- START
@@ -1137,6 +1143,7 @@ class panelPlugin:
                 res = plugin_object.exec_fun(public.dict_obj(), 'uninstall_check')
                 if 'status' in res and res['status']:
                     res['status'] = False
+                    public.start_syssafe()  # 恢复系统加固服务
                     return res
             except:
                 pass
@@ -1168,11 +1175,12 @@ class panelPlugin:
                 public.ExecShell('rm -rf ' + pluginPath)
             public.WriteLog('TYPE_SETUP', 'PLUGIN_UNINSTALL_SOFT',
                             (pluginInfo['title'],))
+            public.start_syssafe()  # 恢复系统加固服务
             return public.returnMsg(True, 'PLUGIN_UNINSTALL')
         else:
             if pluginInfo['name'] == 'mysql':
-                if public.M('databases').where('db_type=? AND type=?',
-                                               (0, "MySQL")).count() > 0:
+                if public.M('databases').where('db_type=? AND type=?', (0, "MySQL")).count() > 0:
+                    public.start_syssafe()  # 恢复系统加固服务
                     return public.returnMsg(
                         False,
                         "本地数据库列表非空，为了您的数据安全，请先<span style='color:red;'>备份所有本地数据库数据</span>后删除现有本地数据库<br>强制卸载命令：rm -rf /www/server/mysql"
@@ -1183,8 +1191,6 @@ class panelPlugin:
             if get.sName.find('php-') != -1:
                 get.sName = get.sName.split('-')[0]
             if get.sName in ['redis']: get.version = ''
-            if get.sName in ['nginx']: 
-                get.version = ''
             execstr = "cd /www/server/panel/install && /bin/bash install_soft.sh " + get.type + " uninstall " + get.sName.lower(
             ) + " " + get.version.replace('.', '')
             public.ExecShell(execstr)
@@ -1193,6 +1199,7 @@ class panelPlugin:
             # 设置PHP环境变量
             if get.sName in ['php']:
                 public.ExecShell("btpython /www/server/panel/tools.py phpenv")
+            public.start_syssafe()  # 恢复系统加固服务
             return public.returnMsg(True, "PLUGIN_UNINSTALL")
 
     def __is_bind_user(self):
@@ -2238,6 +2245,9 @@ class panelPlugin:
                 # res = public.ExecShell('/etc/init.d/nginx status')
                 # softInfo['status'] = 'already running' in res[0]
                 softInfo['status'] = self.process_exists('nginx')
+            elif softInfo['name'] == 'mail_sys':
+                softInfo['status'] = False if not os.path.exists("/www/server/panel/plugin/mail_sys/mail_sys_main.py") else True
+                softInfo['setup'] = softInfo['status']
         return softInfo
 
     def test_dependnet_status(self, dependnet):

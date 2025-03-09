@@ -101,3 +101,59 @@ class Base:
         # public.print_log("ptr_address  ^--{}".format(ptr_address))
 
         return ptr_address
+
+    def returnResult(self, status=True, msg="OK", data=None, timestamp=None, code=0, args=None):
+        '''
+        通用响应对象
+        @param code: 0:成功 1:失败 2:警告 ...
+        @param status:
+        @param msg: 只传msg,不传需要前端处理的数据
+        @param data: 只传需要前端处理的数据
+        @param timestamp: 秒级时间戳
+        @return:
+
+        使用示例：
+        成功：return dp.returnResult(data=data)
+        失败：return dp.returnResult(code=1, status=False, msg="获取失败!", data=[])
+        失败：return dp.returnResult(code=1, status=False, msg="获取失败!")
+        警告：return dp.returnResult(code=2, status=False, msg="警告，xxxxxxxxxxx!")
+        ...
+        '''
+        import time
+        if timestamp is None:
+            timestamp = int(time.time())
+
+        try:
+            log_message = json.loads(
+                public.ReadFile('BTPanel/static/language/' + public.GetLanguage() + '/public.json'))
+            keys = log_message.keys()
+        except:
+            log_message = {}
+            keys = []
+
+        if type(msg) == str:
+            if msg in keys:
+                msg = log_message[msg]
+                for i in range(len(args)):
+                    rep = '{' + str(i + 1) + '}'
+                    msg = msg.replace(rep, args[i])
+
+        return {
+            "code": code,
+            "status": status,
+            "msg": msg,
+            "data": data,
+            "timestamp": timestamp
+        }
+
+    def return_msg(self, result):
+        if not isinstance(result, dict):
+            return self.returnResult(True, "", result, time.time(), 0, )
+        status = result.get('status', True)
+        msg = result.get('msg', '')
+        data = result
+        timestamp = result.get('timestamp', time.time())
+        code = 0 if status else 1
+        return self.returnResult(status, msg, data, timestamp, code, )
+        # return {'status': result.get('status', False), 'message': result, 'timestamp': time.time()}
+        # return result

@@ -1495,12 +1495,16 @@ listener Default%s{
         conf = public.readFile(file)
         if conf:
             # 删除域名
-            rep = r"server_name\s+(.+);"
-            tmp = re.search(rep, conf).group()
-            # newServerName = tmp.replace(' ' + get['domain'] + ';', ';')
-            # newServerName = newServerName.replace(' ' + get['domain'] + ' ', ' ')
-            newServerName = "server_name " + " ".join(set([i["name"] for i in other_domains])) + ";"
-            conf = conf.replace(tmp, newServerName)
+            has_server_name = False
+            rep = r"server_name\s+(.+);?"
+            tmp = re.search(rep, conf)
+            if tmp:
+                has_server_name = True
+                tmp_data = tmp.group()
+                # newServerName = tmp.replace(' ' + get['domain'] + ';', ';')
+                # newServerName = newServerName.replace(' ' + get['domain'] + ' ', ' ')
+                newServerName = "server_name " + " ".join(set([i["name"] for i in other_domains])) + ";"
+                conf = conf.replace(tmp_data, newServerName)
 
             # 删除端口
             rep = r"listen.*[\s:]+(\d+).*;"
@@ -1509,6 +1513,14 @@ listener Default%s{
             if public.inArray(tmp, port) == True and port_count < 2:
                 rep = r"\n*\s+listen.*[\s:]+" + port + r"\s*;"
                 conf = re.sub(rep, '', conf)
+            if not has_server_name:
+                last = None
+                for i in re.finditer(r"\n*\s+listen.*[\s:]+(\d+)\s*;", conf):
+                    last = i
+                if last:
+                    s_name = "\n    server_name " + " ".join(set([i["name"] for i in other_domains])) + ";"
+                    conf = conf[:last.end()] + s_name + conf[last.end():]
+
             # 保存配置
             public.writeFile(file, conf.strip())
 
@@ -2176,45 +2188,34 @@ listener SSL443 {
 
         # Apache配置
         file = self.setupPath + '/panel/vhost/apache/' + siteName + '.conf'
-        is_node_apache = False
+        other_project = ""
         if not os.path.exists(file):
-            is_node_apache = True
             file = self.setupPath + '/panel/vhost/apache/node_' + siteName + '.conf'
-        is_java_apache = False
+            other_project = "node"
+
         if not os.path.exists(file):
-            is_java_apache = True
-            is_node_apache = False
             file = self.setupPath + '/panel/vhost/apache/java_' + siteName + '.conf'
-        is_go_apache = False
+            other_project = "java"
+
         if not os.path.exists(file):
-            is_go_apache = True
-            is_java_apache = False
-            is_node_apache = False
             file = self.setupPath + '/panel/vhost/apache/go_' + siteName + '.conf'
-        is_other_apache = False
+            other_project = "go"
+
         if not os.path.exists(file):
-            is_other_apache = True
-            is_go_apache = False
-            is_java_apache = False
-            is_node_apache = False
             file = self.setupPath + '/panel/vhost/apache/other_' + siteName + '.conf'
-        is_python_apache = False
+            other_project = "other"
+
         if not os.path.exists(file):
-            is_python_apache = True
-            is_other_apache = False
-            is_go_apache = False
-            is_java_apache = False
-            is_node_apache = False
             file = self.setupPath + '/panel/vhost/apache/python_' + siteName + '.conf'
-        is_net_apache = False
+            other_project = "python"
+
         if not os.path.exists(file):
-            is_net_apache = True
-            is_python_apache = False
-            is_other_apache = False
-            is_go_apache = False
-            is_java_apache = False
-            is_node_apache = False
+            other_project = "net"
             file = self.setupPath + '/panel/vhost/apache/net_' + siteName + '.conf'
+
+        if not os.path.exists(file):
+            other_project = "html"
+            file = self.setupPath + '/panel/vhost/apache/html_' + siteName + '.conf'
 
         ap_conf = public.readFile(file)
         have_apache_conf = ap_conf is not False
@@ -2297,12 +2298,12 @@ listener SSL443 {
                 self.apacheAddPort('443')
                 shutil.copyfile(file, self.apache_conf_bak)
                 public.writeFile(file, ap_conf)
-                if is_node_apache:  # 兼容Nodejs项目
+                if other_project == "node":  # 兼容Nodejs项目
                     from projectModel.nodejsModel import main
                     m = main()
                     project_find = m.get_project_find(siteName)
                     m.set_apache_config(project_find)
-                if is_java_apache:  # 兼容Java项目
+                if other_project == "java":  # 兼容Java项目
                     try:
                         from mod.project.java.java_web_conf import JavaApacheTool
                         from mod.project.java.projectMod import main
@@ -2312,23 +2313,29 @@ listener SSL443 {
                         m = main()
                         project_find = m.get_project_find(siteName)
                         m.set_apache_config(project_find)
-                if is_go_apache:  # 兼容Go项目
+                if other_project == "go":  # 兼容Go项目
                     from projectModel.goModel import main
                     m = main()
                     project_find = m.get_project_find(siteName)
                     m.set_apache_config(project_find)
-                if is_other_apache:  # 兼容其他项目
+                if other_project == "other":  # 兼容其他项目
                     from projectModel.otherModel import main
                     m = main()
                     project_find = m.get_project_find(siteName)
                     m.set_apache_config(project_find)
-                if is_python_apache:  # 兼容python项目
+                if other_project == "python":  # 兼容python项目
                     from projectModel.pythonModel import main
                     m = main()
                     project_find = m.get_project_find(siteName)
                     m.set_apache_config(project_find)
-                if is_net_apache:
+                if other_project == "net":
                     from projectModel.netModel import main
+                    m = main()
+                    project_find = m.get_project_find(siteName)
+                    m.set_apache_config(project_find)
+
+                if other_project == "html":
+                    from projectModel.htmlModel import main
                     m = main()
                     project_find = m.get_project_find(siteName)
                     m.set_apache_config(project_find)
@@ -2996,9 +3003,17 @@ listener SSL443 {
         try_files $uri /index.html;
     }
 '''
-        sitePath = public.M('sites').where("id=?", (id,)).getField('path')
+        site_info = public.M('sites').where("id=?", (id,)).find()
+        sitePath = site_info['path']
         if not sitePath:
             return public.returnMsg(False, '未找到网站目录!')
+        try:
+            p_cnf = json.loads(site_info['project_config'])
+            if "php_run_path" in p_cnf:
+                sitePath += p_cnf["php_run_path"]
+        except:
+            pass
+
         self.update_stop_field(get.id)
 
         # 定义 apache, nginx 和 openlitespeed 文件夹
@@ -3092,7 +3107,8 @@ listener SSL443 {
     def SiteStop(self, get, multiple=None):
         path = self.setupPath + '/stop'
         id = get.id
-        site_status = public.M('sites').where("id=?", (id,)).getField('status')
+        site_info = public.M('sites').where("id=?", (id,)).find()
+        site_status = site_info['status']
         if str(site_status) != '1':
             return public.returnMsg(True, 'SITE_STOP_SUCCESS')
         if not os.path.exists(path):
@@ -3111,6 +3127,13 @@ listener SSL443 {
         if isinstance(r_path, str):
             if r_path != '/':
                 sitePath += r_path
+                try:
+                    project_config = json.loads(site_info.get("project_config"))
+                except:
+                    project_config = {}
+                project_config["php_run_path"] = r_path
+                public.M('sites').where("id=?", (id,)).setField('project_config', json.dumps(project_config))
+
         self._process_has_run_dir(get.name, sitePath, path)
         # nginx
         file = self.setupPath + '/panel/vhost/nginx/' + get.name + '.conf'
@@ -5569,6 +5592,9 @@ location ^~ %s
         if public.get_webserver() == 'openlitespeed':
             return public.returnMsg(False, '该功能暂时还不支持OpenLiteSpeed')
         if len(get.username.strip()) < 3 or len(get.password.strip()) < 3: return public.returnMsg(False, '用户名或密码不能小于3位！')
+
+        if len(get.password.strip()) > 8:
+            return public.returnMsg(False, '密码不能大于8位，超过8位的部分无法验证！')
 
         if not hasattr(get, 'siteName'):
             get.siteName = public.M('sites').where('id=?', (get.id,)).getField('name')
@@ -8564,86 +8590,92 @@ real_ip_header X-Forwarded-For;{}
             print(traceback.format_exc())
 
     def get_cron_scanin_info(self, get):
-        info = {}
-        cron_name = '[勿删]漏洞扫描定时任务'
-        cron_list = public.M('crontab').where("name=?", (cron_name,)).select()
-        if cron_list:
-            info['cycle'] = int(cron_list[0]['where1'])
-            info['channel'] = cron_list[0]['notice_channel']
-            info['status'] = 1
+        if "/www/server/panel" not in sys.path:
+            sys.path.insert(0, '/www/server/panel')
+
+        from mod.base.push_mod import TaskConfig
+        res = TaskConfig().get_by_keyword("vulnerability_scanning", "vulnerability_scanning")
+        if not res:
+            return {"cycle": 1, "channel": "", "status": 0}
         else:
-            info['cycle'] = 1
-            info['channel'] = ''
-            info['status'] = 0
-        return info
+            return {
+                "cycle": res['task_data']["cycle"],
+                "channel": ",".join(res['sender']),
+                "status": int(res['status'])
+            }
 
     def set_cron_scanin_info(self, get):
-        if not (hasattr(get, 'status') and hasattr(get, 'channel') and hasattr(get, 'day')):
-            return public.returnMsg(False, '参数错误')
-        status = get.status
-        channel = get.channel
-        day = get.day
-        # 检查 day 是否为数字
-        if not str(day).isdigit():
-            return public.returnMsg(False, '设置周期错误！')
-        if not int(status):
-            self.del_crontab()
-            return public.returnMsg(True, '关闭成功')
-        self.add_crontab(day, channel)
-        return public.returnMsg(True, '开启成功')
+        """设置漏洞扫描定时任务
+        @param get: 请求参数对象
+        @return: dict 设置结果
+        """
+        # status = bool(get.get("status/d", 0))
+        # channel = get.get("channel/s", "")
+        # day = get.get("day/d", 0)
+        # if "/www/server/panel" not in sys.path:
+        #     sys.path.insert(0, '/www/server/panel')
+
+        # from mod.base.push_mod.safe_mod_push import VulnerabilityScanningTask
+
+        # res = VulnerabilityScanningTask.set_push_task(status, day, channel.split(","))
+        # if not res:
+        #     return public.returnMsg(True, '设置成功')
+        # else:
+        #     return public.returnMsg(False, res)
+        # 优化健壮性
+        try:
+            # 参数处理部分
+            try:
+                status = bool(int(get.get("status", 0)))
+            except (ValueError, TypeError):
+                status = False
+                
+            channel = get.get("channel", "")
+            if not isinstance(channel, str):
+                channel = str(channel)
+                
+            try:
+                # 先尝试转换为浮点数，再向下取整
+                day_float = float(get.get("day", 0))
+                day = int(day_float)  # 浮点数向下取整
+            except (ValueError, TypeError):
+                day = 1
+                
+            # 确保参数在有效范围内
+            if day < 0:
+                day = 1
+                
+
+            try:
+                from mod.base.push_mod.safe_mod_push import VulnerabilityScanningTask
+                
+                # 处理channel参数
+                if isinstance(channel, str):
+                    channel_list = channel.split(",") if channel else []
+                elif isinstance(channel, list):
+                    channel_list = channel
+                else:
+                    channel_list = []
+                    
+                # 设置推送任务
+                res = VulnerabilityScanningTask.set_push_task(status, day, channel_list)
+                if not res:
+                    return public.returnMsg(True, '设置成功')
+                else:
+                    return public.returnMsg(False, res)
+            except ImportError:
+                return public.returnMsg(False, "未找到相关模块，请确认系统完整性")
+            except Exception as e:
+                return public.returnMsg(False, "设置任务时出错: {}".format(str(e)))
+                
+        except Exception as e:
+            # 捕获所有可能的异常，确保API不会崩溃
+            return public.returnMsg(False, '设置失败: {}'.format(str(e)))
 
     def get_crond_find(self, get):
         id = int(get.id)
         data = public.M('crontab').where('id=?', (id,)).find()
         return data
-
-    def del_crontab(self):
-        """
-        @name 删除项目定时清理任务
-        @auther hezhihong<2022-10-31>
-        @return
-        """
-        cron_name = '[勿删]漏洞扫描定时任务'
-        cron_list = public.M('crontab').where("name=?", (cron_name,)).select()
-
-        if cron_list:
-            for i in cron_list:
-                if not i: continue
-                args = {"id": i['id']}
-                import crontab
-                crontab.crontab().DelCrontab(args)
-
-    def add_crontab(self, day, channel):
-        """
-        @name 构造计划任务
-        """
-        cron_name = '[勿删]漏洞扫描定时任务'
-        cron_list = public.M('crontab').where("name=?", (cron_name,)).select()
-        if cron_list:
-            self.del_crontab()
-        if not public.M('crontab').where('name=?',(cron_name,)).count():
-            args = {
-                "name": cron_name,
-                "type": 'day-n',
-                "where1": day,
-                "hour": '10',
-                "minute": '30',
-                "sName": "",
-                "sType": 'toShell',
-                "notice": '0',
-                "notice_channel": channel,
-                "save": '',
-                "save_local": '1',
-                "backupTo": '',
-                "sBody": 'btpython /www/server/panel/script/cron_scaning.py {}'.format(channel),
-                "urladdress": ''
-            }
-            import crontab
-            res = crontab.crontab().AddCrontab(args)
-            if res and "id" in res.keys():
-                return True
-            return False
-        return True
 
     def multiple_basedir(self, get):
         try:
